@@ -63,7 +63,11 @@ export async function POST(request: Request): Promise<Response> {
 
   let body: ChatRequestBody;
   try {
-    const parsed = (await request.json()) as unknown;
+    const rawBody = await request.text();
+    if (Buffer.byteLength(rawBody, "utf8") > 10 * 1024 * 1024) {
+      return apiError("请求体超过 10MB 限制。", 413, "request_too_large");
+    }
+    const parsed = JSON.parse(rawBody) as unknown;
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
       return apiError("请求体必须是 JSON 对象。", 400, "invalid_json");
     }

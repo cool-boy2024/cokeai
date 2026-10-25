@@ -97,7 +97,7 @@ export async function adjustBalanceAction(formData: FormData): Promise<void> {
   const admin = await requireAdmin();
   const userId = String(formData.get("userId") || "");
   const note = String(formData.get("note") || "").trim();
-  let deltaMicros: number;
+  let deltaMicros = 0;
   try {
     deltaMicros = Math.round(decimal(formData.get("amountYuan"), "调整金额") * 1_000_000);
   } catch (error) {

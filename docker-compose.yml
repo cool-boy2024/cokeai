@@ -87,7 +87,7 @@ services:
       N8N_LISTEN_ADDRESS: 0.0.0.0
       N8N_PROXY_HOPS: 1
       WEBHOOK_URL: https://${N8N_HOST:-n8n.cokeai.cc.cd}/
-      N8N_SECURE_COOKIE: "true"
+      N8N_SECURE_COOKIE: ${N8N_SECURE_COOKIE:-false}
       N8N_DIAGNOSTICS_ENABLED: "false"
       N8N_VERSION_NOTIFICATIONS_ENABLED: "false"
       N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"

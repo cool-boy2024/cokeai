@@ -53,6 +53,8 @@ export async function createStripeCheckout(input: {
     success_url: `${config.appUrl}/dashboard/billing?paid=1&session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${config.appUrl}/dashboard/billing?cancelled=1`,
     allow_promotion_codes: false,
+  }, {
+    idempotencyKey: `checkout-${input.orderId}`,
   });
 
   if (!session.url) throw new Error("Stripe 未返回支付链接");

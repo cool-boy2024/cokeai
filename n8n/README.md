@@ -44,7 +44,9 @@ ssh -L 5678:127.0.0.1:5678 <user>@<server>
 
 如果确实需要公开访问，建议使用独立子域名 `n8n.cokeai.cc.cd`，
 通过 Cloudflare Tunnel 指向 `http://n8n:5678`，并在 Cloudflare Zero Trust
-中为该域名增加 Access 策略（邮箱 OTP 或 SSO）。不要把 5678 端口直接暴露到公网。
+中为该域名增加 Access 策略（邮箱 OTP 或 SSO）。公网访问时把 `.env` 中的
+`N8N_SECURE_COOKIE` 改为 `true`，否则登录 Cookie 存在安全风险。
+不要把 5678 端口直接暴露到公网。
 
 ## 3. 配置告警 Webhook
 
