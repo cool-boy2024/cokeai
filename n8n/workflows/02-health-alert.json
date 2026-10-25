@@ -1,0 +1,138 @@
+{
+  "name": "CokeAI｜上游健康告警",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## 上游健康检查\n\n每 15 分钟检查一次：\n- 数据库是否可连接\n- Redis 是否在线\n- 是否有已启用且配置完整的上游模型\n\n只有异常时才推送。`ALERT_WEBHOOK_URL` 为空时工作流会安全结束，不发送消息。",
+        "height": 200,
+        "width": 360,
+        "color": 3
+      },
+      "id": "31d33c40-c840-4954-b7f9-af0104cbaef0",
+      "name": "使用说明",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-500, -70]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "5,20,35,50 * * * *"
+            }
+          ]
+        }
+      },
+      "id": "52ecdc95-c039-4d2c-97a0-43f85dcbe6db",
+      "name": "每 15 分钟",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-40, 80]
+    },
+    {
+      "parameters": {
+        "url": "http://app:3000/api/internal/health",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-internal-secret",
+              "value": "={{ $env.INTERNAL_API_SECRET }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "0a6f39f3-7138-4948-82fb-91848af5f0ae",
+      "name": "检查内部健康",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [210, 80],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first()?.json || {};\nconst statusCode = raw.statusCode || 0;\nconst body = raw.body || raw;\nconst healthy = statusCode === 200 && body.status === 'ok';\n\nif (healthy || !$env.ALERT_WEBHOOK_URL) {\n  return [];\n}\n\nconst lines = [\n  'CokeAI 健康告警',\n  `HTTP：${statusCode || '无响应'}`,\n  `状态：${body.status || raw.error || 'unknown'}`,\n  `数据库：${body.database || 'unknown'}`,\n  `Redis：${body.redis || 'unknown'}`,\n  `可用模型：${body.enabled_models ?? 'unknown'}`,\n  `已配置上游：${body.configured_upstreams ?? 'unknown'}`,\n  `错误：${body.last_error || '无'}`,\n  `时间：${new Date().toISOString()}`,\n].join('\\n');\n\nreturn [{ json: { text: lines, content: lines } }];"
+      },
+      "id": "c96a6d57-72a2-4b43-8b9c-4f8b5459c5a5",
+      "name": "判断健康状态",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [450, 80]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.ALERT_WEBHOOK_URL }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "b9b64215-9301-4f1b-917c-12c5286d9f0e",
+      "name": "推送告警",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [690, 80],
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "每 15 分钟": {
+      "main": [
+        [
+          {
+            "node": "检查内部健康",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "检查内部健康": {
+      "main": [
+        [
+          {
+            "node": "判断健康状态",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "判断健康状态": {
+      "main": [
+        [
+          {
+            "node": "推送告警",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Shanghai"
+  },
+  "versionId": "a3b05e60-d765-49c1-933c-bf1bb7f4e139",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": []
+}

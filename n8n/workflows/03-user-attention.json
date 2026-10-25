@@ -1,0 +1,131 @@
+{
+  "name": "CokeAI｜余额与到期提醒",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## 用户余额 / 到期提醒\n\n每天北京时间 09:05 汇总：\n- 3 天内到期套餐\n- 余额低于 ¥2 的活跃用户\n- 超过 2 小时未处理的人工订单\n\n推送到运营 Webhook。不会自动向用户发消息，避免误发和骚扰。",
+        "height": 210,
+        "width": 380,
+        "color": 5
+      },
+      "id": "e3e84d0a-9f45-4f7a-9b82-85822a922fc7",
+      "name": "使用说明",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-510, -70]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "5 9 * * *"
+            }
+          ]
+        }
+      },
+      "id": "645bcc6c-a1b3-4d0b-81b2-1d30f7e32c52",
+      "name": "每天 09:05",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-40, 80]
+    },
+    {
+      "parameters": {
+        "url": "http://app:3000/api/internal/reports/attention",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-internal-secret",
+              "value": "={{ $env.INTERNAL_API_SECRET }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "df3cb4f1-5f7e-4f90-8c28-8f4adf6c308a",
+      "name": "拉取待关注用户",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [210, 80]
+    },
+    {
+      "parameters": {
+        "jsCode": "const report = $input.first().json;\nconst expiring = report.expiring_plans || [];\nconst lowBalance = report.low_balance || [];\nconst staleOrders = report.stale_pending_orders || [];\nconst formatCny = (micros) => `¥${(Number(micros || 0) / 1000000).toFixed(2)}`;\n\nconst lines = [\n  'CokeAI 每日待办',\n  `3 天内到期套餐：${expiring.length}`,\n  `余额低于 ¥2：${lowBalance.length}`,\n  `超 2 小时未处理订单：${staleOrders.length}`,\n  `可用模型：${report.ready_models ?? 0}`,\n];\n\nif (expiring.length) {\n  lines.push('', '即将到期：');\n  for (const item of expiring.slice(0, 10)) {\n    lines.push(`- ${item.email}｜${item.plan || '无套餐'}｜${item.expires_at}`);\n  }\n}\n\nif (lowBalance.length) {\n  lines.push('', '低余额：');\n  for (const item of lowBalance.slice(0, 10)) {\n    lines.push(`- ${item.email}｜${formatCny(item.balance_micros)}`);\n  }\n}\n\nif (staleOrders.length) {\n  lines.push('', '待处理订单：');\n  for (const item of staleOrders.slice(0, 10)) {\n    lines.push(`- ${item.email}｜${formatCny(item.amount_micros)}｜${item.created_at}`);\n  }\n}\n\nif (!$env.ALERT_WEBHOOK_URL) {\n  return [];\n}\n\nconst message = lines.join('\\n');\nreturn [{ json: { text: message, content: message } }];"
+      },
+      "id": "f91421c4-078f-478b-b2ae-bd5e211e304e",
+      "name": "整理待办摘要",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [450, 80]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.ALERT_WEBHOOK_URL }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "a30d9a4a-065a-441a-a1ed-2978d51229c1",
+      "name": "推送运营提醒",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [690, 80],
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "每天 09:05": {
+      "main": [
+        [
+          {
+            "node": "拉取待关注用户",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "拉取待关注用户": {
+      "main": [
+        [
+          {
+            "node": "整理待办摘要",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "整理待办摘要": {
+      "main": [
+        [
+          {
+            "node": "推送运营提醒",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Shanghai"
+  },
+  "versionId": "d1f0cdc1-73fb-4568-84d5-55d6ef32a1a2",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": []
+}

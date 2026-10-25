@@ -1,0 +1,5 @@
+Contact: mailto:security@cokeai.cc.cd
+Expires: 2027-10-25T00:00:00.000Z
+Preferred-Languages: zh, en
+Canonical: https://cokeai.cc.cd/.well-known/security.txt
+Policy: https://cokeai.cc.cd/terms
