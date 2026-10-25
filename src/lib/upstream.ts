@@ -89,8 +89,9 @@ export function sanitizeChatRequest(
   }
 
   const output: ChatRequestBody = { model: upstreamModel };
+  const outputRecord = output as Record<string, unknown>;
   for (const field of ALLOWED_FIELDS) {
-    if (input[field] !== undefined) output[field] = input[field];
+    if (input[field] !== undefined) outputRecord[field] = input[field];
   }
 
   if (output.max_tokens === undefined && output.max_completion_tokens === undefined) {
