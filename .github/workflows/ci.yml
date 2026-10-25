@@ -46,3 +46,82 @@ jobs:
           rm -f .env
       - name: Build Docker image
         run: docker build -t cokeai:ci .
+
+  e2e:
+    runs-on: ubuntu-latest
+    needs: build
+    timeout-minutes: 20
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+      APP_URL: "http://127.0.0.1:3000"
+      DATABASE_URL: "postgres://cokeai:cokeai@127.0.0.1:5432/cokeai"
+      REDIS_URL: "redis://127.0.0.1:6379"
+      APP_ENCRYPTION_KEY: "e2e-only-encryption-key-0123456789abcdef"
+      INTERNAL_API_SECRET: "e2e-only-internal-secret-0123456789abcdef"
+      ADMIN_EMAIL: "admin@example.test"
+      ADMIN_PASSWORD: "e2e-admin-password"
+      MOCK_UPSTREAM_KEY: "mock-upstream-key"
+      STRIPE_SECRET_KEY: "sk_test_e2e_only"
+      STRIPE_WEBHOOK_SECRET: "whsec_e2e_only"
+      USD_CNY_RATE: "7.2"
+      MANUAL_PAYMENTS_ENABLED: "true"
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: cokeai
+          POSTGRES_USER: cokeai
+          POSTGRES_PASSWORD: cokeai
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U cokeai -d cokeai"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Build
+        run: npm run build
+      - name: Prepare database
+        run: npm run db:setup
+      - name: Start mock upstream and app
+        run: |
+          node scripts/mock-upstream.mjs > /tmp/mock.log 2>&1 &
+          npm start > /tmp/app.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:3000/api/health >/dev/null 2>&1; then
+              echo "App ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "App did not become ready"
+          cat /tmp/app.log
+          exit 1
+      - name: Run E2E smoke tests
+        run: node scripts/e2e.mjs
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-logs
+          path: |
+            /tmp/app.log
+            /tmp/mock.log
+          if-no-files-found: ignore
