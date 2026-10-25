@@ -103,7 +103,9 @@ jobs:
       - name: Start mock upstream and app
         run: |
           node scripts/mock-upstream.mjs > /tmp/mock.log 2>&1 &
-          npm start > /tmp/app.log 2>&1 &
+          cp -r public .next/standalone/public
+          cp -r .next/static .next/standalone/.next/static
+          PORT=3000 HOSTNAME=127.0.0.1 node .next/standalone/server.js > /tmp/app.log 2>&1 &
           for i in $(seq 1 60); do
             if curl -fsS http://127.0.0.1:3000/api/health >/dev/null 2>&1; then
               echo "App ready"

@@ -106,12 +106,12 @@ try {
   const badKey = await jsonFetch("/v1/models", {
     headers: { Authorization: "Bearer sk-coke-not-valid" },
   });
-  assert(badKey.response.status === 401, "invalid API key rejected");
+  assert(badKey.response.status === 401, `invalid API key rejected (got ${badKey.response.status}: ${badKey.text.slice(0, 200)})`);
 
   const models = await jsonFetch("/v1/models", {
     headers: { Authorization: `Bearer ${apiKey}` },
   });
-  assert(models.response.status === 200, "model list status");
+  assert(models.response.status === 200, `model list status (got ${models.response.status}: ${models.text.slice(0, 200)})`);
   assert(
     models.body?.data?.some((item) => item.id === "deepseek-chat"),
     "model list contains deepseek-chat",
@@ -135,7 +135,7 @@ try {
       max_tokens: 64,
     }),
   });
-  assert(completion.response.status === 200, "non-stream completion succeeds");
+  assert(completion.response.status === 200, `non-stream completion succeeds (got ${completion.response.status}: ${completion.text.slice(0, 300)})`);
   assert(
     completion.body?.choices?.[0]?.message?.content === "Hello from CokeAI mock.",
     "non-stream completion content",
@@ -168,7 +168,7 @@ try {
       max_tokens: 64,
     }),
   });
-  assert(streamResponse.status === 200, "stream request status");
+  assert(streamResponse.status === 200, `stream request status (got ${streamResponse.status})`);
   assert(
     (streamResponse.headers.get("content-type") || "").includes("text/event-stream"),
     "stream content type",
