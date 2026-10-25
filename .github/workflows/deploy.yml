@@ -1,0 +1,64 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    if: vars.VPS_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+      VPS_USER: ${{ secrets.VPS_USER }}
+      VPS_PORT: ${{ secrets.VPS_PORT || '22' }}
+      APP_DIR: ${{ secrets.VPS_APP_DIR || '/opt/cokeai' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.VPS_SSH_KEY }}
+
+      - name: Trust host
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -p "$VPS_PORT" -H "$VPS_HOST" >> ~/.ssh/known_hosts
+
+      - name: Sync release to server
+        run: |
+          rsync -az --delete \
+            --exclude=.git \
+            --exclude=.env \
+            --exclude=.env.* \
+            --exclude=node_modules \
+            --exclude=.next \
+            -e "ssh -p $VPS_PORT" \
+            ./ "$VPS_USER@$VPS_HOST:$APP_DIR/"
+
+      - name: Build and restart
+        run: |
+          ssh -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "APP_DIR='$APP_DIR' bash -s" <<'REMOTE'
+          set -euo pipefail
+          cd "$APP_DIR"
+          test -f .env || { echo "Missing .env on server"; exit 1; }
+          PROFILE=""
+          if grep -Eq '^CLOUDFLARE_TUNNEL_TOKEN=.+' .env; then
+            PROFILE="--profile tunnel"
+          fi
+          docker compose $PROFILE up -d --build
+          docker compose ps
+          REMOTE
+
+      - name: Smoke check
+        run: |
+          ssh -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" \
+            "docker compose -f '$APP_DIR/docker-compose.yml' --project-directory '$APP_DIR' exec -T app wget -qO- http://127.0.0.1:3000/api/health"
