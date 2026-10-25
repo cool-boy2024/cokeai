@@ -127,3 +127,56 @@ jobs:
             /tmp/app.log
             /tmp/mock.log
           if-no-files-found: ignore
+
+  compose-smoke:
+    runs-on: ubuntu-latest
+    needs: build
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - name: Generate test environment
+        run: |
+          bash ops/generate-env.sh
+          sed -i 's|^APP_URL=.*|APP_URL=http://127.0.0.1:3000|' .env
+          sed -i 's|^N8N_SECURE_COOKIE=.*|N8N_SECURE_COOKIE=false|' .env
+      - name: Start full Docker stack
+        run: |
+          docker compose up -d --build postgres redis app n8n
+          for i in $(seq 1 90); do
+            if docker compose exec -T app wget -qO- http://127.0.0.1:3000/api/health >/dev/null 2>&1; then
+              echo "App container healthy"
+              break
+            fi
+            sleep 2
+            if [ "$i" = "90" ]; then
+              echo "App container did not become healthy"
+              docker compose logs app
+              exit 1
+            fi
+          done
+          for i in $(seq 1 90); do
+            if docker compose exec -T n8n node -e "fetch('http://127.0.0.1:5678/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"; then
+              echo "n8n container healthy"
+              break
+            fi
+            sleep 2
+            if [ "$i" = "90" ]; then
+              echo "n8n did not become healthy"
+              docker compose logs n8n
+              exit 1
+            fi
+          done
+      - name: Import n8n workflows
+        run: |
+          docker compose exec -T n8n n8n import:workflow --separate --input=/workflows
+          COUNT=$(docker compose exec -T postgres psql -U cokeai -d n8n -tAc 'SELECT count(*) FROM workflow_entity;' | tr -d '[:space:]')
+          echo "Imported workflows: $COUNT"
+          test "$COUNT" = "3"
+      - name: Show container status
+        run: docker compose ps
+      - name: Dump logs on failure
+        if: failure()
+        run: docker compose logs --no-color
+      - name: Stop stack
+        if: always()
+        run: docker compose down -v
