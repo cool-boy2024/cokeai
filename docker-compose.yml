@@ -152,7 +152,9 @@ services:
     image: cloudflare/cloudflared:latest
     profiles: ["tunnel"]
     restart: unless-stopped
-    command: tunnel --no-autoupdate run
+    # QUIC stalls for several seconds between this host and the Cloudflare edge.
+    # HTTP/2 over TCP has been stable, so pin the transport.
+    command: tunnel --no-autoupdate --protocol http2 run
     environment:
       TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
       TZ: Asia/Shanghai
