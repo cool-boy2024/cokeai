@@ -549,3 +549,45 @@ UI 实测：浏览 → 登录 → 下单（人工）→ 后台确认到账 → �
 - **安全边界**：已到账、确认中、部分付款、人工处理的订单不会被自动取消；
   扫描明确标记 `expired` 后才由定时任务清理，TronGrid 故障时保持待支付。
 - 本地 `npm run typecheck`、`npm run build` 通过。
+
+## 2026-10-29 01:35 CST USDT 支付上线与生产运维现状
+
+### 合并与部署
+
+- PR #3 `feat: add USDT QR, 10-minute payment deadline and auto-cancel` 已
+  squash 合入 `main`（`1c6aafe`），并用 `rsync` + `docker compose build app`
+  发布到生产；容器 5 秒内 `healthy`，镜像内已确认包含新的过期取消代码。
+- 生产 `.env` 的 `USDT_QUOTE_MINUTES` 由 `30` 改为 `10`；代码另有 10 分钟硬上限，
+  旧环境变量无法再把窗口拉长。
+- **当前生产 `USDT_ENABLED=false`**，所以顾客端暂时看不到二维码、倒计时和复制
+  地址。要真正启用，需要配置 xpub、打开开关，再跑一笔小额真实转账验证。
+
+### 生产运维
+
+- 生产 SSH 私钥是 `~/.ssh/cokeai_deploy`，不在 ssh-agent、也不在
+  `~/.ssh/config`。必须显式使用：
+  `ssh -i ~/.ssh/cokeai_deploy deploy@47.83.178.22`。默认身份会
+  `Permission denied (publickey)`。
+- Sub2API 容器健康，管理端 `http://127.0.0.1:18080/` 返回 200；公网打不开是
+  设计如此，只能通过 SSH 隧道访问：
+  `ssh -i ~/.ssh/cokeai_deploy -L 18080:127.0.0.1:18080 deploy@47.83.178.22`。
+- 8 个容器全部 `healthy`：app、edge、cloudflared、n8n、postgres、redis、
+  sub2api 及其独立 postgres/redis。
+
+### 待确认：Cloudflare Tunnel 源站
+
+- `docker-compose.yml` 注释要求公网源站指向 `http://edge:8080`，但线上实际仍
+  指向 `http://app:3000`：
+  - 公网 `/healthz` 返回 Next.js 404；服务器上 `edge:8080/healthz` 返回 200。
+  - 公网 `/v1/models` 返回 CokeAI 自己的错误；`edge:8080/v1/models` 返回
+    Sub2API 的 `API_KEY_REQUIRED`。
+- 结论：Sub2API 目前不在公网请求链路上，`/v1` 仍由 Next.js 内置网关处理。
+  切换前需要确认现有用户 Key 已同步到 Sub2API、计费不会中断，改动只在
+  Cloudflare 面板，不在代码里。
+
+### cloudflared 传输协议
+
+- PR #4 将 cloudflared 固定为 `--protocol http2`（`docker-compose.yml`），
+  避免小内存 VPS 上 QUIC 丢包导致的秒级卡顿。
+- 从中国大陆经代理访问时仍会出现数秒到数十秒延迟，属于本地到 Cloudflare 边缘
+  的链路问题；服务器侧公网自测 0.09–0.25s，应用和数据库不是瓶颈。
