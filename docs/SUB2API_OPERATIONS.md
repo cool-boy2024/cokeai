@@ -354,7 +354,7 @@ USDT_TRC20_XPUB=xpub...
 USDT_TRC20_CONTRACT=TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t
 USDT_TRONGRID_API_KEY=...
 USDT_CONFIRMATIONS=19
-USDT_QUOTE_MINUTES=30
+USDT_QUOTE_MINUTES=10
 USDT_CNY_RATE=7.25
 USDT_CNY_RATE_BUFFER_BPS=100
 USDT_UNDERPAY_TOLERANCE_BPS=50
@@ -374,7 +374,7 @@ curl -fsS -X POST http://127.0.0.1:3000/api/internal/payments/usdt/scan \
    - 只认 TRC20 USDT 合约；
    - 少付在绝对/比例容差内按订单金额入账，超过容差保持 `partial`；
    - 多付按订单金额入账，多余部分人工处理；
-   - 报价过期后 24 小时内到账仍可入账，超过则标记 `expired`/人工；
+   - 支付窗口默认 10 分钟，超时且无链上到账的订单自动取消；截止前已确认的转账仍会入账，截止后到账转人工核对；
    - 19 个区块确认后入账；
    - 订单已取消/已支付时不自动入账，标记 `manual`。
 5. 资金留在派生地址，MVP 不做自动归集；归集需要单独准备 TRX gas，并离线签署。

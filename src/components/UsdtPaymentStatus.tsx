@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   CheckCircle,
@@ -51,6 +51,7 @@ export function UsdtPaymentStatus({
   const [txid, setTxid] = useState(initialTxid);
   const [now, setNow] = useState(() => Date.now());
   const [error, setError] = useState<string | null>(null);
+  const cancelRequested = useRef(false);
 
   const expired = expiresAt ? new Date(expiresAt).getTime() <= now : false;
   const statusText = useMemo(() => {
@@ -69,6 +70,22 @@ export function UsdtPaymentStatus({
   }, []);
 
   useEffect(() => {
+    if (!expired || cancelRequested.current) return;
+    if (received > 0) return;
+    if (!["waiting", "expired"].includes(status)) return;
+    cancelRequested.current = true;
+    void fetch("/api/dashboard/usdt-expire", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderId }),
+    })
+      .then(() => router.refresh())
+      .catch(() => {
+        // The five minute scanner will retry the fallback cleanup.
+      });
+  }, [expired, received, status, orderId, router]);
+
+  useEffect(() => {
     let cancelled = false;
     async function poll() {
       try {
@@ -84,7 +101,7 @@ export function UsdtPaymentStatus({
         setReceived(data.receivedUsdt);
         setTxid(data.txid);
         setError(null);
-        if (data.orderStatus === "paid") {
+        if (data.orderStatus !== "pending") {
           router.refresh();
         }
       } catch {
@@ -105,7 +122,12 @@ export function UsdtPaymentStatus({
         <span className="small muted">
           <Clock size={14} /> 剩余支付时间
         </span>
-        <strong className="small">{expired ? "已过期" : remaining(expiresAt, now)}</strong>
+        <strong className="small">{expired ? "已超时" : remaining(expiresAt, now)}</strong>
+      </div>
+      <div className="small muted" style={{ marginTop: 6 }}>
+        {expired
+          ? "支付时限已到，订单会自动取消。若已链上转账，请联系客服核对。"
+          : "请在倒计时结束前完成转账，超时未到账会自动取消订单。"}
       </div>
 
       <div className="notice" style={{ marginTop: 16 }}>

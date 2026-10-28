@@ -3,7 +3,7 @@
   "nodes": [
     {
       "parameters": {
-        "content": "## 网关维护\n\n每 5 分钟执行：\n- 重试失败/超时的加额度队列\n- 重试 Key 撤销与未完成的 Key 创建\n- 补齐本地余额镜像\n- 扫描 USDT TRC20 入账\n\n全部使用 `INTERNAL_API_SECRET`，不经过公网。",
+        "content": "## 网关维护\n\n每 5 分钟执行：\n- 重试失败/超时的加额度队列\n- 重试 Key 撤销与未完成的 Key 创建\n- 补齐本地余额镜像\n- 扫描 USDT TRC20 入账\n- 关闭超时未支付的 USDT 充值订单\n\n全部使用 `INTERNAL_API_SECRET`，不经过公网。",
         "height": 220,
         "width": 360,
         "color": 4

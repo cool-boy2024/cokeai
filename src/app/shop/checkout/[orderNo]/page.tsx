@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import QRCode from "qrcode";
 import {
   Warning,
   Clock,
@@ -8,16 +9,21 @@ import {
   Envelope,
   ShieldCheck,
 } from "@phosphor-icons/react/dist/ssr";
+import { CopyButton } from "@/components/CopyButton";
 import { SiteFooter } from "@/components/SiteFooter";
 import { SiteHeader } from "@/components/SiteHeader";
 import { AutoRefresh } from "@/components/shop/AutoRefresh";
 import { OrderTimeline } from "@/components/shop/OrderTimeline";
+import { ShopUsdtCountdown } from "@/components/shop/UsdtCountdown";
 import { getCurrentUser } from "@/lib/auth";
 import { config } from "@/lib/config";
 import { formatCny } from "@/lib/money";
 import { findShopOrderByNo } from "@/lib/shop/orders";
 import { createShopEasyPayCheckout } from "@/lib/shop/payments";
-import { getShopUsdtDeposit } from "@/lib/shop/usdt";
+import {
+  expireShopUsdtOrderForUser,
+  getShopUsdtDeposit,
+} from "@/lib/shop/usdt";
 import { query } from "@/lib/db";
 import { ManualPaymentClaimForm } from "@/components/ManualPaymentClaimForm";
 
@@ -38,8 +44,24 @@ export default async function ShopCheckoutPage({
   if (order.status !== "pending_payment") redirect(`/shop/orders/${orderNo}`);
   const personal = order.payment_provider === "alipay_manual" ? (await query<{ qr_data_url: string; payee: string; reported_reference: string | null; payer_note: string | null; reported_at: string | null }>("SELECT qr_data_url,payee,reported_reference,payer_note,reported_at FROM manual_alipay_payments WHERE order_id=$1 AND order_kind='shop'", [order.id])).rows[0] : null;
 
-  const usdtDeposit =
+  let usdtDeposit =
     order.payment_provider === "usdt_trc20" ? await getShopUsdtDeposit(order.id) : null;
+  if (
+    usdtDeposit &&
+    order.payment_provider === "usdt_trc20" &&
+    new Date(usdtDeposit.expires_at).getTime() <= Date.now()
+  ) {
+    const expired = await expireShopUsdtOrderForUser(order.id, user.id);
+    if (expired) redirect(`/shop/orders/${orderNo}`);
+    usdtDeposit = await getShopUsdtDeposit(order.id);
+  }
+  const usdtAddress =
+    order.payment_provider === "usdt_trc20"
+      ? usdtDeposit?.address || order.pay_address || ""
+      : "";
+  const usdtQr = usdtAddress
+    ? await QRCode.toDataURL(usdtAddress, { margin: 1, width: 260 })
+    : "";
   const alipayUrl =
     order.payment_provider === "alipay_easypay"
       ? createShopEasyPayCheckout({
@@ -129,6 +151,19 @@ export default async function ShopCheckoutPage({
                   <h2>USDT TRC20</h2>
                   {usdtDeposit ? (
                     <>
+                      <div className="shop-usdt-qr-wrap">
+                        {usdtQr ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            className="payment-qr shop-usdt-qr"
+                            src={usdtQr}
+                            alt="USDT TRC20 收款二维码"
+                            width={260}
+                            height={260}
+                          />
+                        ) : null}
+                        <span>扫码后核对地址，金额请手动输入</span>
+                      </div>
                       <div className="shop-usdt-amount">
                         <span>应付金额</span>
                         <strong>
@@ -136,9 +171,20 @@ export default async function ShopCheckoutPage({
                         </strong>
                         <em>请使用 TRC20 网络，金额必须一致</em>
                       </div>
+                      <ShopUsdtCountdown
+                        orderId={order.id}
+                        expiresAt={usdtDeposit.expires_at}
+                      />
                       <div className="shop-copy-row">
                         <span>收款地址</span>
-                        <code>{usdtDeposit.address}</code>
+                        <div className="shop-copy-line">
+                          <code>{usdtDeposit.address}</code>
+                          <CopyButton
+                            value={usdtDeposit.address}
+                            label="复制地址"
+                            className="copy-btn shop-copy-btn"
+                          />
+                        </div>
                       </div>
                       <div className="shop-summary shop-summary-tight">
                         <div>
@@ -150,13 +196,14 @@ export default async function ShopCheckoutPage({
                           <dd>{usdtDeposit.confirmations} / {config.usdtConfirmations}</dd>
                         </div>
                         <div>
-                          <dt>报价有效期</dt>
+                          <dt>支付截止</dt>
                           <dd>{new Date(usdtDeposit.expires_at).toLocaleString("zh-CN")}</dd>
                         </div>
                       </div>
                       <p className="shop-muted">
-                        <ShieldCheck size={14} /> 只支持 TRC20。转账金额与地址必须完全一致，
-                        等待 {config.usdtConfirmations} 个区块确认后自动完成。
+                        <ShieldCheck size={14} /> 只支持 TRC20。请在{" "}
+                        {config.usdtQuoteMinutes} 分钟内完成，超时未到账会自动取消；
+                        转账金额与地址必须完全一致，等待 {config.usdtConfirmations} 个区块确认后自动完成。
                       </p>
                     </>
                   ) : (

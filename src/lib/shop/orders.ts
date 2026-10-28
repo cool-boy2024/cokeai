@@ -672,6 +672,21 @@ export async function expireShopOrders(): Promise<number> {
           SELECT 1 FROM shop_usdt_deposits d
            WHERE d.order_id = o.id AND d.received_usdt > 0
         )
+        -- Cancel a USDT order only after the scanner explicitly found no
+        -- funds. A TronGrid outage must leave it pending for the next scan.
+        AND (
+          o.payment_provider <> 'usdt_trc20'
+          OR NOT EXISTS (
+            SELECT 1 FROM shop_usdt_deposits d WHERE d.order_id = o.id
+          )
+          OR EXISTS (
+            SELECT 1
+              FROM shop_usdt_deposits d
+             WHERE d.order_id = o.id
+               AND d.status = 'expired'
+               AND d.received_usdt = 0
+          )
+        )
       RETURNING o.id`,
   );
   for (const row of result.rows) {
@@ -682,9 +697,14 @@ export async function expireShopOrders(): Promise<number> {
     );
   }
   await query(
-    `UPDATE shop_usdt_deposits
+    `UPDATE shop_usdt_deposits d
         SET status = 'expired', updated_at = now()
-      WHERE status IN ('waiting', 'partial') AND expires_at < now()`,
+       FROM shop_orders o
+      WHERE d.order_id = o.id
+        AND d.status = 'waiting'
+        AND d.received_usdt = 0
+        AND d.expires_at < now()
+        AND o.status IN ('expired', 'cancelled')`,
   );
   return result.rowCount || 0;
 }
