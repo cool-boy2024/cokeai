@@ -12,6 +12,7 @@ import {
   type UsdtDepositStatus,
 } from "@/lib/payments/usdt";
 import { getUsdtSettings } from "@/lib/payments/settings";
+import { sumTransferUnits } from "@/lib/payments/tron-receipts";
 import { markShopOrderPaid } from "./orders";
 
 export type ShopUsdtDeposit = {
@@ -52,9 +53,9 @@ export async function createShopUsdtDeposit(input: {
   }
 
   const quoteExpires = new Date(Date.now() + config.usdtQuoteMinutes * 60_000);
-  const orderExpires = new Date(
-    quoteExpires.getTime() + config.shopUsdtGraceHours * 60 * 60_000,
-  );
+  // A USDT quote and its shop order share one deadline. The customer promised
+  // ten minutes must not have a hidden 24 hour payment window behind it.
+  const orderExpires = quoteExpires;
 
   return withTransaction(async (client) => {
     const existing = await client.query<ShopUsdtDeposit>(
@@ -66,7 +67,18 @@ export async function createShopUsdtDeposit(input: {
         FOR UPDATE`,
       [input.orderId],
     );
-    if (existing.rows[0]) return existing.rows[0];
+    if (existing.rows[0]) {
+      const deposit = existing.rows[0];
+      const due = new Date(deposit.expires_at).getTime() <= Date.now();
+      if (
+        due &&
+        Number(deposit.received_usdt) === 0 &&
+        (deposit.status === "waiting" || deposit.status === "expired")
+      ) {
+        throw new Error("支付已超时，请重新下单");
+      }
+      return deposit;
+    }
 
     const order = await client.query<{ status: string; amount_micros: string | number }>(
       `SELECT status, amount_micros FROM shop_orders WHERE id = $1 FOR UPDATE`,
@@ -122,6 +134,140 @@ export async function getShopUsdtDeposit(orderId: string): Promise<ShopUsdtDepos
     [orderId],
   );
   return result.rows[0] || null;
+}
+
+/**
+ * Final on-chain check before a shop USDT order is cancelled at the deadline.
+ * Prevents an in-flight transfer from being lost between scanner runs.
+ */
+async function checkShopDepositBeforeExpiry(
+  deposit: ShopUsdtDeposit,
+): Promise<"clear" | "funded" | "unknown"> {
+  try {
+    const settings = await getUsdtSettings();
+    const block = await currentTronBlock();
+    const transfers = (await listTransfers(deposit.address)).filter(
+      (tx) =>
+        tx.type === "Transfer" &&
+        tx.to === deposit.address &&
+        tx.token_info?.address?.trim() === settings.usdtContract,
+    );
+    const units = sumTransferUnits(transfers);
+    if (units > BigInt(Number.MAX_SAFE_INTEGER)) return "unknown";
+    const received = Number(units) / 1_000_000;
+    if (received <= 0) return "clear";
+
+    const latest = [...transfers].sort(
+      (a, b) => Number(b.block) - Number(a.block),
+    )[0];
+    const confirmations = latest ? Math.max(0, block - Number(latest.block)) : 0;
+    const evaluation = evaluateUsdtDeposit({
+      currentStatus: deposit.status,
+      expectedUsdt: toNumber(deposit.expected_usdt),
+      receivedUsdt: received,
+      confirmations,
+      requiredConfirmations: config.usdtConfirmations,
+      expiresAt: deposit.expires_at,
+      receivedAt: latest?.block_timestamp,
+    });
+    await query(
+      `UPDATE shop_usdt_deposits
+          SET received_usdt = $2,
+              txid = COALESCE($3, txid),
+              block_number = COALESCE($4, block_number),
+              confirmations = $5,
+              status = $6,
+              last_checked_at = now(),
+              updated_at = now()
+        WHERE id = $1
+          AND status IN ('waiting', 'partial', 'confirming', 'expired')`,
+      [
+        deposit.id,
+        received,
+        latest?.transaction_id || null,
+        latest ? Number(latest.block) : null,
+        confirmations,
+        evaluation.status,
+      ],
+    );
+    return "funded";
+  } catch (error) {
+    console.error(
+      "[shop-usdt-expire] chain check failed",
+      deposit.order_id,
+      error instanceof Error ? error.message : error,
+    );
+    return "unknown";
+  }
+}
+
+/** Cancel one user's shop USDT order after the ten minute quote expires. */
+export async function expireShopUsdtOrderForUser(
+  orderId: string,
+  userId: string,
+): Promise<boolean> {
+  const result = await query<ShopUsdtDeposit>(
+    `SELECT d.id, d.order_id, d.network, d.address, d.derivation_index,
+            d.expected_usdt, d.received_usdt, d.txid, d.block_number,
+            d.confirmations, d.status, d.expires_at, d.last_checked_at
+       FROM shop_orders o
+       LEFT JOIN shop_usdt_deposits d ON d.order_id = o.id
+      WHERE o.id = $1
+        AND o.user_id = $2
+        AND o.status = 'pending_payment'
+        AND o.payment_provider = 'usdt_trc20'
+        AND (
+          o.expires_at <= now()
+          OR (o.pay_expires_at IS NOT NULL AND o.pay_expires_at <= now())
+        )
+      LIMIT 1`,
+    [orderId, userId],
+  );
+  const deposit = result.rows[0];
+  if (!deposit) return false;
+  if (
+    Number(deposit.received_usdt || 0) > 0 ||
+    ["confirming", "confirmed", "overpaid", "manual"].includes(deposit.status)
+  ) {
+    return false;
+  }
+  if (deposit.id && deposit.address) {
+    const check = await checkShopDepositBeforeExpiry(deposit);
+    if (check !== "clear") return false;
+  }
+
+  const cancelled = await query<{ id: string }>(
+    `UPDATE shop_orders o
+        SET status = 'expired', updated_at = now()
+      WHERE o.id = $1
+        AND o.user_id = $2
+        AND o.status = 'pending_payment'
+        AND o.payment_provider = 'usdt_trc20'
+        AND NOT EXISTS (
+          SELECT 1
+            FROM shop_usdt_deposits d
+           WHERE d.order_id = o.id
+             AND (
+               d.received_usdt > 0
+               OR d.status IN ('confirming', 'confirmed', 'overpaid', 'manual')
+             )
+        )
+      RETURNING o.id`,
+    [orderId, userId],
+  );
+  if (!cancelled.rows[0]) return false;
+  await query(
+    `UPDATE shop_usdt_deposits
+        SET status = 'expired', updated_at = now()
+      WHERE order_id = $1 AND status IN ('waiting', 'expired')`,
+    [orderId],
+  );
+  await query(
+    `INSERT INTO shop_order_events (order_id, actor_type, event, note)
+     VALUES ($1, 'system', 'expired', '超时未支付，自动取消')`,
+    [orderId],
+  );
+  return true;
 }
 
 export async function scanShopUsdtDeposits(limit = 20): Promise<{

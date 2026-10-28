@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import QRCode from "qrcode";
-import { ArrowLeft, CheckCircle2, Clock3, ShieldAlert } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Clock3, ShieldAlert, XCircle } from "lucide-react";
 import { CopyButton } from "@/components/CopyButton";
 import { UsdtPaymentStatus } from "@/components/UsdtPaymentStatus";
 import { requireUser } from "@/lib/auth";
+import { config } from "@/lib/config";
 import { query } from "@/lib/db";
+import { expireUsdtOrderForUser } from "@/lib/payments/usdt";
 import { formatCny } from "@/lib/money";
 
 export const metadata: Metadata = { title: "USDT 支付" };
@@ -59,7 +61,17 @@ export default async function UsdtPaymentPage({
     );
   }
 
-  const paid = order.status === "paid";
+  let orderStatus = order.status;
+  if (
+    orderStatus === "pending" &&
+    order.pay_expires_at &&
+    new Date(order.pay_expires_at).getTime() <= Date.now()
+  ) {
+    const cancelled = await expireUsdtOrderForUser(order.id, user.id);
+    if (cancelled) orderStatus = "cancelled";
+  }
+  const paid = orderStatus === "paid";
+  const cancelled = orderStatus === "cancelled";
   const creditApplied = order.credit_status === "applied";
   const requiredConfirmations = Math.max(
     1,
@@ -79,7 +91,9 @@ export default async function UsdtPaymentPage({
             <ArrowLeft size={14} /> 返回充值
           </Link>
           <h1 style={{ marginTop: 16 }}>USDT 支付</h1>
-          <p>TRC20 网络 · 支付后自动到账</p>
+          <p>
+            TRC20 网络 · {config.usdtQuoteMinutes} 分钟内支付，超时自动取消
+          </p>
         </div>
       </div>
 
@@ -104,6 +118,20 @@ export default async function UsdtPaymentPage({
             </Link>
           </div>
         </section>
+      ) : cancelled ? (
+        <section className="panel">
+          <div className="panel-body" style={{ textAlign: "center", padding: 48 }}>
+            <XCircle size={40} style={{ color: "var(--red)" }} />
+            <h2 style={{ marginTop: 16 }}>订单已取消</h2>
+            <p className="muted">
+              超过 {config.usdtQuoteMinutes} 分钟未到账，或订单已被关闭，余额未扣款。
+              如果你在截止时间前已经转账，请联系客服核对。
+            </p>
+            <Link className="btn btn-primary" href="/dashboard/billing">
+              重新充值
+            </Link>
+          </div>
+        </section>
       ) : (
         <div className="grid-2">
           <section className="panel">
@@ -121,6 +149,9 @@ export default async function UsdtPaymentPage({
                   <img src={qr} alt="USDT TRC20 收款二维码" width={220} height={220} />
                 ) : null}
               </div>
+              <div className="small muted" style={{ marginTop: 10, textAlign: "center" }}>
+                二维码只包含收款地址，转账时请手动输入下方金额
+              </div>
               <div className="small muted" style={{ marginTop: 20 }}>
                 应付金额
               </div>
@@ -129,7 +160,7 @@ export default async function UsdtPaymentPage({
               </div>
               <div className="invite-box" style={{ marginTop: 12 }}>
                 <input className="input mono" readOnly value={address} />
-                <CopyButton value={address} />
+                <CopyButton value={address} label="复制地址" />
               </div>
               <UsdtPaymentStatus
                 orderId={order.id}
@@ -152,6 +183,7 @@ export default async function UsdtPaymentPage({
                 <li>网络：TRC20（Tron）</li>
                 <li>币种：USDT</li>
                 <li>金额：{amountUsdt.toFixed(2)} USDT</li>
+                <li>支付时限：{config.usdtQuoteMinutes} 分钟，超时自动取消</li>
                 <li>到账确认：{requiredConfirmations} 个区块，通常 1–3 分钟</li>
                 <li>请勿使用 ERC20 或其他网络转账</li>
               </ul>

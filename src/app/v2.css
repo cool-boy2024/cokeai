@@ -3056,6 +3056,88 @@ tbody tr:hover {
   word-break: break-all;
 }
 
+.shop-copy-line {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.shop-copy-line code {
+  flex: 1;
+  min-width: 0;
+}
+
+.shop-copy-row .shop-copy-btn {
+  flex: none;
+  height: 30px;
+  border-color: var(--line);
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.shop-copy-row .shop-copy-btn:hover {
+  background: #fff;
+}
+
+.shop-usdt-qr-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: #faf9f6;
+}
+
+.shop-usdt-qr-wrap span {
+  color: var(--muted);
+  font-size: 11px;
+  text-align: center;
+}
+
+.shop-usdt-qr {
+  max-width: 220px;
+  padding: 10px;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.shop-usdt-timer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: #f5f9f7;
+  font-size: 12px;
+}
+
+.shop-usdt-timer span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--green);
+}
+
+.shop-usdt-timer strong {
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.shop-usdt-timer.is-expired {
+  border-color: #eed3cf;
+  background: var(--red-soft);
+}
+
+.shop-usdt-timer.is-expired span {
+  color: var(--red-deep);
+}
+
 .shop-usdt-amount {
   display: flex;
   flex-direction: column;

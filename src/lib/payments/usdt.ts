@@ -186,7 +186,18 @@ export async function createUsdtDeposit(input: {
         FOR UPDATE`,
       [input.orderId],
     );
-    if (existing.rows[0]) return existing.rows[0];
+    if (existing.rows[0]) {
+      const deposit = existing.rows[0];
+      const due = new Date(deposit.expires_at).getTime() <= Date.now();
+      if (
+        due &&
+        Number(deposit.received_usdt) === 0 &&
+        (deposit.status === "waiting" || deposit.status === "expired")
+      ) {
+        throw new Error("支付已超时，请重新下单");
+      }
+      return deposit;
+    }
 
     const order = await client.query<{ status: string }>(
       "SELECT status FROM orders WHERE id = $1 FOR UPDATE",
@@ -248,6 +259,226 @@ export async function getUsdtDepositForOrder(orderId: string): Promise<UsdtDepos
     [orderId],
   );
   return result.rows[0] || null;
+}
+
+/**
+ * Checks the chain once immediately before an expiry cancellation. A payment
+ * broadcast just before the deadline must never be lost because the five
+ * minute scanner has not observed it yet. "unknown" means TronGrid failed;
+ * in that case the order is left pending for the next scan.
+ */
+async function checkDepositBeforeExpiry(deposit: {
+  id: string;
+  order_id: string;
+  address: string;
+  expected_usdt: string;
+  status: UsdtDepositStatus;
+  expires_at: string;
+}): Promise<"clear" | "funded" | "unknown"> {
+  try {
+    const settings = await getUsdtSettings();
+    const block = await currentTronBlock();
+    const transfers = (await listTransfers(deposit.address)).filter(
+      (tx) =>
+        tx.type === "Transfer" &&
+        tx.to === deposit.address &&
+        tx.token_info?.address?.trim() === settings.usdtContract,
+    );
+    const units = sumTransferUnits(transfers);
+    if (units > BigInt(Number.MAX_SAFE_INTEGER)) return "unknown";
+    const received = Number(units) / 1_000_000;
+    if (received <= 0) return "clear";
+
+    const latest = [...transfers].sort(
+      (a, b) => Number(b.block) - Number(a.block),
+    )[0];
+    const confirmations = latest ? Math.max(0, block - Number(latest.block)) : 0;
+    const evaluation = evaluateUsdtDeposit({
+      currentStatus: deposit.status,
+      expectedUsdt: toNumber(deposit.expected_usdt),
+      receivedUsdt: received,
+      confirmations,
+      requiredConfirmations: config.usdtConfirmations,
+      expiresAt: deposit.expires_at,
+      receivedAt: latest?.block_timestamp,
+    });
+    await query(
+      `UPDATE usdt_deposits
+          SET received_usdt = $2,
+              txid = COALESCE($3, txid),
+              block_number = COALESCE($4, block_number),
+              confirmations = $5,
+              status = $6,
+              last_checked_at = now(),
+              updated_at = now()
+        WHERE id = $1
+          AND status IN ('waiting', 'partial', 'confirming', 'expired')`,
+      [
+        deposit.id,
+        received,
+        latest?.transaction_id || null,
+        latest ? Number(latest.block) : null,
+        confirmations,
+        evaluation.status,
+      ],
+    );
+    return "funded";
+  } catch (error) {
+    console.error(
+      "[usdt-expire] chain check failed",
+      deposit.order_id,
+      error instanceof Error ? error.message : error,
+    );
+    return "unknown";
+  }
+}
+
+async function cancelExpiredUsdtOrder(
+  orderId: string,
+  userId?: string,
+): Promise<boolean> {
+  const values: string[] = [orderId];
+  const userClause = userId ? "AND o.user_id = $2" : "";
+  if (userId) values.push(userId);
+  const result = await query<{ id: string }>(
+    `UPDATE orders o
+        SET status = 'cancelled', updated_at = now()
+      WHERE o.id = $1
+        ${userClause}
+        AND o.status = 'pending'
+        AND o.payment_provider = 'usdt_trc20'
+        AND o.pay_txid IS NULL
+        AND o.pay_expires_at IS NOT NULL
+        AND o.pay_expires_at <= now()
+        AND NOT EXISTS (
+          SELECT 1
+            FROM usdt_deposits d
+           WHERE d.order_id = o.id
+             AND (
+               d.received_usdt > 0
+               OR d.status IN ('confirming', 'confirmed', 'overpaid', 'manual')
+             )
+        )
+      RETURNING o.id`,
+    values,
+  );
+  if (!result.rows[0]) return false;
+  await query(
+    `UPDATE usdt_deposits
+        SET status = 'expired', updated_at = now()
+      WHERE order_id = $1 AND status IN ('waiting', 'expired')`,
+    [orderId],
+  );
+  return true;
+}
+
+/** Expire one user's USDT order after a final on-chain check. */
+export async function expireUsdtOrderForUser(
+  orderId: string,
+  userId: string,
+): Promise<boolean> {
+  const result = await query<{
+    deposit_id: string | null;
+    address: string | null;
+    expected_usdt: string | null;
+    received_usdt: string | null;
+    deposit_status: UsdtDepositStatus | null;
+    deposit_expires_at: string | null;
+    confirmations: number | null;
+  }>(
+    `SELECT d.id AS deposit_id, d.address, d.expected_usdt, d.received_usdt,
+            d.status AS deposit_status, d.expires_at AS deposit_expires_at,
+            d.confirmations
+       FROM orders o
+       LEFT JOIN usdt_deposits d ON d.order_id = o.id
+      WHERE o.id = $1
+        AND o.user_id = $2
+        AND o.status = 'pending'
+        AND o.payment_provider = 'usdt_trc20'
+        AND o.pay_expires_at IS NOT NULL
+        AND o.pay_expires_at <= now()
+      LIMIT 1`,
+    [orderId, userId],
+  );
+  const row = result.rows[0];
+  if (!row) return false;
+  if (
+    Number(row.received_usdt || 0) > 0 ||
+    (row.deposit_status &&
+      ["confirming", "confirmed", "overpaid", "manual"].includes(row.deposit_status))
+  ) {
+    return false;
+  }
+  if (row.deposit_id && row.address && row.expected_usdt) {
+    const check = await checkDepositBeforeExpiry({
+      id: row.deposit_id,
+      order_id: orderId,
+      address: row.address,
+      expected_usdt: row.expected_usdt,
+      status: row.deposit_status || "waiting",
+      expires_at: row.deposit_expires_at || new Date().toISOString(),
+    });
+    if (check !== "clear") return false;
+  }
+  return cancelExpiredUsdtOrder(orderId, userId);
+}
+
+/**
+ * Cron fallback for orders whose payment page is closed. The scanner runs
+ * before this function, so an observed transfer is excluded by the SQL guard.
+ */
+export async function expireUnpaidUsdtOrders(limit = 100): Promise<number> {
+  const result = await query<{ id: string }>(
+    `UPDATE orders o
+        SET status = 'cancelled', updated_at = now()
+      WHERE o.id IN (
+        SELECT candidate.id
+          FROM orders candidate
+         WHERE candidate.status = 'pending'
+           AND candidate.payment_provider = 'usdt_trc20'
+           AND candidate.pay_txid IS NULL
+           AND candidate.pay_expires_at IS NOT NULL
+           AND candidate.pay_expires_at <= now()
+           AND NOT EXISTS (
+             SELECT 1
+               FROM usdt_deposits d
+              WHERE d.order_id = candidate.id
+                AND (
+                  d.received_usdt > 0
+                  OR d.status IN ('confirming', 'confirmed', 'overpaid', 'manual')
+                )
+           )
+           -- Only cancel after a successful chain scan explicitly marked the
+           -- deposit expired. A TronGrid outage leaves the order pending.
+           AND (
+             NOT EXISTS (
+               SELECT 1 FROM usdt_deposits d WHERE d.order_id = candidate.id
+             )
+             OR EXISTS (
+               SELECT 1
+                 FROM usdt_deposits d
+                WHERE d.order_id = candidate.id
+                  AND d.status = 'expired'
+                  AND d.received_usdt = 0
+             )
+           )
+         ORDER BY candidate.pay_expires_at
+         LIMIT $1
+      )
+      RETURNING o.id`,
+    [limit],
+  );
+  if (!result.rows[0]) return 0;
+  await query(
+    `UPDATE usdt_deposits d
+        SET status = 'expired', updated_at = now()
+       FROM orders o
+      WHERE d.order_id = o.id
+        AND o.id = ANY($1::uuid[])
+        AND d.status IN ('waiting', 'expired')`,
+    [result.rows.map((row) => row.id)],
+  );
+  return result.rowCount || 0;
 }
 
 export async function currentTronBlock(): Promise<number> {

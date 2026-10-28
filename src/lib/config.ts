@@ -77,7 +77,9 @@ export const config = {
     process.env.USDT_RATE_URL ||
     "https://api.coingecko.com/api/v3/simple/price?ids=tether&vs_currencies=cny",
   usdtConfirmations: intEnv("USDT_CONFIRMATIONS", 19),
-  usdtQuoteMinutes: intEnv("USDT_QUOTE_MINUTES", 30),
+  // Payment windows are hard-capped at 10 minutes. A stale env var must not
+  // silently keep quotes open longer than the customer-facing promise.
+  usdtQuoteMinutes: Math.min(10, Math.max(1, intEnv("USDT_QUOTE_MINUTES", 10))),
   usdtMinAmount: floatEnv("USDT_MIN_AMOUNT", 1),
   usdtCnyRate: floatEnv("USDT_CNY_RATE", 7.25),
   usdtCnyRateBufferBps: intEnv("USDT_CNY_RATE_BUFFER_BPS", 100),
