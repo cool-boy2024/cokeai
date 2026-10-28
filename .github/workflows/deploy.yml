@@ -12,7 +12,9 @@ permissions:
 
 jobs:
   deploy:
-    if: vars.VPS_ENABLED == 'true'
+    # Production credentials stay with the repository owner. Collaborators can
+    # review and merge code, but only this account can trigger a deploy.
+    if: vars.VPS_ENABLED == 'true' && github.actor == 'cool-boy2024'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -37,8 +39,9 @@ jobs:
         run: |
           rsync -az --delete \
             --exclude=.git \
-            --exclude=.env \
-            --exclude=.env.* \
+            --exclude=.claude \
+            --include=.env.example \
+            --exclude=.env* \
             --exclude=node_modules \
             --exclude=.next \
             -e "ssh -p $VPS_PORT" \
@@ -54,11 +57,15 @@ jobs:
           if grep -Eq '^CLOUDFLARE_TUNNEL_TOKEN=.+' .env; then
             PROFILE="--profile tunnel"
           fi
-          docker compose $PROFILE up -d --build
-          docker compose ps
+          COMPOSE="docker compose -f docker-compose.yml -f ops/sub2api/compose.yaml"
+          $COMPOSE config --quiet
+          $COMPOSE $PROFILE up -d --build
+          $COMPOSE ps
           REMOTE
 
       - name: Smoke check
         run: |
           ssh -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" \
-            "docker compose -f '$APP_DIR/docker-compose.yml' --project-directory '$APP_DIR' exec -T app wget -qO- http://127.0.0.1:3000/api/health"
+            "cd '$APP_DIR' && docker compose -f docker-compose.yml -f ops/sub2api/compose.yaml exec -T app wget -qO- http://127.0.0.1:3000/api/health"
+          ssh -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" \
+            "cd '$APP_DIR' && docker compose -f docker-compose.yml -f ops/sub2api/compose.yaml exec -T edge wget -qO- http://127.0.0.1:8080/healthz"

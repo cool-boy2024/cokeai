@@ -1,11 +1,36 @@
-node_modules
-.next
-.env
-.env.local
-*.log
-.DS_Store
-coverage
+# Dependencies and build output
+node_modules/
+.next/
+out/
+coverage/
+*.tsbuildinfo
 next-env.d.ts
-n8n_data
 
-.claude
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+.admin-reset*
+*.pem
+*.key
+*.p12
+*.jks
+secrets/
+.local-data/
+n8n_data/
+*.sqlite
+*.db
+
+# Local tooling and generated data
+.venv/
+**/.venv/
+__pycache__/
+*.pyc
+tools/supplier-scraper/.cache/
+tools/supplier-scraper/output/
+tools/supplier-scraper/*.jsonl
+
+# Editor and OS
+.DS_Store
+*.log
+.claude/
