@@ -7,7 +7,7 @@ import { query } from "@/lib/db";
 import { formatDateTime, orderStatusLabel } from "@/lib/format";
 import { formatCny } from "@/lib/money";
 
-export const metadata: Metadata = { title: "订单管理" };
+export const metadata: Metadata = { title: "充值订单" };
 export const dynamic = "force-dynamic";
 
 type OrderRow = {
@@ -22,6 +22,7 @@ type OrderRow = {
   provider_ref: string | null;
   created_at: string;
   paid_at: string | null;
+  credit_status: string | null;
 };
 
 const filters = [
@@ -31,6 +32,23 @@ const filters = [
   { key: "cancelled", label: "已取消" },
   { key: "refunded", label: "已退款" },
 ];
+
+const providerLabels: Record<string, string> = {
+  manual: "人工",
+  alipay_easypay: "支付宝",
+  alipay_manual: "支付宝（人工核实）",
+  usdt_trc20: "USDT",
+  stripe: "银行卡",
+};
+
+function creditBadge(status: string | null): { label: string; className: string } | null {
+  if (!status) return null;
+  if (status === "applied") return { label: "已入账", className: "badge-green" };
+  return {
+    label: "额度待入账",
+    className: status === "failed" ? "badge-red" : "badge-yellow",
+  };
+}
 
 export default async function AdminOrdersPage({
   searchParams,
@@ -45,10 +63,11 @@ export default async function AdminOrdersPage({
   const result = await query<OrderRow>(
     `SELECT o.id, u.email, u.name AS user_name, p.name AS plan_name,
             o.amount_micros, o.credits_micros, o.status, o.payment_provider,
-            o.provider_ref, o.created_at, o.paid_at
+            o.provider_ref, o.created_at, o.paid_at, g.status AS credit_status
        FROM orders o
        JOIN users u ON u.id = o.user_id
        JOIN plans p ON p.id = o.plan_id
+       LEFT JOIN gateway_balance_ops g ON g.order_id = o.id
       WHERE ($1 = 'all' OR o.status = $1)
       ORDER BY o.created_at DESC
       LIMIT 200`,
@@ -59,8 +78,8 @@ export default async function AdminOrdersPage({
     <>
       <div className="page-head">
         <div>
-          <h1>订单管理</h1>
-          <p>人工到账确认会原子发放额度和套餐，并生成推荐佣金。</p>
+          <h1>充值订单</h1>
+          <p>人工确认到账，额度经网关队列入账。</p>
         </div>
         <span className="badge badge-dark">
           <ReceiptText size={12} /> {result.rows.length} 条
@@ -98,7 +117,6 @@ export default async function AdminOrdersPage({
         <div className="panel-head">
           <div>
             <h2>订单列表</h2>
-            <p>最多显示最近 200 条。金额与额度不可在此页面直接修改。</p>
           </div>
         </div>
         {result.rows.length === 0 ? (
@@ -110,9 +128,10 @@ export default async function AdminOrdersPage({
                 <tr>
                   <th>订单</th>
                   <th>用户</th>
-                  <th>套餐</th>
+                  <th>充值包</th>
                   <th>金额 / 额度</th>
                   <th>支付方式</th>
+                  <th>额度入账</th>
                   <th>创建时间</th>
                   <th>状态</th>
                   <th>操作</th>
@@ -121,6 +140,7 @@ export default async function AdminOrdersPage({
               <tbody>
                 {result.rows.map((order) => {
                   const statusInfo = orderStatusLabel(order.status);
+                  const credit = creditBadge(order.credit_status);
                   return (
                     <tr key={order.id}>
                       <td>
@@ -149,7 +169,14 @@ export default async function AdminOrdersPage({
                         </div>
                       </td>
                       <td className="small">
-                        {order.payment_provider === "stripe" ? "Stripe" : "人工确认"}
+                        {providerLabels[order.payment_provider] || order.payment_provider}
+                      </td>
+                      <td>
+                        {credit ? (
+                          <span className={`badge ${credit.className}`}>{credit.label}</span>
+                        ) : (
+                          <span className="small muted">—</span>
+                        )}
                       </td>
                       <td className="mono small nowrap">
                         {formatDateTime(order.created_at)}
@@ -167,13 +194,7 @@ export default async function AdminOrdersPage({
                       <td>
                         {order.status === "pending" ? (
                           <div className="inline-form">
-                            <form action={updateOrderAction}>
-                              <input type="hidden" name="orderId" value={order.id} />
-                              <input type="hidden" name="action" value="paid" />
-                              <button className="btn btn-primary btn-sm" type="submit">
-                                确认到账
-                              </button>
-                            </form>
+                            {["manual", "alipay_manual"].includes(order.payment_provider) ? <Link className="btn btn-primary btn-sm" href={`/admin/payments/review/${order.id}`}>核实到账</Link> : <span className="small muted">等待渠道确认</span>}
                             {order.payment_provider === "manual" ? (
                               <form action={updateOrderAction}>
                                 <input type="hidden" name="orderId" value={order.id} />
@@ -196,11 +217,6 @@ export default async function AdminOrdersPage({
           </div>
         )}
       </section>
-
-      <div className="notice mt-16">
-        Stripe 在线支付订单由签名校验后的 webhook 自动完成。只有在确认已收到款项且回调异常时，
-        才应手动确认。人工确认是幂等操作，不会重复发放额度。
-      </div>
     </>
   );
 }

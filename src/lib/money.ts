@@ -4,6 +4,10 @@ export type ModelPrice = {
   input_price_usd_micros_per_mtok: string | number;
   output_price_usd_micros_per_mtok: string | number;
   markup_bps: string | number;
+  // Effective retail price computed from official price + procurement cost.
+  // When present, this is what the customer is charged.
+  retail_input_cny_per_mtok?: string | number | null;
+  retail_output_cny_per_mtok?: string | number | null;
 };
 
 function number(value: string | number | bigint | null | undefined): number {
@@ -48,9 +52,14 @@ export function calculateUsageCost(
   const upstreamCostMicros = Math.ceil(
     (upstreamUsdMicros * config.fxCnyMicros) / 1_000_000,
   );
-  const chargedMicros = Math.ceil(
-    (upstreamCostMicros * number(model.markup_bps)) / 10_000,
-  );
+  const retailInput = number(model.retail_input_cny_per_mtok);
+  const retailOutput = number(model.retail_output_cny_per_mtok);
+  // Retail values are CNY per 1M tokens; one token is one micro-CNY at that
+  // rate, so tokens × CNY-per-Mtok already lands in micros.
+  const chargedMicros =
+    retailInput > 0 || retailOutput > 0
+      ? Math.ceil(inputTokens * retailInput + outputTokens * retailOutput)
+      : Math.ceil((upstreamCostMicros * number(model.markup_bps)) / 10_000);
   return { upstreamCostMicros, chargedMicros };
 }
 

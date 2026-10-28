@@ -1,0 +1,113 @@
+# CokeAI production edge (Caddy 2.x)
+#
+# Topology:
+#   Cloudflare Tunnel -> cloudflared:8080 -> edge:8080 -> /v1/*, /v1beta/* -> sub2api:8080
+#                                                     -> everything else    -> app:3000
+#
+# This file is mounted read-only into the `edge` service in docker-compose.yml.
+# Do not expose this listener publicly: docker-compose.yml binds it to 127.0.0.1
+# only, and Cloudflare Tunnel is the sole ingress.
+#
+# Streaming notes:
+#   * No read_timeout / write_timeout is configured on the upstream transport.
+#     A response write timeout would abort long SSE generations.
+#   * flush_interval is intentionally left unset. Caddy flushes text/event-stream
+#     automatically; Caddy's flush_interval -1 keeps requests alive after client
+#     disconnect and is therefore not used.
+#   * text/event-stream is excluded from compression by the explicit content-type
+#     allowlist and by the `not header` matcher below.
+
+{
+	admin off
+	auto_https off
+
+	servers {
+		max_header_size 64KB
+		timeouts {
+			read_header 10s
+			idle 5m
+		}
+
+		# cloudflared connects from a private Docker address. Direct origin access
+		# is blocked, so CF-Connecting-IP is trusted only from those peers.
+		trusted_proxies static private_ranges
+		trusted_proxies_strict
+		client_ip_headers CF-Connecting-IP X-Forwarded-For
+	}
+}
+
+:8080 {
+	log {
+		output stdout
+		format json
+		level INFO
+	}
+
+	# Local / tunnel health probe. Use a handle block (not a top-level
+	# respond) so it wins over the catch-all handle below.
+	handle /healthz {
+		respond "ok" 200
+	}
+
+	# OpenAI-compatible gateway paths live in Sub2API.
+	@gateway path /v1 /v1/* /v1beta /v1beta/*
+	handle @gateway {
+		reverse_proxy {$GATEWAY_UPSTREAM:sub2api:8080} {
+			header_up Host {host}
+			header_up X-Real-IP {client_ip}
+			header_up X-Forwarded-For {client_ip}
+			# Preserve the protocol supplied by Cloudflare Tunnel. The tunnel sets
+			# X-Forwarded-Proto: https; falling back to {scheme} would report http.
+			header_up X-Forwarded-Proto {http.request.header.X-Forwarded-Proto}
+
+			transport http {
+				keepalive 120s
+				keepalive_idle_conns 256
+				compression off
+			}
+		}
+	}
+
+	# Everything else (console, admin, health, webhooks, static assets) stays in Next.js.
+	handle {
+		reverse_proxy {$APP_UPSTREAM:app:3000} {
+			header_up Host {host}
+			header_up X-Real-IP {client_ip}
+			header_up X-Forwarded-For {client_ip}
+			header_up X-Forwarded-Proto {http.request.header.X-Forwarded-Proto}
+
+			transport http {
+				keepalive 60s
+				compression off
+			}
+		}
+	}
+
+	# Compress normal web/JSON responses only. This is an allowlist, so
+	# text/event-stream is never compressed (compression would buffer the stream
+	# until completion or client disconnect).
+	encode {
+		gzip 6
+		zstd
+		minimum_length 256
+		match {
+			header Content-Type text/css*
+			header Content-Type text/csv*
+			header Content-Type text/html*
+			header Content-Type text/plain*
+			header Content-Type text/xml*
+			header Content-Type text/javascript*
+			header Content-Type text/markdown*
+			header Content-Type application/json*
+			header Content-Type application/javascript*
+			header Content-Type application/xml*
+			header Content-Type application/rss+xml*
+			header Content-Type image/svg+xml*
+		}
+	}
+
+	# 256 MiB absolute request limit. Sub2API enforces the same limit internally.
+	request_body {
+		max_size 256MB
+	}
+}

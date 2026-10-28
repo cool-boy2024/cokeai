@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000" fill="none">
+  <defs>
+    <pattern id="dots" width="28" height="28" patternUnits="userSpaceOnUse">
+      <circle cx="1" cy="1" r="1" fill="#111312" fill-opacity="0.1"/>
+    </pattern>
+  </defs>
+  <rect width="1600" height="1000" fill="url(#dots)" opacity="0.5"/>
+  <g stroke="#111312" stroke-opacity="0.075" stroke-width="1">
+    <ellipse cx="800" cy="500" rx="180" ry="101"/>
+    <ellipse cx="800" cy="500" rx="260" ry="146"/>
+    <ellipse cx="800" cy="500" rx="340" ry="190"/>
+    <ellipse cx="800" cy="500" rx="420" ry="235"/>
+    <ellipse cx="800" cy="500" rx="500" ry="280"/>
+    <ellipse cx="800" cy="500" rx="580" ry="325"/>
+    <ellipse cx="800" cy="500" rx="660" ry="370"/>
+    <ellipse cx="800" cy="500" rx="740" ry="414"/>
+    <ellipse cx="800" cy="500" rx="820" ry="459"/>
+  </g>
+  <ellipse cx="800" cy="500" rx="620" ry="347" stroke="#111312" stroke-opacity="0.07" stroke-dasharray="2 14"/>
+  <path d="M901 180A580 325 0 0 1 1371 444" stroke="#1f7a54" stroke-opacity="0.5" stroke-width="2" stroke-linecap="round"/>
+  <path d="M456 756A580 325 0 0 1 229 556" stroke="#1f7a54" stroke-opacity="0.3" stroke-width="2" stroke-linecap="round"/>
+  <g stroke="#111312" stroke-opacity="0.16" stroke-width="1" stroke-linecap="round">
+    <path d="M800 168v16M792 176h16"/>
+    <path d="M1392 490v16M1384 498h16"/>
+    <path d="M800 816v16M792 824h16"/>
+    <path d="M208 490v16M200 498h16"/>
+    <path d="M1218 253v12M1212 259h12"/>
+    <path d="M382 747v12M376 753h12"/>
+    <path d="M1218 747v12M1212 753h12"/>
+    <path d="M382 253v12M376 259h12"/>
+  </g>
+  <g fill="#111312" fill-opacity="0.12">
+    <circle cx="1100" cy="500" r="2"/>
+    <circle cx="800" cy="215" r="2"/>
+    <circle cx="500" cy="500" r="2"/>
+    <circle cx="800" cy="785" r="2"/>
+  </g>
+</svg>

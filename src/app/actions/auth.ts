@@ -13,6 +13,10 @@ import {
 import { query } from "@/lib/db";
 import { generateReferralCode } from "@/lib/crypto";
 import { fixedWindowLimit } from "@/lib/rate-limit";
+import {
+  ensureGatewayIdentity,
+  getGatewayIdentity,
+} from "@/lib/sub2api/identity";
 
 export type AuthState = { error?: string };
 
@@ -79,6 +83,16 @@ export async function loginAction(
     return { error: "该账户已被停用，请联系管理员" };
   }
 
+  // Best-effort gateway provisioning retry. A gateway outage must not block login.
+  try {
+    const identity = await getGatewayIdentity(user.id);
+    if (!identity || identity.state !== "active" || !identity.sub2api_user_id) {
+      await ensureGatewayIdentity(user.id);
+    }
+  } catch (error) {
+    console.warn("[gateway] provisioning retry failed", error instanceof Error ? error.message : error);
+  }
+
   await createSession(user.id);
   redirect(safeNext(parsed.data.next));
 }
@@ -120,6 +134,17 @@ export async function registerAction(
        RETURNING id`,
       [parsed.data.email, passwordHash, parsed.data.name, referralCode, referrerId],
     );
+
+    // Best-effort: create the Sub2API mirror user. Login retries this if it fails.
+    try {
+      await ensureGatewayIdentity(inserted.rows[0].id);
+    } catch (error) {
+      console.warn(
+        "[gateway] provisioning failed during register",
+        error instanceof Error ? error.message : error,
+      );
+    }
+
     await createSession(inserted.rows[0].id);
   } catch (error) {
     if (

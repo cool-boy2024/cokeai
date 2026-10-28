@@ -191,11 +191,6 @@ export async function authenticateApiKey(
   if (!row) return { error: "API Key 无效或已撤销。", status: 401 };
   if (row.status !== "active") return { error: "账户已被停用。", status: 403 };
 
-  const planActive = isPlanActive(row.plan_expires_at);
-  if (!planActive) {
-    return { error: "套餐已到期，请在控制台续费后继续使用。", status: 403 };
-  }
-
   await query("UPDATE api_keys SET last_used_at = now() WHERE id = $1", [row.api_key_id]);
 
   return {
@@ -208,7 +203,8 @@ export async function authenticateApiKey(
       planId: row.plan_id,
       planTier: row.plan_tier === null ? 0 : toNumber(row.plan_tier),
       planExpiresAt: row.plan_expires_at,
-      planActive,
+      // Prepaid credits replaced plan gating. The gateway enforces the real balance.
+      planActive: true,
     },
   };
 }

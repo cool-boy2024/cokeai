@@ -86,9 +86,6 @@ export async function POST(request: Request): Promise<Response> {
   if (!gatewayModel.upstream_enabled || !gatewayModel.api_key_encrypted) {
     return apiError("该模型的上游服务尚未配置完成。", 503, "upstream_not_configured");
   }
-  if (user.planTier < gatewayModel.min_plan_tier) {
-    return apiError("当前套餐不包含该模型，请升级套餐。", 403, "plan_upgrade_required");
-  }
 
   let upstreamBody: ChatRequestBody;
   try {
@@ -154,7 +151,7 @@ export async function POST(request: Request): Promise<Response> {
     });
 
     if (!reservation) {
-      return apiError("余额不足，请充值或升级套餐。", 402, "insufficient_balance");
+      return apiError("余额不足，请充值。", 402, "insufficient_balance");
     }
     usageId = reservation.usageId;
     reservedMicros = reservation.reservedMicros;

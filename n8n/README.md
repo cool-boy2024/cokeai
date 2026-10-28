@@ -7,11 +7,15 @@ n8n 以 Docker 容器运行，数据保存在同一个 PostgreSQL 实例的 `n8n
 
 | 文件 | 频率 | 用途 |
 |---|---|---|
-| `workflows/01-daily-reconciliation.json` | 每天 00:15 | 解锁到期佣金、推送 24 小时收入/用量/毛利对账 |
-| `workflows/02-health-alert.json` | 每 15 分钟 | 检查数据库、Redis、可用模型，异常时告警 |
-| `workflows/03-user-attention.json` | 每天 09:05 | 汇总即将到期、低余额、超时未处理订单 |
+| `workflows/01-daily-reconciliation.json` | 每天 00:15 | 收入、网关用量、加额度队列、模型价格对账 |
+| `workflows/02-health-alert.json` | 每 15 分钟 | 数据库/Redis/Sub2API/分组倍率/模型数告警 |
+| `workflows/03-user-attention.json` | 每天 09:05 | 低余额、超时订单、失败队列提醒 |
+| `workflows/04-gateway-maintenance.json` | 每 5 分钟 | 重试加额度、Key 同步、余额镜像、USDT 扫描、小店 USDT 扫描、过期订单清理 |
+| `workflows/05-pricing-sync.json` | 每小时 | 汇率 + 成本生成售价并推送 Sub2API |
+| `workflows/06-shop-sync.json` | 每小时 :12 | 拉取 aibijia 公开目录，同步小店成本、库存与毛利熔断 |
 
-三个工作流导入后默认**未启用**。先手动执行一次，确认数据正确，再到 n8n 中启用。
+六个工作流导入后默认**未启用**。先手动执行一次，确认数据正确，再到 n8n 中启用，
+或执行 `bash ops/activate-n8n-workflows.sh`。
 
 ## 1. 启动
 
@@ -67,7 +71,7 @@ docker compose up -d --force-recreate n8n
 
 ## 4. 导入工作流
 
-在 n8n 中依次进入 **Workflows → Import from File**，导入 `n8n/workflows/` 下的三个 JSON 文件。
+在 n8n 中依次进入 **Workflows → Import from File**，导入 `n8n/workflows/` 下的六个 JSON 文件。
 
 也可以使用命令行导入：
 
@@ -82,7 +86,7 @@ docker compose exec -u node n8n \
 
 1. 打开每个工作流，点击 **Execute workflow** 手动测试。
 2. 检查最后一次执行结果是否成功。
-3. 打开右上角 **Active** 开关。
+3. 打开右上角 **Active** 开关（或运行 `bash ops/activate-n8n-workflows.sh`）。
 4. 在 **Executions** 中定期查看失败记录。
 
 ## 5. 环境变量

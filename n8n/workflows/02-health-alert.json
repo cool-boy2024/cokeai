@@ -3,7 +3,7 @@
   "nodes": [
     {
       "parameters": {
-        "content": "## 上游健康检查\n\n每 15 分钟检查一次：\n- 数据库是否可连接\n- Redis 是否在线\n- 是否有已启用且配置完整的上游模型\n\n只有异常时才推送。`ALERT_WEBHOOK_URL` 为空时工作流会安全结束，不发送消息。",
+        "content": "## 网关健康检查\n\n每 15 分钟检查一次：\n- CokeAI 数据库与 Redis\n- Sub2API `/health` 与管理员登录\n- 分组倍率是否为 1.0\n- 是否有可售模型（白名单/模型广场）\n\n只有异常时才推送。`ALERT_WEBHOOK_URL` 为空时工作流会安全结束，不发送消息。",
         "height": 200,
         "width": 360,
         "color": 3
@@ -12,7 +12,10 @@
       "name": "使用说明",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
-      "position": [-500, -70]
+      "position": [
+        -500,
+        -70
+      ]
     },
     {
       "parameters": {
@@ -29,7 +32,10 @@
       "name": "每 15 分钟",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
-      "position": [-40, 80]
+      "position": [
+        -40,
+        80
+      ]
     },
     {
       "parameters": {
@@ -57,18 +63,24 @@
       "name": "检查内部健康",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [210, 80],
+      "position": [
+        210,
+        80
+      ],
       "onError": "continueRegularOutput"
     },
     {
       "parameters": {
-        "jsCode": "const raw = $input.first()?.json || {};\nconst statusCode = raw.statusCode || 0;\nconst body = raw.body || raw;\nconst healthy = statusCode === 200 && body.status === 'ok';\n\nif (healthy || !$env.ALERT_WEBHOOK_URL) {\n  return [];\n}\n\nconst lines = [\n  'CokeAI 健康告警',\n  `HTTP：${statusCode || '无响应'}`,\n  `状态：${body.status || raw.error || 'unknown'}`,\n  `数据库：${body.database || 'unknown'}`,\n  `Redis：${body.redis || 'unknown'}`,\n  `可用模型：${body.enabled_models ?? 'unknown'}`,\n  `已配置上游：${body.configured_upstreams ?? 'unknown'}`,\n  `错误：${body.last_error || '无'}`,\n  `时间：${new Date().toISOString()}`,\n].join('\\n');\n\nreturn [{ json: { text: lines, content: lines } }];"
+        "jsCode": "const raw = $input.first()?.json || {};\nconst statusCode = raw.statusCode || 0;\nconst body = raw.body || raw;\nconst gateway = body.gateway || {};\nconst healthy = statusCode === 200 && body.status === 'ok';\n\nif (healthy || !$env.ALERT_WEBHOOK_URL) {\n  return [];\n}\n\nconst lines = [\n  'CokeAI 健康告警',\n  `HTTP：${statusCode || '无响应'}`,\n  `状态：${body.status || raw.error || 'unknown'}`,\n  `数据库：${body.database || 'unknown'}`,\n  `Redis：${body.redis || 'unknown'}`,\n  `Sub2API：${gateway.health || 'unknown'} / 登录 ${gateway.admin_login || 'unknown'}`,\n  `分组：${gateway.group_name || '—'}（倍率 ${gateway.rate_multiplier ?? '—'}）`,\n  `可售模型：${gateway.model_count ?? body.enabled_models ?? 'unknown'}`,\n  `错误：${body.last_error || gateway.error || '无'}`,\n  `时间：${new Date().toISOString()}`,\n].join('\\n');\n\nreturn [{ json: { text: lines, content: lines } }];"
       },
       "id": "c96a6d57-72a2-4b43-8b9c-4f8b5459c5a5",
       "name": "判断健康状态",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [450, 80]
+      "position": [
+        450,
+        80
+      ]
     },
     {
       "parameters": {
@@ -85,7 +97,10 @@
       "name": "推送告警",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [690, 80],
+      "position": [
+        690,
+        80
+      ],
       "onError": "continueRegularOutput"
     }
   ],

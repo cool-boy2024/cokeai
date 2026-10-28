@@ -23,6 +23,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+    networks:
+      - cokeai
     logging: *default-logging
 
   redis:
@@ -36,6 +38,8 @@ services:
       interval: 10s
       timeout: 3s
       retries: 10
+    networks:
+      - cokeai
     logging: *default-logging
 
   app:
@@ -50,6 +54,9 @@ services:
       REDIS_URL: redis://redis:6379
       TZ: Asia/Shanghai
       NODE_ENV: production
+      # Host scripts use SUB2API_INTERNAL_URL=127.0.0.1:18080 (the loopback
+      # mapping). Inside the app container, reach Sub2API by service name.
+      SUB2API_INTERNAL_URL: ${SUB2API_CONTAINER_URL:-http://sub2api:8080}
     ports:
       - "127.0.0.1:3000:3000"
     depends_on:
@@ -67,6 +74,40 @@ services:
       timeout: 5s
       start_period: 45s
       retries: 5
+    networks:
+      - cokeai
+    logging: *default-logging
+
+  # Single ingress for both the Next.js app and the Sub2API gateway.
+  # Route /v1/* and /v1beta/* to Sub2API; everything else to the app.
+  # Port 8080 is bound to loopback for local debugging only; Cloudflare Tunnel
+  # connects to http://edge:8080 over the private Docker network.
+  edge:
+    image: ${CADDY_IMAGE:-caddy:2-alpine}
+    restart: unless-stopped
+    environment:
+      GATEWAY_UPSTREAM: ${GATEWAY_UPSTREAM:-sub2api:8080}
+      APP_UPSTREAM: ${APP_UPSTREAM:-app:3000}
+      TZ: Asia/Shanghai
+    volumes:
+      - ./ops/edge/Caddyfile:/etc/caddy/Caddyfile:ro
+    ports:
+      - "127.0.0.1:${EDGE_HOST_PORT:-8080}:8080"
+    depends_on:
+      app:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget -qO- http://127.0.0.1:8080/healthz >/dev/null || exit 1",
+        ]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 5
+    networks:
+      - cokeai
     logging: *default-logging
 
   n8n:
@@ -103,6 +144,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    networks:
+      - cokeai
     logging: *default-logging
 
   cloudflared:
@@ -114,9 +157,21 @@ services:
       TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
       TZ: Asia/Shanghai
     depends_on:
-      app:
+      edge:
         condition: service_healthy
+    networks:
+      - cokeai
     logging: *default-logging
+
+# In the Cloudflare Zero Trust dashboard, the public hostname origin must be:
+#   cokeai.cc.cd -> http://edge:8080   (previously http://app:3000)
+# n8n.cokeai.cc.cd can keep pointing at http://n8n:5678.
+# See docs/SUB2API_OPERATIONS.md for the exact cutover steps.
+
+networks:
+  # Shared by app, edge, n8n and (when the Sub2API overlay is merged) Sub2API.
+  cokeai:
+    name: ${COKEAI_NETWORK:-cokeai_net}
 
 volumes:
   postgres_data:

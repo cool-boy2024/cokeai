@@ -32,7 +32,10 @@
 }
 
 html {
-  scroll-behavior: smooth;
+  /* CSS smooth scrolling cancels Next.js route scroll resets: the next page
+     keeps the previous offset and appears near its own bottom. Native jumps
+     are correct; same-page anchors are rare enough to jump instantly. */
+  scroll-behavior: auto;
 }
 
 body {
@@ -2346,4 +2349,23 @@ details.admin-details .textarea {
   .legal {
     padding-top: 44px;
   }
+}
+
+/* Admin announcement form */
+.checkbox-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-end;
+  padding-bottom: 10px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.announcement-admin-body {
+  max-width: 420px;
+  margin-top: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

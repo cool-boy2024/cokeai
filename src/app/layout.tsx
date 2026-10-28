@@ -1,15 +1,21 @@
 import type { Metadata, Viewport } from "next";
+import { GeistSans } from "geist/font/sans";
+import { GeistMono } from "geist/font/mono";
+import { MotionLayer } from "@/components/motion/MotionLayer";
+import { NavProgress } from "@/components/NavProgress";
+import { SupportWidget } from "@/components/SupportWidget";
 import { config } from "@/lib/config";
 import "./globals.css";
+import "./v2.css";
+import "./public.css";
 
 export const metadata: Metadata = {
   metadataBase: new URL(config.appUrl),
   title: {
-    default: "CokeAI · 可预算的 AI API 接入平台",
+    default: "CokeAI · AI API",
     template: "%s · CokeAI",
   },
-  description:
-    "一个 API Key 接入多家授权 AI 模型，提供人民币计费、硬预算、实时用量和开发者控制台。兼容 OpenAI SDK。",
+  description: "兼容 OpenAI SDK 的 AI API 接入服务。人民币按量计费，余额不过期。",
   keywords: [
     "AI API",
     "OpenAI 兼容",
@@ -20,13 +26,17 @@ export const metadata: Metadata = {
   ],
   authors: [{ name: "CokeAI" }],
   openGraph: {
-    title: "CokeAI · 可预算的 AI API 接入平台",
-    description:
-      "一个 Key，接入多家授权模型。透明计费、硬预算、OpenAI SDK 兼容。",
+    title: "CokeAI · AI API",
+    description: "兼容 OpenAI SDK，人民币按量计费，余额不过期。",
     type: "website",
     locale: "zh_CN",
     siteName: "CokeAI",
     url: config.appUrl,
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "CokeAI · AI API",
+    description: "兼容 OpenAI SDK，人民币按量计费，余额不过期。",
   },
   robots: {
     index: true,
@@ -42,13 +52,31 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  themeColor: "#f4efe5",
+  themeColor: "#f7f6f3",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="zh-CN">
-      <body>{children}</body>
+    <html
+      lang="zh-CN"
+      className={`${GeistSans.variable} ${GeistMono.variable}`}
+      suppressHydrationWarning
+    >
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: "document.documentElement.classList.add('js')",
+          }}
+        />
+      </head>
+      <body>
+        {children}
+        <NavProgress />
+        <MotionLayer />
+        <SupportWidget
+          supportEmail={process.env.SUPPORT_EMAIL || "support@cokeai.cc.cd"}
+        />
+      </body>
     </html>
   );
 }

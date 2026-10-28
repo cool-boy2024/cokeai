@@ -1,6 +1,8 @@
 import { config } from "./config";
 import { decryptSecret } from "./crypto";
 import { query } from "./db";
+import { loadLatestCosts } from "./pricing/cost-book";
+import { computeRetailPrice } from "./pricing/retail";
 
 export type GatewayModelRow = {
   id: string;
@@ -18,9 +20,18 @@ export type GatewayModelRow = {
   base_url: string;
   api_key_encrypted: string | null;
   upstream_enabled: boolean;
+  retail_input_cny_per_mtok?: number;
+  retail_output_cny_per_mtok?: number;
 };
 
-export async function getGatewayModel(modelId: string): Promise<GatewayModelRow | null> {
+const LEGACY_MODEL_ALIASES: Record<string, string> = {
+  // Keep existing keys working while the catalog moves to the current
+  // DeepSeek generation. The old IDs are no longer listed publicly.
+  "deepseek-chat": "deepseek-flash",
+  "deepseek-reasoner": "deepseek-v4-pro",
+};
+
+async function fetchGatewayModel(modelId: string): Promise<GatewayModelRow | null> {
   const result = await query<GatewayModelRow>(
     `SELECT m.id, m.upstream_id, m.upstream_model, m.display_name, m.description,
             m.input_price_usd_micros_per_mtok, m.output_price_usd_micros_per_mtok,
@@ -34,6 +45,38 @@ export async function getGatewayModel(modelId: string): Promise<GatewayModelRow 
     [modelId],
   );
   return result.rows[0] || null;
+}
+
+async function withRetailPrice(model: GatewayModelRow): Promise<GatewayModelRow> {
+  try {
+    const cost = (await loadLatestCosts([model.id])).get(model.id);
+    const retail = computeRetailPrice({
+      officialInputUsdMicros: Number(model.input_price_usd_micros_per_mtok),
+      officialOutputUsdMicros: Number(model.output_price_usd_micros_per_mtok),
+      costInputUsdMicros: cost?.inputUsdMicrosPerMtok,
+      costOutputUsdMicros: cost?.outputUsdMicrosPerMtok,
+    });
+    return {
+      ...model,
+      retail_input_cny_per_mtok: retail.inputCnyPerMtok,
+      retail_output_cny_per_mtok: retail.outputCnyPerMtok,
+    };
+  } catch {
+    // Billing still works with the legacy cost + markup fields.
+    return model;
+  }
+}
+
+export async function getGatewayModel(modelId: string): Promise<GatewayModelRow | null> {
+  const direct = await fetchGatewayModel(modelId);
+  if (direct?.enabled) return withRetailPrice(direct);
+
+  const alias = LEGACY_MODEL_ALIASES[modelId];
+  if (!alias) return direct ? withRetailPrice(direct) : null;
+
+  const current = await fetchGatewayModel(alias);
+  const resolved = current?.enabled ? current : direct;
+  return resolved ? withRetailPrice(resolved) : null;
 }
 
 export function getUpstreamKey(model: GatewayModelRow): string {
