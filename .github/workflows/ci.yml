@@ -43,6 +43,7 @@ jobs:
         run: |
           cp .env.example .env
           docker compose config --quiet
+          docker compose -f docker-compose.yml -f ops/sub2api/compose.yaml config --quiet
           rm -f .env
       - name: Build Docker image
         run: docker build -t cokeai:ci .
@@ -171,7 +172,7 @@ jobs:
           docker compose exec -T n8n n8n import:workflow --separate --input=/workflows
           COUNT=$(docker compose exec -T postgres psql -U cokeai -d n8n -tAc 'SELECT count(*) FROM workflow_entity;' | tr -d '[:space:]')
           echo "Imported workflows: $COUNT"
-          test "$COUNT" = "3"
+          test "$COUNT" = "6"
       - name: Show container status
         run: docker compose ps
       - name: Dump logs on failure

@@ -15,9 +15,7 @@ export function KeyManager() {
     <div>
       {state.key ? (
         <div className="key-reveal">
-          <div className="key-reveal-label">
-            API Key 已创建，仅显示这一次。请立即存入密码管理器或服务器环境变量。
-          </div>
+          <div className="key-reveal-label">Key 仅显示一次，请现在复制保存。</div>
           <div className="key-row">
             <code className="key-value">{state.key}</code>
             <CopyButton value={state.key} />
@@ -33,16 +31,13 @@ export function KeyManager() {
               className="input"
               id="key-name"
               name="name"
-              placeholder="例如：本地开发 / 客户项目 A"
+              placeholder="例如：本地开发"
               maxLength={40}
               required
             />
           </div>
           <div className="field" style={{ alignSelf: "end" }}>
-            <SubmitButton
-              className="btn btn-dark btn-block"
-              pendingText="创建中…"
-            >
+            <SubmitButton className="btn btn-dark btn-block" pendingText="创建中…">
               <KeyRound size={14} /> 创建 API Key
             </SubmitButton>
           </div>

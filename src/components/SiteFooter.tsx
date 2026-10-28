@@ -5,37 +5,36 @@ const supportEmail = process.env.SUPPORT_EMAIL || "support@cokeai.cc.cd";
 
 export function SiteFooter() {
   return (
-    <footer className="site-footer">
+    <footer className="site-footer public-footer">
       <div className="container">
         <div className="footer-grid">
           <div className="footer-brand">
             <Logo />
-            <p>
-              为开发者和团队提供可预算、可追踪的 AI API 接入服务。
-              只接入具备商业授权与合规区域许可的上游模型。
-            </p>
+            <p>兼容 OpenAI SDK 的 AI API 接入服务。按量计费，余额不过期。</p>
           </div>
           <div className="footer-col">
             <h4>产品</h4>
-            <Link href="/pricing">价格</Link>
-            <Link href="/docs">API 文档</Link>
+            <Link href="/shop">CokeAI 小店</Link>
+            <Link href="/pricing">API 价格</Link>
+            <Link href="/docs">接入教程</Link>
             <Link href="/dashboard">控制台</Link>
           </div>
           <div className="footer-col">
             <h4>支持</h4>
             <a href={`mailto:${supportEmail}`}>{supportEmail}</a>
+            <Link href="/#faq">常见问题</Link>
             <Link href="/docs#errors">错误码</Link>
-            <Link href="/docs#limits">用量限制</Link>
           </div>
           <div className="footer-col">
             <h4>条款</h4>
             <Link href="/terms">服务条款</Link>
+            <Link href="/shop/terms">数字商品须知</Link>
             <Link href="/privacy">隐私政策</Link>
           </div>
         </div>
         <div className="footer-bottom">
-          <span>© {new Date().getFullYear()} CokeAI. All rights reserved.</span>
-          <span>不提供个人订阅账号共享或地区限制规避服务。</span>
+          <span>© {new Date().getFullYear()} CokeAI</span>
+          <span>数字商品为人工发货 · API 按实际用量计费</span>
         </div>
       </div>
     </footer>

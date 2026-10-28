@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { ShieldCheck } from "lucide-react";
 import { requireAdmin } from "@/lib/auth";
 import { AppSidebar } from "@/components/AppSidebar";
 
@@ -22,11 +21,9 @@ export default async function AdminLayout({
       <AppSidebar user={user} admin />
       <main className="app-main">
         <header className="app-topbar">
-          <span className="app-topbar-title">CokeAI 运营后台</span>
+          <span className="app-topbar-title">运营后台</span>
           <div className="app-topbar-meta">
-            <span className="badge badge-red">内部系统</span>
-            <span>仅授权人员可访问</span>
-            <ShieldCheck size={14} />
+            <span className="badge badge-dark">内部</span>
           </div>
         </header>
         <div className="app-content">{children}</div>

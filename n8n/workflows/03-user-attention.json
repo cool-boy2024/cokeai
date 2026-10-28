@@ -3,7 +3,7 @@
   "nodes": [
     {
       "parameters": {
-        "content": "## 用户余额 / 到期提醒\n\n每天北京时间 09:05 汇总：\n- 3 天内到期套餐\n- 余额低于 ¥2 的活跃用户\n- 超过 2 小时未处理的人工订单\n\n推送到运营 Webhook。不会自动向用户发消息，避免误发和骚扰。",
+        "content": "## 用户余额 / 待办提醒\n\n每天北京时间 09:05 汇总：\n- 余额低于 ¥2 的活跃用户\n- 超过 2 小时未处理的人工订单\n- 待处理/失败的加额度队列\n- 在售/暂停模型数\n\n推送到运营 Webhook。不会自动向用户发消息，避免误发和骚扰。",
         "height": 210,
         "width": 380,
         "color": 5
@@ -12,7 +12,10 @@
       "name": "使用说明",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
-      "position": [-510, -70]
+      "position": [
+        -510,
+        -70
+      ]
     },
     {
       "parameters": {
@@ -29,7 +32,10 @@
       "name": "每天 09:05",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
-      "position": [-40, 80]
+      "position": [
+        -40,
+        80
+      ]
     },
     {
       "parameters": {
@@ -51,17 +57,23 @@
       "name": "拉取待关注用户",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [210, 80]
+      "position": [
+        210,
+        80
+      ]
     },
     {
       "parameters": {
-        "jsCode": "const report = $input.first().json;\nconst expiring = report.expiring_plans || [];\nconst lowBalance = report.low_balance || [];\nconst staleOrders = report.stale_pending_orders || [];\nconst formatCny = (micros) => `¥${(Number(micros || 0) / 1000000).toFixed(2)}`;\n\nconst lines = [\n  'CokeAI 每日待办',\n  `3 天内到期套餐：${expiring.length}`,\n  `余额低于 ¥2：${lowBalance.length}`,\n  `超 2 小时未处理订单：${staleOrders.length}`,\n  `可用模型：${report.ready_models ?? 0}`,\n];\n\nif (expiring.length) {\n  lines.push('', '即将到期：');\n  for (const item of expiring.slice(0, 10)) {\n    lines.push(`- ${item.email}｜${item.plan || '无套餐'}｜${item.expires_at}`);\n  }\n}\n\nif (lowBalance.length) {\n  lines.push('', '低余额：');\n  for (const item of lowBalance.slice(0, 10)) {\n    lines.push(`- ${item.email}｜${formatCny(item.balance_micros)}`);\n  }\n}\n\nif (staleOrders.length) {\n  lines.push('', '待处理订单：');\n  for (const item of staleOrders.slice(0, 10)) {\n    lines.push(`- ${item.email}｜${formatCny(item.amount_micros)}｜${item.created_at}`);\n  }\n}\n\nif (!$env.ALERT_WEBHOOK_URL) {\n  return [];\n}\n\nconst message = lines.join('\\n');\nreturn [{ json: { text: message, content: message } }];"
+        "jsCode": "const report = $input.first().json;\nconst lowBalance = report.low_balance || [];\nconst staleOrders = report.stale_pending_orders || [];\nconst formatCny = (micros) => `¥${(Number(micros || 0) / 1000000).toFixed(2)}`;\nconst ops = report.credit_ops || {};\nconst prices = report.prices || {};\n\nconst lines = [\n  'CokeAI 每日待办',\n  `余额低于 ¥2：${lowBalance.length}`,\n  `超 2 小时未处理订单：${staleOrders.length}`,\n  `加额度队列：待处理 ${ops.pending || 0}，失败 ${ops.failed || 0}`,\n  `模型价格：在售 ${prices.active || 0}，暂停 ${prices.paused || 0}`,\n];\n\nif (lowBalance.length) {\n  lines.push('', '低余额：');\n  for (const item of lowBalance.slice(0, 10)) {\n    lines.push(`- ${item.email}｜${formatCny(item.balance_micros)}`);\n  }\n}\n\nif (staleOrders.length) {\n  lines.push('', '待处理订单：');\n  for (const item of staleOrders.slice(0, 10)) {\n    lines.push(`- ${item.email}｜${formatCny(item.amount_micros)}｜${item.provider || ''}｜${item.created_at}`);\n  }\n}\n\nif (!$env.ALERT_WEBHOOK_URL) {\n  return [];\n}\n\nconst message = lines.join('\\n');\nreturn [{ json: { text: message, content: message } }];"
       },
       "id": "f91421c4-078f-478b-b2ae-bd5e211e304e",
       "name": "整理待办摘要",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [450, 80]
+      "position": [
+        450,
+        80
+      ]
     },
     {
       "parameters": {
@@ -78,7 +90,10 @@
       "name": "推送运营提醒",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [690, 80],
+      "position": [
+        690,
+        80
+      ],
       "onError": "continueRegularOutput"
     }
   ],

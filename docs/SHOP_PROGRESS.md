@@ -1,0 +1,537 @@
+# 小店实施进度
+
+更新时间：2026-10-28
+
+## 已完成
+
+### 1. Scrapling 与供货商数据
+
+- [x] Scrapling 0.5 全功能安装（`tools/supplier-scraper/.venv`）
+  - `scrapling[all]`：Fetcher / StealthyFetcher / Spider / MCP / shell
+  - patchright chromium 已安装（StealthyFetcher 可用）
+  - camoufox 可选，下载慢，不影响主链路
+- [x] 抓取器 `tools/supplier-scraper/scraper.py`
+  - 拉取 aibijia meta + products JSON，校验 SHA-256 与 offer_count
+  - 标准化 250 个 offer，稳定 key = `sha256(url + 0x1f + title)`
+  - 输出 `offers.jsonl` / `summary.json` / `candidates.json` / `html-check.json`
+  - HTML 与 JSON 交叉校验通过（250 = 250）
+- [x] 数据结论（2026-10-27）
+  - 4 类目 / 250 offers / 182 有货：chatgpt 187、gemini 33、claude-code 22、grok 8
+  - 226 个唯一 URL 承载 250 个 offer，去重必须带标题
+  - 已选 6 个可售商品，毛利率 19.6%–38.8%
+
+### 2. 商城数据层与同步
+
+- [x] `db/schema.sql` 追加 `003_shop`：
+  `shop_suppliers / shop_sync_runs / shop_offers / shop_offer_price_history /
+  shop_products / shop_product_sources / shop_orders / shop_order_items /
+  shop_order_events / shop_payment_events / shop_usdt_deposits / shop_refunds`
+- [x] `src/lib/shop/sync.ts`
+  - 拉取公开 JSON、SHA-256 校验、ETag 条件请求
+  - offer upsert、价格/库存历史、连续缺失 3 次转 `missing`
+  - 映射商品成本/库存回写、毛利熔断（<15%）、成本单次涨幅熔断（>25%）
+- [x] `npm run shop:sync` 实测成功：250 offers，第二次 304 增量
+- [x] 6 个种子商品 `npm run shop:seed`
+  - ChatGPT Plus 月度卡密 ¥169
+  - Claude Pro 月度卡密 ¥199
+  - ChatGPT Pro 5x 月度代充 ¥849
+  - Claude Max 5x 月度代充 ¥1,099
+  - Gemini Pro 年度代充 ¥49
+  - Grok Super 月度代充 ¥269
+
+### 3. 用户侧
+
+- [x] `/shop` 分类、商品卡、库存徽标、移动端
+- [x] `/shop/[slug]` 详情、统一文案、购买卡、登录跳转
+- [x] `/shop/checkout/[orderNo]` 支付宝 / USDT / 人工到账
+- [x] `/shop/orders/[orderNo]` 时间线、加密交付查看、输入脱敏
+- [x] `/dashboard/shop` 我的订单
+- [x] `/shop/terms` 数字商品购买须知（发货、质保、退款、账号凭据）
+- [x] 首页小店预览 + “小店上新”区块；页脚/导航入口
+
+### 4. 支付与履约
+
+- [x] EasyPay 商城独立回调 `/api/webhooks/easypay/shop`
+  - 验签、金额分比对、provider 校验、事件幂等
+  - 实测：正常回调 paid、重复回调 1 条事件、金额不符不履约
+- [x] USDT 商城存款 `/api/internal/shop/usdt/scan`
+  - 复用全局派生序号，地址唯一
+  - 实测：两笔订单地址不同、刷新地址稳定、扫描器可运行
+  - 本地 TronGrid 免费额度会 429；已加 3 次退避重试 + 200ms 间隔，
+    生产建议使用有效/付费 TronGrid key，单批默认 20 个地址
+- [x] 人工到账、采购、交付、缺货、退款状态机
+- [x] 交付内容/客户输入 AES-256-GCM 加密；交付后 7 天清除
+- [x] 过期订单清理 `/api/internal/shop/orders/expire`
+- [x] `npm run test:shop` 覆盖：价格篡改、幂等支付、加密、越权查看、缺货退款、过期、输入清除
+
+### 5. 运营后台
+
+- [x] `/admin/shop` 今日收入、待采购、待交付、同步状态
+- [x] `/admin/shop/queue` 采购队列：一键复制采购单 + 打开供货商链接
+- [x] `/admin/shop/orders` 列表、状态筛选、毛利
+- [x] `/admin/shop/orders/[id]` 确认到账、复制采购信息、回填采购、上传交付、缺货、退款、日志
+- [x] `/admin/shop/products` 列表、毛利/文案/熔断状态
+- [x] `/admin/shop/products/[id]` 文案编辑、价格/时效/质保、来源、解除熔断；
+      上架必须勾选合规确认，否则保存为草稿
+- [x] `/admin/shop/sources` 同步状态、店铺统计、最近 150 条 offer、映射/毛利；
+      未映射 offer 可一键“建草稿”
+- [x] 下单频率限制：每用户 10 次 / 10 分钟
+- [x] 支付通道初始化失败自动取消未支付订单
+
+### 6. 自动化
+
+- [x] n8n `06-shop-sync.json` 每小时 :12 同步
+- [x] `04-gateway-maintenance.json` 每 5 分钟追加：小店 USDT 扫描、过期订单清理
+- [x] CI n8n 工作流数量 5 → 6
+- [x] `.env.example` 增加 `SHOP_*`
+
+### 7. 已验证
+
+```bash
+npm run typecheck      # 通过
+npm run build          # 通过
+npm run test:shop         # 通过
+npm run test:shop:sync    # 通过（feed 解析、去重 key、状态映射）
+npm run test:shop:pay     # 通过（真实签名，模拟回调）
+npm run test:shop:manual  # 通过（个人支付宝落单、收款码快照、回执核销）
+npm run test:shop:usdt    # 本地无 TronGrid key，自动跳过；生产配置后再跑
+```
+
+UI 实测：浏览 → 登录 → 下单（人工）→ 后台确认到账 → 采购 → 交付卡密 →
+用户在订单页查看；移动端 390px 截图检查。
+
+### 当前本地状态（2026-10-27）
+
+- 本地 dev 服务：`http://localhost:3000`
+- 数据库已应用 `003_shop` + `003_personal_payments`，保留 6 个演示商品
+- 测试用户、测试订单、测试收款设置已清理（含个人支付宝测试数据）
+- 本地 `USDT_TRONGRID_API_KEY` 为空，`test:shop:usdt` 会自动跳过
+
+### 生产上线状态（2026-10-27）
+
+- 生产目录：`/home/deploy/cokeai`，活动栈为 `cokeai-*`（Cloudflare Tunnel 仍复用 `/opt/cokeai`）
+- 上线前备份：
+  - `/home/deploy/backups/cokeai-pre-shop-20261027-093116.sql.gz`
+  - `/home/deploy/backups/cokeai-pre-shop-20261027-093116.env`
+  - 旧镜像 tag：`cokeai-app:pre-shop`
+- 已同步最新代码并重新构建 `cokeai-app:local`，容器 healthy
+  - 上架前镜像保留为 `cokeai-app:pre-ackfix`
+- 已应用迁移：`001`、`002`、`003_personal_payments`、`003_shop`
+- 已导入并发布 6 个 n8n 工作流；`04` 含小店 USDT 扫描/过期清理，`06` 每小时 :12 同步
+- 已手动触发首次同步：250 个 offer、181 个有货
+- 公开路由：`https://cokeai.cc.cd/shop` 200、`/shop/terms` 200
+- `/admin/payments` 已存在（未登录 307 到登录页）
+- **生产小店已上架 6 个商品（2026-10-27）**：
+  - 运营已在对话中确认合规；数据库记录 `compliance_ack_at` + `compliance_ack_by`（管理员账号）
+  - 售价/成本/毛利：
+    ChatGPT Plus 月度卡密 ¥169/¥132/21.9%；Claude Pro 月度卡密 ¥199/¥155.44/21.9%；
+    ChatGPT Pro 5x 月度代充 ¥849/¥682.45/19.6%；Claude Max 5x 月度代充 ¥1099/¥875/20.4%；
+    Gemini Pro 年度代充 ¥49/¥30/38.8%（供货缺货，公开显示“补货中”）；
+    Grok Super 月度代充 ¥269/¥211/21.6%
+  - 公开页验证：6 个详情页全部 200；列表显示 6 个商品；
+    现货/库存紧张/补货中状态正确；页面不含供货商、成本、毛利、原始标题
+  - 新增 `npm run shop:draft`（只建草稿，不自动上架）；生产用打包后的
+    `shop-seed-runtime.mjs --draft --confirm-production` 导入，不依赖生产镜像里的 tsx
+  - 后台保存商品时 `compliance_ack_by` 会记录操作管理员
+- **生产支付通道（2026-10-27 14:02 CST 启用，19:10 CST 停用）**：
+  个人支付宝曾上传并启用（`payment_settings.alipay_manual enabled=true`，二维码加密存储）；
+  2026-10-27 19:10 CST 运营决定小店不再走个人收付款，个人支付宝已停用，商城改走 USDT TRC20
+- 新增个人支付宝收款链路：`payment_settings`、`manual_alipay_payments`、
+  `payment_receipts`、后台审核页 `/admin/payments/review/[orderId]`
+- 若启用 EasyPay，Cloudflare WAF 仍需放行 `/api/webhooks/easypay/shop`
+- 2026-10-27 12:12 再次部署：收银台人工到账文案改为“联系客服获取收款方式”，
+  避免没有收款目标时误导；生产 app healthy
+- 2026-10-27 管理员凭据核查：生产仅有 `admin@cokeai.cc.cd`（role=admin，active）；
+  当前密码未知，未读取生产 `.env` 的 `ADMIN_PASSWORD`。重置方案：服务器端生成随机密码，
+  只写入 `/home/deploy/cokeai/.admin-reset.txt`（0600），由运营自行读取后删除；
+  登录后可在 `/dashboard/settings` 改密（需当前密码，改后其他设备退出）
+- 2026-10-27 05:46 UTC 上下文维护核查：生产 app healthy，自上次维护后无新变更，
+  待办仍是“管理员密码 + 支付宝收款码”两项
+- 2026-10-27 13:12 CST 每小时同步正常：最近 6 次均为 `success`，offers 247/250
+  （3 条连续缺失转 `missing`），映射商品 6 个；后台小店/订单/商品/货源/收款页
+  与公开 `/shop` 全部 200
+- 2026-10-27 13:55 CST 管理员密码已在服务器端重置：随机生成新密码，仅写入
+  `/home/deploy/cokeai/.admin-reset.txt`（0600，25 字节）；旧 hash 备份到
+  `/home/deploy/cokeai/.admin-reset-backup.txt`（0600，可回滚）；旧会话已全部撤销；
+  bcrypt 比对校验通过（`role=admin, status=active`）。密码未进入对话，运营读取后删除两个文件
+- 2026-10-27 14:21 CST 建 ¥0.01 生产测试商品 `alipay-e2e-test`
+  （id `63aba780-229f-49cd-855c-c8f3282687b8`，active/in_stock，无供货来源）；
+  公开列表与详情页 200；用于真实小额支付宝全链路测试，当前等待运营扫码付款。
+  **测试完成后必须删除该商品和相关测试订单**
+- 2026-10-27 16:39 CST 上下文维护核查：app healthy；14/15/16 点同步均 `success`
+  （offers 恢复至 248/250）；测试商品仍 active/in_stock，尚无测试订单，
+  仍未扫码付款；除此之外无新变更
+- 2026-10-27 17:39 CST 上下文维护核查：app healthy；17 点同步 `success`
+  （offers 247/250）；测试商品状态未变，仍无测试订单、未扫码；无其他变更
+- 2026-10-27 19:10 CST 支付方向调整：运营决定小店不再走个人收付款，改走加密货币（USDT TRC20）。
+  已停用个人支付宝（`payment_settings.alipay_manual enabled=false`，二维码数据保留但不展示），
+  删除 ¥0.01 测试商品 `alipay-e2e-test`；核查时生产/本地无已支付订单或付款申报
+  （19:02 另有一笔个人支付宝测试订单，详见 19:45 核查）。
+  代码已改为小店 USDT-only（个人支付宝/人工到账不再提供给商城），已重新构建并发布，
+  app healthy；当前 `USDT_ENABLED=false`、`USDT_TRC20_XPUB`/`USDT_TRONGRID_API_KEY` 为空，
+  前台显示“加密货币收款配置中，暂不可下单”。待运营在 `/admin/payments` 配置
+  xpub + TronGrid API Key + 首地址后启用
+- 2026-10-27 19:12 CST USDT 收款已启用：生产 `payment_settings.usdt_trc20 enabled=true`
+  （xpub 取自本地已配置钱包，首地址 `TRbEz6ixzMudHiuJS1Y7HHzZzBYbn7stxL`，加密入库）；
+  TronGrid 暂未配置 API Key，代码已支持低频无 key 查询（无 key 时扫描间隔 1.2s），
+  生产容器实测 TronGrid/CoinGecko 均可访问。`alipay_manual` 保持停用，商城为 USDT-only。
+  付款前需运营在自己的钱包中确认首地址可见，确保对应助记词已离线备份
+- 2026-10-27 19:15 CST 建 USDT 测试商品 `usdt-e2e-test`（¥7.30，约 1.1 USDT，
+  active/in_stock，无供货来源）；公开页与登录后详情页均 200，结算页可选 “USDT TRC20”。
+  **测试完成后必须删除该商品和相关测试订单**
+- 2026-10-27 19:27 CST 恢复易支付作为商城备用通道：商城可选 `USDT TRC20` +
+  `支付宝（易支付）`，个人支付宝二维码和人工到账仍关闭；新增可选风控上限
+  `EASYPAY_SHOP_MAX_ORDER_CNY` / `EASYPAY_SHOP_DAILY_MAX_CNY`（默认 0 = 不限）。
+  生产 `EASYPAY_ENABLED=false`，网关/PID/KEY 未配置，因此前台仍只显示 USDT；
+  待运营确认持牌服务商、结算/冻结条款后填 `.env`，并放行 WAF 回调路径
+- 2026-10-27 19:40 CST 商城购买流程改为两步：商品页只显示“购买”，点击后才显示
+  “选择支付方式”；当前渠道仅 `USDT TRC20`。易支付备用代码保留，但由
+  `SHOP_EASYPAY_ENABLED=false` 关闭，即使为充值配置了 EasyPay 也不会出现在商城。
+  浏览器实测：初始无渠道选择，点击购买后出现 USDT 选项与“确认并去支付”
+- 2026-10-27 19:45 CST 上下文维护核查：app healthy；19:12 同步 `success`（248 offers）；
+  发现一笔 19:02 创建的个人支付宝测试订单 `CK20261027ACEC06A1`（¥0.01，
+  `alipay_manual`），19:37 因超时变为 `expired`，无付款申报、无支付事件；
+  对应商品 `alipay-e2e-test` 已于 19:05 删除，**该过期测试订单待清理**。
+  `usdt-e2e-test` 仍 active/in_stock，尚无 USDT 订单；USDT 收款已启用但无 TronGrid key。
+  两步购买流程已浏览器实测通过，除上述测试数据外无未保存变更
+- 2026-10-27 20:39 CST 上下文维护核查：app healthy；20:12 同步 `success`（248 offers）；
+  `usdt-e2e-test` 仍 active/in_stock，仍无 USDT 订单/存款；过期个人支付宝测试订单
+  `CK20261027ACEC06A1` 仍在库待清理；支付通道状态未变（`alipay_manual` 关闭、
+  `usdt_trc20` 启用），除同步外无新变更
+- 2026-10-28 09:35 CST 上下文维护核查：app healthy；09:12 同步 `success`，但 offers
+  降至 213（前值 248），`missing` 45；ChatGPT Plus、Claude Max、Grok 转为
+  `out_of_stock`（公开显示补货中），Claude Pro 仍 `in_stock`，Gemini 仍 `paused`；
+  6 个商品仍 active。`usdt-e2e-test` active/in_stock，仍无 USDT 订单/存款；
+  过期个人支付宝测试订单 `CK20261027ACEC06A1` 仍在库待清理；支付通道未变。
+  **已直接核对 aibijia feed：当前本身 213 条（chatgpt 168 / gemini 18 /
+  claude-code 18 / grok 9），不是同步解析故障；供货源确实减少了 offer，
+  补货中状态属正常映射结果，后续观察是否恢复**
+- 2026-10-28 09:36 CST 复核：状态与 09:35 相同，无新变更；公共 `/api/health`
+  首次请求超时，重试 200，容器内健康检查 200 且 `healthy`，判定为瞬时网络抖动
+- 2026-10-28 12:26 CST 上下文维护核查：app healthy；11:12/12:12 同步 `success`，
+  offers 214（较 09:12 的 213 略回升）；直连 aibijia feed 当前 215
+  （chatgpt 169 / gemini 19 / claude-code 18 / grok 9），`missing` 仍 45；
+  商品状态未变（ChatGPT Plus、Claude Max、Grok 补货中，Claude Pro 现货，Gemini paused）；
+  `usdt-e2e-test` 仍 active/in_stock，无 USDT 订单/存款；过期支付宝测试订单
+  `CK20261027ACEC06A1` 仍待清理；无其他变更
+- 2026-10-28 12:39 CST 复核：状态与 12:26 相同，无新变更；公共 `/api/health`
+  首次超时、第二次 200，仍为偶发网络抖动
+- 2026-10-28 13:39 CST 上下文维护核查：app healthy；13:12 同步 `success`，
+  offers 215（与 aibijia feed 当前 215 一致：chatgpt 169 / gemini 19 /
+  claude-code 18 / grok 9）；商品状态未变（ChatGPT Plus、Claude Max、Grok
+  补货中，Claude Pro 现货，Gemini paused）；无 USDT 订单/存款；
+  过期支付宝测试订单 `CK20261027ACEC06A1` 仍待清理；无其他变更
+- 2026-10-28 14:39 CST 复核：app healthy；14:12 同步 `success`，offers 215
+  （与上一轮持平）；商品状态、订单/存款均未变；过期支付宝测试订单仍待清理；
+  无其他变更
+- 2026-10-28 CST 公共站点视觉升级已发布：Geist 自托管字体、`public.css` 设计层、
+  浮动胶囊导航与全屏移动菜单、滚动揭示、首页/Bento/价格/CTA 重构、小店列表与详情、
+  pricing/docs/auth/legal/404/error、OG 图、公共页图标迁移 Phosphor。后端、支付、
+  订单、数据库和 `/v1` 未改。发布前备份镜像 `cokeai-app:pre-redesign`。
+  验证：typecheck/build 通过；320–1440 无横向滚动；生产首页、`/shop`、`/pricing`、
+  `/docs`、`/login`、`/shop/terms`、OG、`/api/health` 均 200；移动菜单可开、Escape 关闭且焦点返回；
+  两步购买仍为“购买 → USDT TRC20 → 确认并去支付”。同轮修复：docs 移动端栅格选择器、
+  移动端表格列、Dashboard `panel-grid` 溢出、滚动揭示阈值导致长列表初始隐藏。
+  生产模型目录当前为空（Sub2API 上游未配置），首页显示“模型目录同步中”，属待办 #10。
+- 2026-10-28 15:41 CST 上下文维护核查：App 在第三次发布后 `healthy`；15:12 同步
+  `success`，offers 216（较 14:12 的 215 +1，mapped 6）；商品 `active` 7 个
+  （in_stock 2 / low_stock 1 / out_of_stock 3 / paused 1）；`usdt-e2e-test`
+  仍 active/in_stock；`shop_usdt_deposits` 为 0；24 小时内无新订单，唯一订单
+  仍是已过期的支付宝测试单 `CK20261027ACEC06A1`（¥0.01，expired）；无其他变更
+- 2026-10-28 15:56 CST 体验增强并二次发布：
+  1. 首屏入场动效（hero 文案分段上浮、右栏小店预览延迟上浮、悬浮卡缓慢漂浮、
+     状态点呼吸），全部由 `html.js` 启用，`prefers-reduced-motion` 下关闭；
+  2. 纹理加强（Hero 细网格 + 颗粒、tagline 区颗粒、预览卡/CTA/商品封面颗粒加深）；
+  3. 价格区从“推荐卡跨两行”改为三列等高，修复大卡下方大片空白；
+  4. 教程内容集中到 `/docs`：Dashboard 概览移除“快速接入”代码卡与复制按钮，
+     改为“接入教程”入口；首页 Bento 移除 `base_url` 代码片段，改为教程入口卡；
+     `/docs` 标题改为“接入教程”，导航“文档”改为“教程”，Dashboard 侧栏/顶栏
+     增加“接入教程”入口。后端、支付、订单、数据库和 `/v1` 未改。
+  发布镜像备份 `cokeai-app:pre-motion`；typecheck/build 通过；生产首页、`/docs`、
+     `/shop`、`/pricing`、`/api/health` 均 200；1440/390 无横向溢出；公共页已无代码块。
+- 2026-10-28 16:20 CST 首次真正通过 `landing-page-design` Skill 审计并发布：
+  安装 `~/.claude/skills/landing-page-design` 与
+  `~/.claude/skills/redesign-existing-projects`，按 skill 的 Part A / Part B 审计
+  首页、`/shop`、商品详情、`/pricing`、`/docs`、auth、legal。修复：
+  1. tagline 从“整段点亮”改为逐词点亮（IntersectionObserver + 40ms 步进；
+     `prefers-reduced-motion` 直接全亮）；
+  2. 补上 landing page 缺失的结构：三步接入、8 条常见问题（并排列表，非手风琴）、
+     FAQPage JSON-LD；
+  3. 字体全部吸附到 Tailwind type scale（移除 10/11/13/15/38/56/64/88/104px），
+     间距只保留 0/2/4/8/12/16/24/32/40/48/64/80/96，圆角只保留 Tailwind 档位；
+  4. 价格卡统一 32px 内边距、固定标题/价格块高度，三列名称、价格、到账额度、
+     CTA 全部同 Y 轴对齐；推荐标记改为绝对定位；
+  5. 修复 `.public-main .legal` 与实际 `<main class="public-main legal">` 不匹配的
+     选择器（法律页正文从 13px 恢复到 16px / 28px）；
+  6. docs 侧栏 13→14px、表格头统一 12px、auth label 13→14px；
+  7. 商品详情去掉右栏重复价格；发货时效范围改为“10 至 60 分钟”。
+  验证：typecheck/build 通过；320/390/768/1024/1440 无横向溢出；tagline
+  逐词点亮计数 0→1→3→5→7→9→10；reduced motion 全部直接显示；移动菜单
+  Escape 关闭且焦点返回；两步购买仍为“购买 → USDT TRC20 → 确认并去支付”；
+  生产 `/`、`/shop`、`/pricing`、`/docs`、`/login`、`/shop/terms`、`/api/health`、
+  OG 均 200。镜像备份 `cokeai-app:pre-skill-pass`。后端、支付、订单、数据库、
+  `/v1` 未改。
+- 2026-10-28 16:39 CST 上下文维护核查：App `healthy`（本次 Skill 发布后约 23 分钟）；
+  16:12 同步 `success`，offers 216（与 15:12 持平，mapped 6）；商品状态未变
+  （active 7：in_stock 2 / low_stock 1 / out_of_stock 3 / paused 1）；
+  `shop_usdt_deposits` 仍为 0；无新订单，唯一订单仍是过期测试单
+  `CK20261027ACEC06A1`；无临时脚本、无本地 dev server；无其他变更
+- 2026-10-28 17:39 CST 上下文维护复核：App `healthy`；17:12 同步 `success`，
+  offers 216（mapped 6，与 16:12 持平）；商品状态未变（active 7：in_stock 2 /
+  low_stock 1 / out_of_stock 3 / paused 1）；`shop_usdt_deposits` 为 0；
+  无新订单，唯一订单仍是 `CK20261027ACEC06A1`（expired）；无临时文件、
+  无本地 dev server；无其他变更
+- 2026-10-28 18:02 CST GSAP 交互动效上线：
+  1. 安装 `gsap@3.15`，新增 `src/components/motion/MotionLayer.tsx`，在根 layout
+     挂载，只在公共页生效，Dashboard/Admin 不参与；
+  2. 页面切换：点击站内公共链接时深色纸面 wipe 从底部升起，路由完成后滑出并
+     淡入 `#main-content`；外部链接、同路径链接、`#` 锚点、带修饰键点击全部跳过，
+     不拦截 Next 路由；
+  3. 文字：Hero h1 拆成两行 CSS 遮罩，逐行从下方上浮（不依赖 JS，避免标题空白）；
+     tagline 从 IntersectionObserver 改为 GSAP ScrollTrigger 逐词点亮
+     （40ms 级联，仅一次），可访问名称保持不变；
+  4. 滚动：顶部绿色阅读进度条；Hero 小店预览随滚动下移；bento 用量条进入视口时
+     从左填充；产品封面随鼠标产生轻微视差；
+  5. 交互：首屏 CTA、最终 CTA、小店充值按钮磁吸；移动菜单、卡片 hover、焦点环
+     保持原样；
+  6. 所有 GSAP 动画使用 `CustomEase` 生成的
+     `cubic-bezier(0.22,1,0.36,1)` 基准曲线；`prefers-reduced-motion` 下不注册
+     GSAP，wipe/进度条 CSS 直接隐藏，Hero 行动画关闭；
+  7. 路由切换时 `gsap.context` / 事件监听全部清理，避免重复绑定。
+  验证：typecheck/build 通过；生产 `/`、`/shop`、`/pricing`、`/docs`、`/login`、
+  `/shop/terms`、`/api/health` 均 200；浏览器控制台无错误；桌面与 390 移动端
+  Hero 逐行上浮、page wipe、tagline 级联、进度条均生效；320/390/1440 无横向溢出；
+  浏览器后退后 wipe 归位；移动菜单跳转后自动关闭且 body 滚动恢复；
+  Dashboard 无 wipe/进度条，布局未变。镜像备份 `cokeai-app:pre-gsap`。
+  后端、支付、订单、数据库、`/v1` 未改。
+- 2026-10-28 18:39 CST 上下文维护核查：GSAP 最终版已发布，App `healthy`
+  （Up 16 分钟）；18:12 同步 `success`，offers 255（较 17:12 的 216 +39，
+  mapped 6）；商品 active 7（in_stock 3 / low_stock 2 / out_of_stock 1 /
+  paused 1，较 17:39 有回升）；`shop_usdt_deposits` 为 0；无新订单，唯一订单
+  仍是过期测试单 `CK20261027ACEC06A1`；无临时文件、无本地 dev server；
+  无其他变更
+- 2026-10-28 19:35 CST 首屏品牌轨道（Hero Orbit）与纸感升级：
+  1. 首页 Hero 改为居中品牌舞台，H1 为“CokeAI 小店 / 接上你需要的模型。”；
+     新建 `public/hero-field.svg`（椭圆轨道线、点阵、绿色弧线）叠 grain、
+     模糊光斑和全站纸点纹理；`public/brands/` 放入 OpenAI、Claude、Gemini、
+     DeepSeek、Grok、Qwen、Mistral、Kimi、Ollama、Llama 十个品牌 SVG
+     （MIT，附 LICENSE），围绕中心组成 10 卡椭圆轨道；
+  2. `src/components/home/HeroOrbit.tsx` 用 GSAP ticker 做缓慢公转、深度缩放、
+     透明度与轻微倾斜；鼠标移动时轨道与中心反向偏移；滚动时轨道向内收拢并
+     快速淡出，不遮挡正文；`prefers-reduced-motion` 下静态排布，无 ticker；
+  3. ≤960px 隐藏轨道，改为 6 个品牌胶囊；新增左下 USDT、右下商品数量两张
+     浮动卡；Hero 最小高度改为 `100dvh - 88px`；短视口（≤820px 高）标题降到
+     72px 并收紧间距；
+  4. 公共页增加纸点纹理；商品卡、价格卡、bento、模型表格卡统一轻浮动阴影；
+     Hero 文案改为“OpenAI 兼容接口，按量计费。注册、充值、创建 Key，就能用。”
+     并固定两行断句；
+  5. 删除旧的小店预览卡、`shop-preview` / `preview-float` CSS 及
+     MotionLayer 里的预览视差。
+  验证：typecheck/build 通过；本地 320/390/768/1024/1366/1440/1600 无横向溢出，
+  轨道与文字无实际重叠；滚动收缩淡出、鼠标反向视差、减少动效静态版均通过；
+  生产 `/`、`/shop`、`/pricing`、`/docs`、`/hero-field.svg`、
+  `/brands/openai.svg`、`/api/health` 均 200，控制台无错误；生产 1440/390
+  截图与本地一致。镜像备份 `cokeai-app:pre-orbit`。后端、支付、订单、数据库、
+  `/v1` 未改。
+- 2026-10-28 19:40 CST 上下文维护核查：Hero Orbit 版已发布，App `healthy`
+  （Up 11 分钟）；19:12 同步 `success`，offers 255（与 18:12 持平，mapped 6）；
+  active 商品 7（in_stock 3 / low_stock 2 / out_of_stock 1 / paused 1）；
+  `shop_usdt_deposits` 为 0；无新订单，唯一订单仍是过期测试单
+  `CK20261027ACEC06A1`；无临时文件、无本地 dev server；生产 `/`、`/shop`、
+  `/api/health` 均 200；无其他变更
+- 2026-10-28 20:39 CST 上下文维护核查：Hero Orbit 版稳定运行，App `healthy`
+  （Up 约 1 小时）；20:12 同步 `success`，offers 255（与 18:12、19:12 持平，
+  mapped 6）；active 商品 7（in_stock 3 / low_stock 2 / out_of_stock 1 /
+  paused 1，未变）；`shop_usdt_deposits` 为 0；无新订单，唯一订单仍是过期
+  测试单 `CK20261027ACEC06A1`；无临时文件、无本地 dev server；生产 `/`、
+  `/shop`、`/api/health` 均 200；无其他变更
+- 2026-10-28 21:01 CST 生产整机失联（Cloudflare Error 1033）：`cokeai.cc.cd`
+  返回 530 / 1033（Ray ID `a51a21b28d999e1f`，13:01:52 UTC）。排查证据：
+  本机 `ping 47.83.178.22` 100% 丢包，TCP 22/80/443 全超时，SSH
+  `Operation timed out`；境外 check-host 节点（保加利亚、西班牙、印尼、伊朗）
+  测 TCP 22 全部超时，另 5 个节点（印度、摩尔多瓦、洛杉矶、亚特兰大、纽约）
+  ICMP 全部超时。结论：故障在 VPS 层（整机离线或被平台停止），不是
+  cloudflared、应用或 Cloudflare 配置问题；最后一次正常核查为 20:39 CST，
+  故障发生在 20:39–21:01 之间。21:43 CST 复查仍未恢复（530、SSH 过滤）。
+  待运营在阿里云控制台确认实例状态（欠费/到期/被停止/宿主故障），恢复后需
+  复核 `docker compose ps`、cloudflared 日志、`/`、`/shop`、`/api/health`；
+  各服务均为 `restart: unless-stopped`，正常重启应自动拉起。数据在实例磁盘，
+  停复机不丢；仅实例被释放才会丢。本故障期间未改动任何代码或配置
+- 2026-10-28 22:39 CST 复查：仍未恢复——`/api/health` 请求在 Cloudflare
+  边缘超时（HTTP 000），SSH 22 不可达，`ping 47.83.178.22` 100% 丢包；
+  故障已持续约 1 小时 40 分钟。等待运营在阿里云控制台处理实例；期间无代码、
+  配置或数据变更
+- 2026-10-28 23:38 CST 生产恢复：实例已重启（`uptime` 48 分钟），SSH 可用，
+  8 个容器全部 Up（app healthy），cloudflared 重新注册到 hkg01/hkg08/hkg11，
+  连通性预检全部 PASS；磁盘 83%、内存 3.6G 正常。应用侧响应正常：容器内
+  `/` 20–31ms、`/shop` 19ms、`/api/health` 3.5ms，从新加坡经 Cloudflare
+  访问 100–310ms。但中国大陆 → Cloudflare 边缘明显异常：本机多次请求
+  TTFB 1.5s / 4.4s / 6.1s / 11.6s，并有 15s 超时；`/cdn-cgi/trace` 一度返回
+  `colo=GRU`，`cloudflare.com` 基线 TTFB 约 1.4–1.9s（`colo=LAX`）。结论：
+  后台按钮“点了很久才跳转”是大陆到 Cloudflare 边缘链路问题，不是应用、
+  数据库或云端点问题（云端点为毫秒级）
+- 2026-10-28 23:00–23:45 CST 本地完成两项改动（尚未在生产构建）：
+  1）首页“小店上新”改为参考图的环形商品舞台：新增
+  `src/components/home/ShopRing.tsx`（6 个商品卡椭圆绕中轴慢转、深度缩放、
+  悬停暂停并抬升、滚动联动旋转、指针 3D 倾斜、进入视口错峰展开、
+  减少动效静态版），`page.tsx` 用居中标题 + 环形卡片替换原三卡网格，
+  移动端 ≤1100px 回退为原商品网格；`public.css` 新增 `.shop-collection*` /
+  `.shop-ring-*` 样式。本地验证 320/390/768/1024/1100/1280/1440 无横向溢出、
+  悬停后角度稳定、reduced-motion 静态可见、控制台无错误。2）后台导航体感优化：
+  新增 `NavProgress`（应用页路由顶部进度条）、`admin/loading.tsx` 与
+  `dashboard/loading.tsx` 骨架屏、侧栏 active 圆点；`next.config.ts` 增加
+  `experimental.staleTimes.dynamic=15` 与 `dynamicOnHover`，降低重复导航等待。
+  `typecheck`、`build` 均通过；本地 `npm start` 冒烟无错误。发布流程执行到
+  「备份镜像 `cokeai-app:pre-ring` + rsync 代码到生产」后被用户中断，
+  `docker compose build app && up -d app` **未执行**，生产仍运行旧镜像；
+  服务器源码目录已更新但未构建，**下次发布需先 build 再 up -d**。本地 dev /
+  prod server 已停，临时脚本已清理
+- 本次代码尚未 commit/push；GitHub Actions 未触发，是通过 SSH + rsync 直接发布的
+
+## 自动化下单的真实边界
+
+**能做到：**
+
+- 每小时自动同步价格/库存/供货商链接
+- 毛利不足或成本暴涨自动暂停商品
+- 付款后自动生成采购单（商品、数量、客户填写、供货商链接）
+- 一键复制采购信息、一键打开供货商页面
+- 回填后自动交付给客户、自动生成订单时间线
+- 缺货自动转退款、过期自动关闭、客户输入自动清除
+
+**做不到（不是代码问题）：**
+
+- `wzyp.cn` / `kapay.shop` 的店铺页是 SPA，带阿里云 ESA 滑块验证；
+  没有公开下单 API，也没有给我们的账号授权。
+- 直接调用它们的 `/shopApi/Pay/order` 属于绕过站点风控和未授权下单，**不做**。
+- 自动付款需要供货商余额/API，不在当前能力范围内。
+
+**因此人工只剩两步：** 在供货商页面付款、把卡密/账号回填到后台。
+如果供货商以后提供正式 API 或商户账号，可在 `shop_product_sources` 之上增加
+`auto_procurement` 连接器；schema 和状态机已经留好位置。
+
+## 待办
+
+- [x] 生产 VPS 迁移 `003_shop` / `003_personal_payments`
+- [x] 导入并发布 6 个 n8n 工作流
+- [x] 生产配置 `SHOP_*`、首次同步 250 offers
+- [x] 生产导入 6 个精选商品草稿（未公开、未勾选合规）
+- [x] 运营确认合规并上架 6 个商品（公开商品 6 个）
+- [x] 重置管理员密码（服务器端随机生成，仅写入 `.admin-reset.txt`，含旧 hash 备份）
+- [x] 配置个人支付宝收款码（2026-10-27 14:02 CST 上传并启用）
+- [x] 放弃个人支付宝真实链路测试（2026-10-27 19:10 CST 运营决定改走加密货币；
+      已停用个人支付宝、删除 ¥0.01 测试商品）
+- [x] 配置 USDT TRC20 收款（2026-10-27 19:12 CST 生产启用；xpub + 首地址已配置，
+      TronGrid API Key 暂未配置，使用低频无 key 查询）
+- [ ] 真实小额 USDT 走一单（进行中：已建 `usdt-e2e-test` ¥7.30 测试商品，
+      等待下单 → 转账 ≥1 USDT → 扫描确认 → 采购 → 交付 → 删除测试商品和订单）
+- [ ] 清理过期个人支付宝测试订单 `CK20261027ACEC06A1`
+      （19:37 已 `expired`，无付款申报/支付事件；商品已删除）
+- [ ] 人工采购/交付/退款演练
+- [ ] 接入易支付备用通道（代码已就绪但由 `SHOP_EASYPAY_ENABLED=false` 关闭；
+      待持牌服务商网关/PID/KEY、签名模式、结算/冻结条款确认后填 `.env`，
+      设 `SHOP_EASYPAY_ENABLED=true`，放行 WAF `/api/webhooks/easypay/shop`
+      和 `/api/webhooks/easypay`）
+- [ ] 税务、发票、数字商品条款文案由运营最终确认
+- [ ] 供货商若提供正式 API，再接自动下单
+
+## 关键文件
+
+- 计划：`~/.claude/plans/gentle-rolling-wren.md`
+- 抓取器：`tools/supplier-scraper/`
+- 快照：`.local-data/supplier/aibijia/latest/`（已 gitignore）
+- 数据层：`db/schema.sql` 末尾 `003_shop`
+- 业务层：`src/lib/shop/`
+- 用户页：`src/app/shop/`、`src/app/dashboard/shop/`
+- 后台：`src/app/admin/shop/`
+- 测试：`scripts/test-shop*.ts`
+
+## 2026-10-28 23:48 CST 环形商品舞台 + 后台体感优化已发布
+
+- 镜像：`cokeai-app:local` 由当前源码重建（构建已在此之前完成），
+  `docker compose up -d app` 后 5 秒 `healthy`；回滚镜像 `cokeai-app:pre-ring`。
+- 服务端自检：`/` 200（398ms 首查，含 `shop-ring-stage` 与小店上新标题）、
+  `/shop` 200（54ms）、`/api/health` 200（9ms），近 3 分钟日志无 error/fail。
+- 外网验证：`https://cokeai.cc.cd/` 返回 200 且 HTML 含环形舞台，但
+  **正文 30 秒只收到 90KB 后被 curl 超时**；`/api/health` 20 秒连接超时。
+  服务端 9ms，故瓶颈仍是「中国大陆 → Cloudflare 边缘」链路，而非应用/数据库；
+  后台顶部进度条 + 骨架屏 + 15s 路由缓存只改善体感，不解决传输慢。
+- 待评估加速：Cloudflare 优选 IP（当前偶发 `colo=GRU`）、香港/新加坡中转
+  （CN2 GIA 反代）、或国内 CDN/EdgeOne（需备案，`.cc.cd` 不具备）。
+- 后端、支付、订单、数据库、`/v1` 未改。
+
+## 2026-10-29 00:07 CST 导航滚动 / 环形暂停 / 浮动导航修复
+
+- **跳转后落在页面底部**：`globals.css` 的全局 `scroll-behavior: smooth` 会吞掉
+  Next.js 路由切换时的滚动复位，导致新页面保留旧页面的 `scrollY`（页面较矮时
+  看起来像“弹到底部”）。改为 `scroll-behavior: auto`；文档目录锚点改为瞬时跳转。
+  本地实测：从首页 1600px 处点击 bento `/docs` 与导航 `/shop`，落地 `scrollY=0`。
+- **环形商品不转**：原来暂停逻辑绑在整个 `.shop-collection` 上，桌面鼠标只要停在
+  页面中部就永久 `hold=1`。改为仅在悬停/聚焦某张商品卡时暂停，指针离开卡片恢复；
+  本地实测自由旋转 `true`、悬停卡片静止 `true`。
+- **浮动导航跟随滚动**：`.site-header` 增加 `is-away` 状态，滚动超过 96px 向下时
+  收起，向上滚动、鼠标到顶部 56px 内或键盘聚焦时重新出现；首屏保持可见。
+  实测隐藏/触顶出现/移开再隐藏均通过。
+- 生产已 rsync + `docker compose build app && up -d app`，5 秒 healthy；
+  `/` 200（412ms，含环形）、`/shop` 200（69ms）、`/api/health` 200（29ms）。
+  日志仅剩既有 `pricing-sync` 空模型白名单报错（待办 #10）。
+  回滚镜像仍为 `cokeai-app:pre-ring`（本轮未另建备份）。
+- 后端、支付、订单、数据库、`/v1` 未改。
+
+## 2026-10-29 00:22 CST 价格透明化 + AI 在线客服
+
+- **删除价格含糊话术**：移除首页、价格页的“价格随上游成本调整 / 以请求时为准 /
+  以下单请求时为准”，页脚“价格以结算时为准”，小店营销区的“价格与库存以下单时
+  页面为准”。改为“表内价格即结算价，按实际 Token 用量扣费”。法律条款页保留
+  必要措辞未动。
+- **价格表接真实价格**：`listCatalogModels()` 在实时定价表为空时回退到
+  `models + upstreams`（仅 enabled 且已配置 Key 的模型），用与计费完全相同的
+  `retailCnyPerMillion()` 计算展示价；没有缓存成本时显示“—”，不再显示 ¥0.00。
+  当前生产只有 `deepseek-chat` 可售：输入 ¥2.42 / 输出 ¥3.63 每百万 Token。
+  `gpt-4.1`、`gpt-4.1-mini` 因 OpenAI 上游未配置 Key 不展示，
+  `deepseek-reasoner` 仍为 disabled。
+- **降低毛利**：全部模型 `markup_bps` 由 18000 降为 12000（成本 ×1.2，毛利率约
+  16.7%）；同步更新 `db/schema.sql` 默认值与 `PRICING_MARKUP_BPS` 代码默认值。
+- **AI 在线客服**：aibijia.org 没有聊天组件，只有商品标题里提到“客服 QQ”，
+  因此按常见客服浮窗自行实现。新增 `SupportWidget`（公共页右下角，Dashboard /
+  Admin 不显示）与 `POST /api/support/chat`，复用现有 DeepSeek Chat 上游，注入
+  实时模型价格与站点规则；限流 6 次/分钟、40 次/小时/IP，单条 600 字，失败回落
+  到售后邮箱。桌面/390 无横向溢出，生产实测回复 708ms。
+- 生产已 rsync + build + up -d，5 秒 healthy；`/pricing` 200（含 deepseek-chat
+  价格行）、`/` 200（含客服按钮）、客服接口 200。后端、支付、订单、`/v1` 未改；
+  数据库仅更新了 `models.markup_bps`。
+
+## 2026-10-29 00:29 CST 模型目录升级到最新一代
+
+- 实测生产 DeepSeek Key 的 `/models`：可用 `deepseek-flash`（V4.1 Flash，1M 上下文、
+  支持图片）与 `deepseek-v4-pro`（V4 Pro，1M 上下文）。
+- 生产已上线这两个模型，官方成本 $0.30/$1.20 与 $1.32/$3.96 每百万 Token，
+  `markup_bps=12000`，页面价 ¥2.59/¥10.37 与 ¥11.40/¥34.21。
+- `deepseek-chat`、`deepseek-reasoner` 已停用并从公开目录移除；旧 API Key 继续可用：
+  `getGatewayModel()` 将旧 ID 透明映射到 `deepseek-flash` / `deepseek-v4-pro`。
+- 客服默认模型改为 `deepseek-flash`；生产客服回复已按新目录列价。
+- 最新一代 GPT / Gemini / Grok 已建档但保持 disabled，等上游 Key：
+  `gpt-5.6`、`gpt-5.6-terra`、`gpt-5.6-luna`（openai，无 Key）、
+  `gemini-3.8-flash`、`gemini-3.1-pro`（新增 gemini upstream，无 Key）、
+  `grok-4.6`（新增 xai upstream，无 Key）。官方成本与 1.2 倍加价已录入。
+- 当前 Sub2API 只有两个 mock-openai 账号，生产环境也没有 OpenAI / Anthropic /
+  Google / xAI / OpenRouter 等 Key，所以 GPT 等暂时无法真实调用。Claude 还需要
+  OpenAI 兼容中转（Anthropic 原生协议不兼容现有网关）。
+- 验证：`/pricing` 与 `/` 均包含 deepseek-flash、deepseek-v4-pro，不再出现
+  deepseek-chat；客服接口 200 且回答列出两个新模型。
+
+## 2026-10-29 定价改为官方价 + 拿货价，新增客户公告栏
+
+- **售价公式**：官方价取模型目录，拿货价取 `pricing_costs` 成本表。先按官方价
+  让利 `PRICING_OFFICIAL_DISCOUNT_BPS`（默认 10%），再取下限
+  `拿货价 / (1 - PRICING_MIN_MARGIN_BPS)`（默认 15% 毛利），两者取高。
+  官方价缺失时回退到拿货价 × `PRICING_MARKUP_BPS`。
+- **公开页与计费一致**：`computeRetailPrice()` 同时用于模型目录、`/v1/models`
+  和实际扣费；`getGatewayModel()` 会带上按官方价与拿货价算出的
+  `retail_input_cny_per_mtok` / `retail_output_cny_per_mtok`。
+- **后台**：定价页说明改为“官方价 + 拿货价”，成本表只填真实拿货价，官方价由
+  模型目录提供。
+- **公告栏**：新增 `announcements` 表、`/announcements` 公开页、公共页顶部公告条
+  （可关闭，关闭状态按公告版本记在浏览器）和 `/admin/announcements` 管理页，
+  支持公告/更新/注意三种类型、置顶、开始/结束时间、打开/关闭和删除。
+- 本地 `npm run typecheck`、`npm run build` 通过；尚未部署生产。

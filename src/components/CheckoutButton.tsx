@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { ArrowUpRight } from "lucide-react";
+import { ArrowUpRight } from "@phosphor-icons/react";
 import {
   createCheckoutAction,
   type BillingState,
@@ -16,7 +16,7 @@ export function CheckoutButton({
   className = "btn btn-primary btn-block",
 }: {
   planId: string;
-  provider: "stripe" | "manual";
+  provider: "stripe" | "manual" | "alipay_manual" | "easypay" | "usdt";
   label: string;
   className?: string;
 }) {

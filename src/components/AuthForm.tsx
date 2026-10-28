@@ -33,7 +33,7 @@ export function AuthForm({
             name="name"
             type="text"
             autoComplete="nickname"
-            placeholder="你希望我们怎么称呼你"
+            placeholder="你的昵称"
             minLength={2}
             maxLength={40}
             required
@@ -62,16 +62,12 @@ export function AuthForm({
           name="password"
           type="password"
           autoComplete={mode === "login" ? "current-password" : "new-password"}
-          placeholder={mode === "login" ? "输入密码" : "至少 8 位，建议使用密码管理器"}
+          placeholder={mode === "login" ? "输入密码" : "至少 8 位"}
           minLength={mode === "login" ? 1 : 8}
           maxLength={72}
           required
         />
       </div>
-
-      {mode === "register" && refCode ? (
-        <div className="form-success">已应用邀请码：{refCode}</div>
-      ) : null}
 
       {state.error ? (
         <div className="form-error" role="alert">

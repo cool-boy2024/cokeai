@@ -4,6 +4,12 @@ const nextConfig: NextConfig = {
   output: "standalone",
   poweredByHeader: false,
   serverExternalPackages: ["pg", "ioredis"],
+  experimental: {
+    // Keep recently visited console pages in the client router cache so
+    // sidebar navigation does not wait on a slow round trip every time.
+    staleTimes: { dynamic: 15 },
+    dynamicOnHover: true,
+  },
   async headers() {
     return [
       {

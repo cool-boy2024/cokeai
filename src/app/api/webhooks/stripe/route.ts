@@ -29,7 +29,11 @@ export async function POST(request: Request): Promise<Response> {
       const session = event.data.object;
       const orderId = session.metadata?.orderId;
       if (orderId && session.payment_status === "paid") {
-        await fulfillOrder(orderId);
+        const fulfilled = await fulfillOrder(orderId);
+        // Ask Stripe to retry when the gateway top-up did not land yet.
+        if (fulfilled.creditStatus === "failed") {
+          throw new Error("gateway_credit_failed");
+        }
       }
     }
 

@@ -6,6 +6,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
   return [
     { url: config.appUrl, lastModified: now, changeFrequency: "weekly", priority: 1 },
     {
+      url: `${config.appUrl}/shop`,
+      lastModified: now,
+      changeFrequency: "daily",
+      priority: 0.9,
+    },
+    {
       url: `${config.appUrl}/pricing`,
       lastModified: now,
       changeFrequency: "weekly",
@@ -16,6 +22,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
       lastModified: now,
       changeFrequency: "weekly",
       priority: 0.7,
+    },
+    {
+      url: `${config.appUrl}/shop/terms`,
+      lastModified: now,
+      changeFrequency: "yearly",
+      priority: 0.3,
     },
     {
       url: `${config.appUrl}/terms`,

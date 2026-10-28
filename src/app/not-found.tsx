@@ -1,45 +1,31 @@
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
-import { Logo } from "@/components/Logo";
+import { ArrowLeft, ArrowUpRight } from "@phosphor-icons/react/dist/ssr";
 import { SiteFooter } from "@/components/SiteFooter";
+import { SiteHeader } from "@/components/SiteHeader";
 
 export default function NotFound() {
   return (
     <>
-      <header className="site-header">
-        <div className="container site-header-inner">
-          <Logo />
-          <Link className="btn btn-ghost btn-sm" href="/">
-            <ArrowLeft size={13} /> 返回首页
-          </Link>
-        </div>
-      </header>
-      <main
-        style={{
-          display: "grid",
-          minHeight: "62vh",
-          placeItems: "center",
-          textAlign: "center",
-          padding: "60px 20px",
-        }}
-      >
-        <div>
-          <div className="mono small muted">ERROR / 404</div>
-          <h1
-            style={{
-              margin: "10px 0 14px",
-              fontSize: "clamp(48px,8vw,90px)",
-              letterSpacing: "-0.07em",
-            }}
-          >
-            页面不存在。
-          </h1>
-          <p className="muted" style={{ margin: "0 auto 26px", maxWidth: 420 }}>
-            链接可能已失效，或你访问了尚未开放的页面。
+      <SiteHeader />
+      <main id="main-content" className="public-main not-found-page">
+        <div className="not-found-inner">
+          <p className="not-found-code">404</p>
+          <h1>这页没有找到。</h1>
+          <p>
+            链接可能已经失效，或者你访问了尚未开放的页面。
+            先回到一个确定能用的地方。
           </p>
-          <Link className="btn btn-primary" href="/">
-            回到首页
-          </Link>
+          <div className="not-found-actions">
+            <Link className="btn btn-primary" href="/">
+              <ArrowLeft size={15} /> 回到首页
+            </Link>
+            <Link className="btn btn-light" href="/shop">
+              逛逛小店
+            </Link>
+            <Link className="text-link" href="/docs">
+              查看文档 <ArrowUpRight size={14} />
+            </Link>
+          </div>
         </div>
       </main>
       <SiteFooter />

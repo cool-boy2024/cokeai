@@ -2,7 +2,7 @@
   "name": "cokeai",
   "version": "1.0.0",
   "private": true,
-  "description": "CokeAI - 可预算的 AI API 接入与用量管理平台",
+  "description": "CokeAI - AI API 充值、Key 与用量控制台",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -10,14 +10,34 @@
     "typecheck": "tsc --noEmit",
     "db:migrate": "node scripts/migrate.mjs",
     "db:seed": "node scripts/seed.mjs",
-    "db:setup": "npm run db:migrate && npm run db:seed"
+    "db:setup": "npm run db:migrate && npm run db:seed",
+    "shop:seed": "tsx scripts/shop-seed.ts",
+    "shop:draft": "tsx scripts/shop-seed.ts --draft",
+    "shop:sync": "tsx scripts/shop-sync.ts",
+    "test:shop": "tsx scripts/test-shop.ts",
+    "pricing:sync": "node scripts/pricing-sync.mjs",
+    "verify:sub2api": "node scripts/verify-sub2api-config.mjs",
+    "smoke:prod": "node scripts/smoke-production.mjs",
+    "rollback:prepare": "node scripts/rollback-prepare.mjs",
+    "test:shop:pay": "tsx scripts/test-shop-easypay.ts",
+    "test:shop:usdt": "tsx scripts/test-shop-usdt.ts",
+    "test:shop:sync": "tsx scripts/test-shop-sync.ts",
+    "test:shop:manual": "tsx scripts/test-shop-manual-alipay.ts"
   },
   "dependencies": {
+    "@noble/hashes": "^2.4.0",
+    "@phosphor-icons/react": "^2.1.10",
+    "@scure/bip32": "^2.4.0",
+    "@scure/bip39": "^2.4.0",
     "bcryptjs": "3.0.3",
+    "bs58check": "^4.0.0",
+    "geist": "^1.8.2",
+    "gsap": "^3.15.0",
     "ioredis": "6.0.0",
     "lucide-react": "1.61.0",
     "next": "16.4.3",
     "pg": "8.23.1",
+    "qrcode": "^1.5.4",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "stripe": "23.0.1",
@@ -26,8 +46,11 @@
   "devDependencies": {
     "@types/node": "^24.10.0",
     "@types/pg": "^8.15.6",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
+    "puppeteer-core": "^25.16.0",
+    "tsx": "^4.23.15",
     "typescript": "5.9.3"
   }
 }

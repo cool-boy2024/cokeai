@@ -1,0 +1,100 @@
+{
+  "name": "CokeAI｜小店货源同步（每小时）",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## 小店货源同步\n\n每小时拉取 aibijia 公开目录，更新 offer 价格、库存、映射商品的成本与毛利。\n\n毛利低于阈值或成本单次暴涨会暂停商品，运营在 `/admin/shop/products` 确认售价后恢复。\n\n只读取公开 JSON，不登录供货商、不绕过验证码、不自动下单。",
+        "height": 220,
+        "width": 380,
+        "color": 6
+      },
+      "id": "c0f0a6f1-6c43-4f8f-a2f3-6d2e7a9c2201",
+      "name": "使用说明",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -520,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "12 * * * *"
+            }
+          ]
+        }
+      },
+      "id": "c0f0a6f1-6c43-4f8f-a2f3-6d2e7a9c2202",
+      "name": "每小时 :12",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -40,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://app:3000/api/internal/shop/sync",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-internal-secret",
+              "value": "={{ $env.INTERNAL_API_SECRET }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{}",
+        "options": {
+          "timeout": 120000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "c0f0a6f1-6c43-4f8f-a2f3-6d2e7a9c2203",
+      "name": "同步小店货源",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        210,
+        80
+      ],
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "每小时 :12": {
+      "main": [
+        [
+          {
+            "node": "同步小店货源",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Shanghai"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": []
+}

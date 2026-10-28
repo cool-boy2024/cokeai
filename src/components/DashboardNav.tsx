@@ -4,13 +4,17 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Activity,
+  BookOpen,
+  ClipboardList,
   CreditCard,
-  Gift,
+  Gauge,
   KeyRound,
   LayoutDashboard,
+  Megaphone,
+  PackageSearch,
   ReceiptText,
-  Server,
-  Settings,
+  ShoppingBag,
+  SlidersHorizontal,
   UserRound,
   Users,
 } from "lucide-react";
@@ -18,18 +22,25 @@ import {
 const userItems = [
   { href: "/dashboard", label: "概览", icon: LayoutDashboard },
   { href: "/dashboard/keys", label: "API Key", icon: KeyRound },
-  { href: "/dashboard/usage", label: "用量账单", icon: Activity },
-  { href: "/dashboard/billing", label: "套餐与订单", icon: CreditCard },
-  { href: "/dashboard/referrals", label: "推荐奖励", icon: Gift },
-  { href: "/dashboard/settings", label: "账户设置", icon: UserRound },
+  { href: "/dashboard/usage", label: "用量", icon: Activity },
+  { href: "/dashboard/billing", label: "充值", icon: CreditCard },
+  { href: "/dashboard/shop", label: "我的订单", icon: ShoppingBag },
+  { href: "/dashboard/settings", label: "设置", icon: UserRound },
+  { href: "/docs", label: "接入教程", icon: BookOpen },
 ];
 
 const adminItems = [
-  { href: "/admin", label: "运营概览", icon: LayoutDashboard },
+  { href: "/admin", label: "概览", icon: LayoutDashboard },
   { href: "/admin/orders", label: "订单", icon: ReceiptText },
+  { href: "/admin/payments", label: "收款设置", icon: CreditCard },
+  { href: "/admin/shop", label: "小店", icon: ShoppingBag },
+  { href: "/admin/shop/queue", label: "采购队列", icon: ClipboardList },
+  { href: "/admin/shop/sources", label: "货源", icon: PackageSearch },
   { href: "/admin/users", label: "用户", icon: Users },
-  { href: "/admin/models", label: "模型与上游", icon: Server },
-  { href: "/admin/plans", label: "套餐", icon: Settings },
+  { href: "/admin/announcements", label: "公告", icon: Megaphone },
+  { href: "/admin/plans", label: "充值包", icon: CreditCard },
+  { href: "/admin/pricing", label: "定价", icon: SlidersHorizontal },
+  { href: "/admin/gateway", label: "网关", icon: Gauge },
 ];
 
 export function DashboardNav({ admin = false }: { admin?: boolean }) {

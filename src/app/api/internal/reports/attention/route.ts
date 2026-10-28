@@ -8,34 +8,20 @@ export async function GET(request: Request): Promise<Response> {
   if (!verifyInternalSecret(request)) return unauthorized();
 
   try {
-    const expiring = await query<{
-      email: string;
-      name: string;
-      plan_name: string | null;
-      plan_expires_at: string;
-      balance_micros: string;
-    }>(
-      `SELECT u.email, u.name, p.name AS plan_name, u.plan_expires_at, u.balance_micros
-         FROM users u
-         LEFT JOIN plans p ON p.id = u.plan_id
-        WHERE u.status = 'active'
-          AND u.plan_expires_at BETWEEN now() AND now() + interval '3 days'
-        ORDER BY u.plan_expires_at
-        LIMIT 50`,
-    );
-
+    // Low balance is the only user-facing funding signal now: credits do not
+    // expire, so legacy plan_expires_at must not gate this report.
     const lowBalance = await query<{
       email: string;
       name: string;
       balance_micros: string;
-      plan_expires_at: string;
+      gateway_balance_synced_at: string | null;
     }>(
-      `SELECT email, name, balance_micros, plan_expires_at
-         FROM users
-        WHERE status = 'active'
-          AND plan_expires_at > now()
-          AND balance_micros < 2000000
-        ORDER BY balance_micros
+      `SELECT u.email, u.name, u.balance_micros, u.gateway_balance_synced_at
+         FROM users u
+         JOIN gateway_identities gi ON gi.user_id = u.id AND gi.state = 'active'
+        WHERE u.status = 'active'
+          AND u.balance_micros < 2000000
+        ORDER BY u.balance_micros
         LIMIT 50`,
     );
 
@@ -43,9 +29,10 @@ export async function GET(request: Request): Promise<Response> {
       id: string;
       email: string;
       amount_micros: string;
+      payment_provider: string;
       created_at: string;
     }>(
-      `SELECT o.id, u.email, o.amount_micros, o.created_at
+      `SELECT o.id, u.email, o.amount_micros, o.payment_provider, o.created_at
          FROM orders o
          JOIN users u ON u.id = o.user_id
         WHERE o.status = 'pending'
@@ -54,36 +41,43 @@ export async function GET(request: Request): Promise<Response> {
         LIMIT 50`,
     );
 
-    const readyModels = await query<{ count: string }>(
-      `SELECT COUNT(*) AS count
-         FROM models m
-         JOIN upstreams u ON u.id = m.upstream_id
-        WHERE m.enabled = TRUE AND u.enabled = TRUE AND u.api_key_encrypted IS NOT NULL`,
-    );
+    const [prices, ops] = await Promise.all([
+      query<{ status: string; count: string }>(
+        "SELECT status, COUNT(*)::text AS count FROM model_prices_current GROUP BY status",
+      ),
+      query<{ status: string; count: string }>(
+        `SELECT status, COUNT(*)::text AS count
+           FROM gateway_balance_ops
+          WHERE status IN ('pending', 'applying', 'failed')
+          GROUP BY status`,
+      ),
+    ]);
 
     return Response.json(
       {
         generated_at: new Date().toISOString(),
-        expiring_plans: expiring.rows.map((item) => ({
-          email: item.email,
-          name: item.name,
-          plan: item.plan_name,
-          expires_at: item.plan_expires_at,
-          balance_micros: toNumber(item.balance_micros),
-        })),
         low_balance: lowBalance.rows.map((item) => ({
           email: item.email,
           name: item.name,
           balance_micros: toNumber(item.balance_micros),
-          plan_expires_at: item.plan_expires_at,
+          balance_synced_at: item.gateway_balance_synced_at,
         })),
         stale_pending_orders: staleOrders.rows.map((item) => ({
           id: item.id,
           email: item.email,
           amount_micros: toNumber(item.amount_micros),
+          provider: item.payment_provider,
           created_at: item.created_at,
         })),
-        ready_models: toNumber(readyModels.rows[0]?.count),
+        prices: Object.fromEntries(
+          prices.rows.map((item) => [item.status, Number(item.count)]),
+        ),
+        credit_ops: Object.fromEntries(
+          ops.rows.map((item) => [item.status, Number(item.count)]),
+        ),
+        ready_models: Number(
+          prices.rows.find((item) => item.status === "active")?.count || 0,
+        ),
       },
       { headers: { "Cache-Control": "no-store" } },
     );

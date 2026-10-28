@@ -1,11 +1,18 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/auth";
-import { encryptSecret } from "@/lib/crypto";
 import { query, toNumber, withTransaction } from "@/lib/db";
+import {
+  applyCreditOpById,
+  enqueueAdjustment,
+} from "@/lib/gateway-credits";
 import { fulfillOrder } from "@/lib/orders";
+import { syncPricing } from "@/lib/pricing/engine";
+import { isSub2ApiConfigured } from "@/lib/sub2api/client";
+import { setRemoteUserStatus } from "@/lib/sub2api/identity";
 
 function fail(path: string, message: string): never {
   redirect(`${path}?error=${encodeURIComponent(message)}`);
@@ -17,12 +24,6 @@ function saved(path: string): never {
 
 function decimal(value: FormDataEntryValue | null, field: string): number {
   const parsed = Number.parseFloat(String(value ?? ""));
-  if (!Number.isFinite(parsed)) throw new Error(`${field}格式无效`);
-  return parsed;
-}
-
-function integer(value: FormDataEntryValue | null, field: string): number {
-  const parsed = Number.parseInt(String(value ?? ""), 10);
   if (!Number.isFinite(parsed)) throw new Error(`${field}格式无效`);
   return parsed;
 }
@@ -41,7 +42,7 @@ export async function updateOrderAction(formData: FormData): Promise<void> {
 
   try {
     if (action === "paid") {
-      await fulfillOrder(orderId);
+      throw new Error("请通过订单的核实到账入口填写实际收款记录");
     } else if (action === "cancelled") {
       const cancelled = await query(
         `UPDATE orders
@@ -85,6 +86,17 @@ export async function updateUserStatusAction(formData: FormData): Promise<void> 
     }
   }
 
+  if (isSub2ApiConfigured()) {
+    try {
+      await setRemoteUserStatus(userId, status as "active" | "disabled");
+    } catch (error) {
+      fail(
+        "/admin/users",
+        error instanceof Error ? `网关状态更新失败：${error.message}` : "网关状态更新失败",
+      );
+    }
+  }
+
   await query("UPDATE users SET status = $2, updated_at = now() WHERE id = $1", [
     userId,
     status,
@@ -107,19 +119,23 @@ export async function adjustBalanceAction(formData: FormData): Promise<void> {
   if (!deltaMicros) fail("/admin/users", "调整金额不能为 0");
   if (!note || note.length > 200) fail("/admin/users", "请填写 200 字以内的调整原因");
 
+  let opId = "";
   try {
     await withTransaction(async (client) => {
-      const user = await client.query<{ balance_micros: string }>(
-        "SELECT balance_micros FROM users WHERE id = $1 FOR UPDATE",
+      const user = await client.query<{ id: string }>(
+        "SELECT id FROM users WHERE id = $1 FOR UPDATE",
         [userId],
       );
       if (!user.rows[0]) throw new Error("用户不存在");
-      const newBalance = toNumber(user.rows[0].balance_micros) + deltaMicros;
-      if (newBalance < 0) throw new Error("扣减金额超过当前余额");
-      await client.query(
-        "UPDATE users SET balance_micros = $2, updated_at = now() WHERE id = $1",
-        [userId, newBalance],
+      const op = await enqueueAdjustment(
+        {
+          userId,
+          amountMicros: deltaMicros,
+          reference: `cokeai-adjust:${randomUUID()}`,
+        },
+        client,
       );
+      opId = op.id;
       await client.query(
         `INSERT INTO balance_adjustments (user_id, admin_id, amount_micros, note)
          VALUES ($1, $2, $3, $4)`,
@@ -128,6 +144,13 @@ export async function adjustBalanceAction(formData: FormData): Promise<void> {
     });
   } catch (error) {
     fail("/admin/users", error instanceof Error ? error.message : "调整失败");
+  }
+
+  if (opId) {
+    const applied = await applyCreditOpById(opId);
+    if (applied?.status === "failed") {
+      fail("/admin/users", "额度调整已登记，但网关暂未到账，请稍后重试");
+    }
   }
 
   revalidatePath("/admin/users");
@@ -148,218 +171,112 @@ export async function payCommissionAction(formData: FormData): Promise<void> {
   saved("/admin");
 }
 
-export async function updateUpstreamAction(formData: FormData): Promise<void> {
-  await requireAdmin();
-  const id = String(formData.get("id") || "");
-  const name = String(formData.get("name") || "").trim();
-  const baseUrl = String(formData.get("baseUrl") || "").trim().replace(/\/+$/, "");
-  const newApiKey = String(formData.get("apiKey") || "").trim();
-  const enabled = formData.get("enabled") === "on";
-
-  if (!id || !name) fail("/admin/models", "上游名称不能为空");
-  try {
-    new URL(baseUrl);
-  } catch {
-    fail("/admin/models", "Base URL 格式无效");
-  }
-
-  const existing = await query<{ api_key_encrypted: string | null }>(
-    "SELECT api_key_encrypted FROM upstreams WHERE id = $1",
-    [id],
-  );
-  if (!existing.rows[0]) fail("/admin/models", "上游不存在");
-  const hasKey = Boolean(newApiKey || existing.rows[0].api_key_encrypted);
-  if (enabled && !hasKey) fail("/admin/models", "启用上游前必须填写 API Key");
-
-  const encrypted = newApiKey ? encryptSecret(newApiKey) : existing.rows[0].api_key_encrypted;
-  await query(
-    `UPDATE upstreams
-        SET name = $2, base_url = $3, api_key_encrypted = $4, enabled = $5, updated_at = now()
-      WHERE id = $1`,
-    [id, name, baseUrl, encrypted, enabled],
-  );
-  revalidatePath("/admin/models");
-  revalidatePath("/");
-  saved("/admin/models");
-}
-
-export async function createUpstreamAction(formData: FormData): Promise<void> {
-  await requireAdmin();
-  const id = String(formData.get("id") || "").trim().toLowerCase();
-  const name = String(formData.get("name") || "").trim();
-  const baseUrl = String(formData.get("baseUrl") || "").trim().replace(/\/+$/, "");
-  const apiKey = String(formData.get("apiKey") || "").trim();
-  if (!/^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/.test(id)) {
-    fail("/admin/models", "上游标识需为 3-40 位小写字母、数字或连字符");
-  }
-  if (!name) fail("/admin/models", "请输入上游名称");
-  try {
-    new URL(baseUrl);
-  } catch {
-    fail("/admin/models", "Base URL 格式无效");
-  }
-  if (!apiKey) fail("/admin/models", "请输入 API Key");
-
-  try {
-    await query(
-      `INSERT INTO upstreams (id, name, base_url, api_key_encrypted, enabled)
-       VALUES ($1, $2, $3, $4, TRUE)`,
-      [id, name, baseUrl, encryptSecret(apiKey)],
-    );
-  } catch (error) {
-    const code =
-      error && typeof error === "object" && "code" in error
-        ? (error as { code?: string }).code
-        : "";
-    fail("/admin/models", code === "23505" ? "上游标识已存在" : "创建上游失败");
-  }
-  revalidatePath("/admin/models");
-  saved("/admin/models");
-}
-
-export async function updateModelAction(formData: FormData): Promise<void> {
-  await requireAdmin();
-  const id = String(formData.get("id") || "");
-  const displayName = String(formData.get("displayName") || "").trim();
-  const upstreamModel = String(formData.get("upstreamModel") || "").trim();
-  const inputUsd = decimal(formData.get("inputUsd"), "输入价格");
-  const outputUsd = decimal(formData.get("outputUsd"), "输出价格");
-  const markupPercent = decimal(formData.get("markupPercent"), "加价比例");
-  const minPlanTier = integer(formData.get("minPlanTier"), "最低套餐等级");
-  const contextWindow = integer(formData.get("contextWindow"), "上下文窗口");
-  const enabled = formData.get("enabled") === "on";
-
-  if (!id || !displayName || !upstreamModel) fail("/admin/models", "模型信息不完整");
-  if (inputUsd < 0 || outputUsd < 0) fail("/admin/models", "模型价格不能为负数");
-  if (markupPercent < 100 || markupPercent > 500) {
-    fail("/admin/models", "加价比例应在 100%-500% 之间");
-  }
-  if (![0, 1, 2].includes(minPlanTier)) fail("/admin/models", "套餐等级无效");
-  if (contextWindow < 1000) fail("/admin/models", "上下文窗口过小");
-
-  const readiness = await query<{ ready: boolean }>(
-    `SELECT (u.enabled AND u.api_key_encrypted IS NOT NULL) AS ready
-       FROM models m JOIN upstreams u ON u.id = m.upstream_id
-      WHERE m.id = $1`,
-    [id],
-  );
-  if (!readiness.rows[0]) fail("/admin/models", "模型不存在");
-  if (enabled && !readiness.rows[0].ready) {
-    fail("/admin/models", "启用模型前请先配置并启用对应上游");
-  }
-
-  await query(
-    `UPDATE models
-        SET display_name = $2, upstream_model = $3,
-            input_price_usd_micros_per_mtok = $4,
-            output_price_usd_micros_per_mtok = $5,
-            markup_bps = $6, min_plan_tier = $7, context_window = $8,
-            enabled = $9, updated_at = now()
-      WHERE id = $1`,
-    [
-      id,
-      displayName,
-      upstreamModel,
-      Math.round(inputUsd * 1_000_000),
-      Math.round(outputUsd * 1_000_000),
-      Math.round(markupPercent * 100),
-      minPlanTier,
-      contextWindow,
-      enabled,
-    ],
-  );
-  revalidatePath("/admin/models");
-  revalidatePath("/");
-  revalidatePath("/dashboard");
-  saved("/admin/models");
-}
-
-export async function createModelAction(formData: FormData): Promise<void> {
-  await requireAdmin();
-  const id = String(formData.get("id") || "").trim().toLowerCase();
-  const upstreamId = String(formData.get("upstreamId") || "");
-  const displayName = String(formData.get("displayName") || "").trim();
-  const upstreamModel = String(formData.get("upstreamModel") || "").trim();
-  if (!/^[a-z0-9][a-z0-9._-]{1,60}[a-z0-9]$/.test(id)) {
-    fail("/admin/models", "模型 ID 需为 3-62 位小写字母、数字、点、下划线或连字符");
-  }
-  if (!upstreamId || !displayName || !upstreamModel) {
-    fail("/admin/models", "模型信息不完整");
-  }
-  try {
-    await query(
-      `INSERT INTO models
-        (id, upstream_id, upstream_model, display_name, description,
-         input_price_usd_micros_per_mtok, output_price_usd_micros_per_mtok,
-         markup_bps, min_plan_tier, context_window, enabled, sort_order)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 18000, 0, 128000, FALSE, 100)`,
-      [
-        id,
-        upstreamId,
-        upstreamModel,
-        displayName,
-        String(formData.get("description") || "").trim().slice(0, 300),
-        Math.round(decimal(formData.get("inputUsd"), "输入价格") * 1_000_000),
-        Math.round(decimal(formData.get("outputUsd"), "输出价格") * 1_000_000),
-      ],
-    );
-  } catch (error) {
-    const code =
-      error && typeof error === "object" && "code" in error
-        ? (error as { code?: string }).code
-        : "";
-    fail("/admin/models", code === "23505" ? "模型 ID 已存在" : "创建模型失败");
-  }
-  revalidatePath("/admin/models");
-  saved("/admin/models");
-}
-
 export async function updatePlanAction(formData: FormData): Promise<void> {
   await requireAdmin();
   const id = String(formData.get("id") || "");
   const name = String(formData.get("name") || "").trim();
   const tagline = String(formData.get("tagline") || "").trim();
-  const tier = integer(formData.get("tier"), "套餐等级");
-  const days = integer(formData.get("durationDays"), "有效天数");
   const priceMicros = yuanToMicros(formData.get("priceYuan"), "售价");
   const creditsMicros = yuanToMicros(formData.get("creditsYuan"), "额度");
   const active = formData.get("active") === "on";
   const highlight = formData.get("highlight") === "on";
-  const features = String(formData.get("features") || "")
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .slice(0, 12);
 
-  if (!id || !name || !tagline) fail("/admin/plans", "套餐信息不完整");
-  if (![0, 1, 2].includes(tier)) fail("/admin/plans", "套餐等级无效");
-  if (days < 1 || days > 3650) fail("/admin/plans", "有效天数无效");
+  if (!id || !name) fail("/admin/plans", "充值包信息不完整");
   if (priceMicros <= 0) fail("/admin/plans", "售价必须大于 0");
   if (creditsMicros <= 0) fail("/admin/plans", "额度必须大于 0");
-  if (features.length === 0) fail("/admin/plans", "至少填写一条套餐权益");
 
   await query(
     `UPDATE plans
-        SET name = $2, tagline = $3, tier = $4, duration_days = $5,
-            price_micros = $6, credits_micros = $7, features = $8::jsonb,
-            active = $9, highlight = $10
+        SET name = $2, tagline = $3, tier = 0, duration_days = 36500,
+            price_micros = $4, credits_micros = $5, features = '[]'::jsonb,
+            active = $6, highlight = $7
       WHERE id = $1`,
-    [
-      id,
-      name,
-      tagline,
-      tier,
-      days,
-      priceMicros,
-      creditsMicros,
-      JSON.stringify(features),
-      active,
-      highlight,
-    ],
+    [id, name, tagline, priceMicros, creditsMicros, active, highlight],
   );
   revalidatePath("/admin/plans");
   revalidatePath("/");
   revalidatePath("/pricing");
   revalidatePath("/dashboard/billing");
   saved("/admin/plans");
+}
+
+export async function upsertPricingCostAction(formData: FormData): Promise<void> {
+  await requireAdmin();
+  const modelId = String(formData.get("modelId") || "").trim();
+  const platform = String(formData.get("platform") || "").trim();
+  const sourceName = String(formData.get("sourceName") || "").trim().slice(0, 80);
+  const accountIdRaw = String(formData.get("accountId") || "").trim();
+  const accountId = accountIdRaw ? Number.parseInt(accountIdRaw, 10) : null;
+  if (!modelId) fail("/admin/pricing", "模型 ID 不能为空");
+  if (accountIdRaw && (!Number.isFinite(accountId) || Number(accountId) <= 0)) {
+    fail("/admin/pricing", "账号 ID 无效");
+  }
+
+  let inputUsd = 0;
+  let outputUsd = 0;
+  let cacheReadUsd = 0;
+  let cacheWriteUsd = 0;
+  let perRequestUsd = 0;
+  try {
+    inputUsd = decimal(formData.get("inputUsd"), "输入成本");
+    outputUsd = decimal(formData.get("outputUsd"), "输出成本");
+    cacheReadUsd = decimal(formData.get("cacheReadUsd"), "缓存读成本");
+    cacheWriteUsd = decimal(formData.get("cacheWriteUsd"), "缓存写成本");
+    perRequestUsd = decimal(formData.get("perRequestUsd"), "按次成本");
+  } catch (error) {
+    fail("/admin/pricing", error instanceof Error ? error.message : "成本格式无效");
+  }
+  if (inputUsd < 0 || outputUsd < 0 || cacheReadUsd < 0 || cacheWriteUsd < 0 || perRequestUsd < 0) {
+    fail("/admin/pricing", "成本不能为负数");
+  }
+  if (inputUsd <= 0 && outputUsd <= 0 && perRequestUsd <= 0) {
+    fail("/admin/pricing", "至少填写输入/输出或按次成本");
+  }
+
+  await query(
+    `INSERT INTO pricing_costs
+      (model_id, platform, account_id, source_name,
+       input_usd_per_mtok, output_usd_per_mtok,
+       cache_read_usd_per_mtok, cache_write_usd_per_mtok,
+       per_request_usd, effective_from)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,now())`,
+    [
+      modelId,
+      platform,
+      accountId,
+      sourceName,
+      inputUsd,
+      outputUsd,
+      cacheReadUsd,
+      cacheWriteUsd,
+      perRequestUsd,
+    ],
+  );
+  revalidatePath("/admin/pricing");
+  saved("/admin/pricing");
+}
+
+export async function deletePricingCostAction(formData: FormData): Promise<void> {
+  await requireAdmin();
+  const id = String(formData.get("id") || "");
+  if (!id) fail("/admin/pricing", "缺少记录");
+  await query("DELETE FROM pricing_costs WHERE id = $1", [id]);
+  revalidatePath("/admin/pricing");
+  saved("/admin/pricing");
+}
+
+export async function syncPricingAction(formData: FormData): Promise<void> {
+  await requireAdmin();
+  const force = formData.get("force") === "on";
+  try {
+    const result = await syncPricing({ force });
+    redirect(
+      `/admin/pricing?synced=1&active=${result.modelsActive}&paused=${result.modelsPaused}`,
+    );
+  } catch (error) {
+    fail(
+      "/admin/pricing",
+      error instanceof Error ? `同步失败：${error.message}` : "同步失败",
+    );
+  }
 }

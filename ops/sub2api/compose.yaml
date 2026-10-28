@@ -1,0 +1,227 @@
+# =============================================================================
+# CokeAI + Sub2API production overlay
+# =============================================================================
+# This file is NOT a standalone deployment. Start it together with the root
+# compose file so Sub2API joins the CokeAI network and the edge can resolve it:
+#
+#   docker compose -f docker-compose.yml -f ops/sub2api/compose.yaml \
+#     --profile tunnel up -d --build
+#
+# The project name comes from docker-compose.yml (`name: cokeai`), so both files
+# share one network named ${COKEAI_NETWORK:-cokeai_net}.
+#
+# PRODUCTION IMAGE PINNING
+#   weishaw/sub2api:latest is only a placeholder. Pin a release tag or immutable
+#   digest in .env before the first production start, for example:
+#
+#     SUB2API_IMAGE=weishaw/sub2api@sha256:<digest>
+#
+#   Roll forward by changing that value and re-running `docker compose ... up -d`.
+#   Keep the previous value to roll back the binary without touching data.
+#
+# DATABASE OPTIONS
+#   A) Dedicated PostgreSQL container (default below): strongest isolation and
+#      the easiest rollback/backup boundary. Costs roughly 200-400 MB RAM.
+#   B) Shared CokeAI PostgreSQL: remove the sub2api-postgres service and its
+#      depends_on entry, set SUB2API_DB_HOST=postgres, then create a dedicated
+#      role/database once (see docs/SUB2API_OPERATIONS.md). Lower memory use on
+#      a 2 GB host, but Sub2API and CokeAI then share failure and backup domains.
+#
+# SECURITY
+#   The app port is bound to 127.0.0.1 only. Public access goes exclusively
+#   through edge -> Cloudflare Tunnel. PostgreSQL and Redis have no host ports
+#   and sit on an internal-only network.
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  sub2api:
+    # Pin this. See the image pinning note above.
+    image: ${SUB2API_IMAGE:-weishaw/sub2api:latest}
+    container_name: cokeai-sub2api
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    ulimits:
+      nofile:
+        soft: 100000
+        hard: 100000
+    ports:
+      - "127.0.0.1:${SUB2API_PORT:-18080}:8080"
+    volumes:
+      - sub2api_data:/app/data
+      # Optional: mount a reviewed config.yaml after copying and editing it.
+      # Keep the file outside the public repository when it contains secrets.
+      # - ./config.yaml:/app/data/config.yaml:ro
+    environment:
+      AUTO_SETUP: "true"
+      SERVER_HOST: "0.0.0.0"
+      SERVER_PORT: "8080"
+      SERVER_MODE: "release"
+      RUN_MODE: "${SUB2API_RUN_MODE:-standard}"
+      TZ: "${TZ:-Asia/Shanghai}"
+
+      # Database (dedicated container by default; option B changes only the host).
+      DATABASE_HOST: "${SUB2API_DB_HOST:-sub2api-postgres}"
+      DATABASE_PORT: "${SUB2API_DB_PORT:-5432}"
+      DATABASE_USER: "${SUB2API_DB_USER:-sub2api}"
+      DATABASE_PASSWORD: "${SUB2API_DB_PASSWORD:?SUB2API_DB_PASSWORD is required}"
+      DATABASE_DBNAME: "${SUB2API_DB_NAME:-sub2api}"
+      DATABASE_SSLMODE: "disable"
+      DATABASE_MAX_OPEN_CONNS: "${SUB2API_DB_MAX_OPEN_CONNS:-20}"
+      DATABASE_MAX_IDLE_CONNS: "${SUB2API_DB_MAX_IDLE_CONNS:-5}"
+
+      # Dedicated Redis (separate from CokeAI's Redis to avoid key collisions).
+      REDIS_HOST: "${SUB2API_REDIS_HOST:-sub2api-redis}"
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: "${SUB2API_REDIS_PASSWORD:?SUB2API_REDIS_PASSWORD is required}"
+      REDIS_DB: "${SUB2API_REDIS_DB:-0}"
+      REDIS_POOL_SIZE: "${SUB2API_REDIS_POOL_SIZE:-256}"
+      REDIS_MIN_IDLE_CONNS: "${SUB2API_REDIS_MIN_IDLE_CONNS:-5}"
+
+      # First-run admin. Changing these later does not overwrite an existing admin.
+      ADMIN_EMAIL: "${SUB2API_ADMIN_EMAIL:?SUB2API_ADMIN_EMAIL is required}"
+      ADMIN_PASSWORD: "${SUB2API_ADMIN_PASSWORD:?SUB2API_ADMIN_PASSWORD is required}"
+
+      # Fixed keys: without them, every restart invalidates sessions/2FA secrets.
+      JWT_SECRET: "${SUB2API_JWT_SECRET:?SUB2API_JWT_SECRET is required}"
+      JWT_EXPIRE_HOUR: "${SUB2API_JWT_EXPIRE_HOUR:-24}"
+      TOTP_ENCRYPTION_KEY: "${SUB2API_TOTP_ENCRYPTION_KEY:?SUB2API_TOTP_ENCRYPTION_KEY is required}"
+
+      # Only the edge/cloudflared containers talk to Sub2API directly, over the
+      # private Docker network. Trust that private range, not the public Internet.
+      SERVER_TRUSTED_PROXIES: "${SUB2API_TRUSTED_PROXIES:-172.16.0.0/12,10.0.0.0/8,192.168.0.0/16}"
+      SECURITY_FORWARDED_CLIENT_IP_HEADERS: "${SUB2API_FORWARDED_IP_HEADERS:-CF-Connecting-IP}"
+
+      # URL allowlist is intentionally off for an API-key upstream gateway. If
+      # enabled later, list every allowed upstream host explicitly.
+      SECURITY_URL_ALLOWLIST_ENABLED: "${SUB2API_URL_ALLOWLIST_ENABLED:-false}"
+
+      # Gateway limits matching the edge: 256 MiB request body, no local
+      # first-byte timeout (long generations are bounded by upstream settings).
+      GATEWAY_MAX_BODY_SIZE: "268435456"
+      GATEWAY_OPENAI_RESPONSE_HEADER_TIMEOUT: "0"
+      GATEWAY_MAX_CONNS_PER_HOST: "${GATEWAY_MAX_CONNS_PER_HOST:-1024}"
+      GATEWAY_MAX_IDLE_CONNS: "${GATEWAY_MAX_IDLE_CONNS:-2560}"
+
+    depends_on:
+      # Remove these two entries when using the shared CokeAI PostgreSQL/Redis
+      # option (option B) and point SUB2API_DB_HOST / SUB2API_REDIS_HOST at the
+      # corresponding CokeAI services.
+      sub2api-postgres:
+        condition: service_healthy
+      sub2api-redis:
+        condition: service_healthy
+    networks:
+      - cokeai
+      - sub2api_internal
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "-q",
+          "-T",
+          "5",
+          "-O",
+          "/dev/null",
+          "http://127.0.0.1:8080/health",
+        ]
+      interval: 30s
+      timeout: 10s
+      start_period: 45s
+      retries: 5
+    logging: *default-logging
+    # On a 2 GB host, consider uncommenting a hard cap after measuring:
+    # mem_limit: 1g
+
+  sub2api-postgres:
+    # Dedicated Sub2API PostgreSQL. Do not share this volume with CokeAI.
+    image: ${SUB2API_POSTGRES_IMAGE:-postgres:18-alpine}
+    container_name: cokeai-sub2api-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: "${SUB2API_DB_USER:-sub2api}"
+      POSTGRES_PASSWORD: "${SUB2API_DB_PASSWORD:?SUB2API_DB_PASSWORD is required}"
+      POSTGRES_DB: "${SUB2API_DB_NAME:-sub2api}"
+      PGDATA: /var/lib/postgresql/data/pgdata
+      TZ: "${TZ:-Asia/Shanghai}"
+    volumes:
+      - sub2api_postgres_data:/var/lib/postgresql/data
+    networks:
+      - sub2api_internal
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${SUB2API_DB_USER:-sub2api} -d ${SUB2API_DB_NAME:-sub2api}",
+        ]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
+      retries: 10
+    logging: *default-logging
+    # On a 2 GB host, consider: mem_limit: 512m
+
+  sub2api-redis:
+    # Dedicated Redis for Sub2API auth cache, scheduling, and usage counters.
+    image: ${SUB2API_REDIS_IMAGE:-redis:8-alpine}
+    container_name: cokeai-sub2api-redis
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --save
+      - "60"
+      - "1"
+      - --appendonly
+      - "yes"
+      - --appendfsync
+      - everysec
+      - --maxmemory
+      - "${SUB2API_REDIS_MAXMEMORY:-256mb}"
+      - --maxmemory-policy
+      - allkeys-lru
+      - --requirepass
+      - "${SUB2API_REDIS_PASSWORD:?SUB2API_REDIS_PASSWORD is required}"
+    environment:
+      TZ: "${TZ:-Asia/Shanghai}"
+      # redis-cli in the healthcheck authenticates through this variable.
+      REDISCLI_AUTH: "${SUB2API_REDIS_PASSWORD:?SUB2API_REDIS_PASSWORD is required}"
+    volumes:
+      - sub2api_redis_data:/data
+    networks:
+      - sub2api_internal
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      start_period: 10s
+      retries: 10
+    logging: *default-logging
+    # On a 2 GB host, consider: mem_limit: 192m
+
+  # Extend the edge service from docker-compose.yml so Caddy starts after the
+  # gateway is healthy. Compose merges this depends_on with the base app
+  # dependency.
+  edge:
+    depends_on:
+      sub2api:
+        condition: service_healthy
+
+networks:
+  # Same network as docker-compose.yml. The explicit name keeps both files in
+  # sync when they are merged with -f.
+  cokeai:
+    name: ${COKEAI_NETWORK:-cokeai_net}
+  # Internal-only network: PostgreSQL/Redis are reachable only by Sub2API.
+  sub2api_internal:
+    internal: true
+
+volumes:
+  sub2api_data:
+  sub2api_postgres_data:
+  sub2api_redis_data:

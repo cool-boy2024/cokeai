@@ -1,6 +1,8 @@
 import { query, toNumber } from "@/lib/db";
 import { unauthorized, verifyInternalSecret } from "@/lib/internal";
 import { formatCny } from "@/lib/money";
+import { isSub2ApiConfigured } from "@/lib/sub2api/client";
+import { getAdminDashboardStats } from "@/lib/sub2api/usage";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,13 +15,11 @@ export async function GET(request: Request): Promise<Response> {
       revenue: string;
       paid_orders: string;
       new_users: string;
-      requests: string;
-      input_tokens: string;
-      output_tokens: string;
-      charged: string;
-      upstream_cost: string;
-      failures: string;
       pending_orders: string;
+      pending_ops: string;
+      failed_ops: string;
+      active_prices: string;
+      paused_prices: string;
       commission_pending: string;
       commission_available: string;
     }>(
@@ -27,34 +27,32 @@ export async function GET(request: Request): Promise<Response> {
         COALESCE((SELECT SUM(amount_micros) FROM orders WHERE status = 'paid' AND paid_at >= now() - interval '24 hours'), 0) AS revenue,
         (SELECT COUNT(*) FROM orders WHERE status = 'paid' AND paid_at >= now() - interval '24 hours') AS paid_orders,
         (SELECT COUNT(*) FROM users WHERE created_at >= now() - interval '24 hours') AS new_users,
-        (SELECT COUNT(*) FROM usage_events WHERE created_at >= now() - interval '24 hours') AS requests,
-        COALESCE((SELECT SUM(input_tokens) FROM usage_events WHERE created_at >= now() - interval '24 hours' AND status = 'succeeded'), 0) AS input_tokens,
-        COALESCE((SELECT SUM(output_tokens) FROM usage_events WHERE created_at >= now() - interval '24 hours' AND status = 'succeeded'), 0) AS output_tokens,
-        COALESCE((SELECT SUM(charged_micros) FROM usage_events WHERE created_at >= now() - interval '24 hours' AND status = 'succeeded'), 0) AS charged,
-        COALESCE((SELECT SUM(upstream_cost_micros) FROM usage_events WHERE created_at >= now() - interval '24 hours' AND status = 'succeeded'), 0) AS upstream_cost,
-        (SELECT COUNT(*) FROM usage_events WHERE created_at >= now() - interval '24 hours' AND status = 'failed') AS failures,
         (SELECT COUNT(*) FROM orders WHERE status = 'pending' AND created_at < now() - interval '2 hours') AS pending_orders,
+        (SELECT COUNT(*) FROM gateway_balance_ops WHERE status IN ('pending', 'applying')) AS pending_ops,
+        (SELECT COUNT(*) FROM gateway_balance_ops WHERE status = 'failed') AS failed_ops,
+        (SELECT COUNT(*) FROM model_prices_current WHERE status = 'active') AS active_prices,
+        (SELECT COUNT(*) FROM model_prices_current WHERE status = 'paused') AS paused_prices,
         COALESCE((SELECT SUM(amount_micros) FROM commissions WHERE status = 'pending'), 0) AS commission_pending,
         COALESCE((SELECT SUM(amount_micros) FROM commissions WHERE status = 'available'), 0) AS commission_available`,
     );
 
-    const topModels = await query<{
-      model_id: string;
-      requests: string;
-      charged: string;
-    }>(
-      `SELECT model_id, COUNT(*) AS requests, SUM(charged_micros) AS charged
-         FROM usage_events
-        WHERE created_at >= now() - interval '24 hours'
-          AND status = 'succeeded'
-        GROUP BY model_id
-        ORDER BY charged DESC
-        LIMIT 5`,
-    );
+    // Usage is authoritative in Sub2API. Dashboard "today" values are used for
+    // the daily digest; the previous local usage_events table is legacy and is
+    // no longer written by the public gateway.
+    let gatewayStats: Awaited<ReturnType<typeof getAdminDashboardStats>> | null = null;
+    let gatewayError: string | null = null;
+    if (isSub2ApiConfigured()) {
+      try {
+        gatewayStats = await getAdminDashboardStats();
+      } catch (error) {
+        gatewayError = error instanceof Error ? error.message : "gateway_stats_failed";
+      }
+    }
 
     const row = overview.rows[0];
-    const charged = toNumber(row.charged);
-    const upstreamCost = toNumber(row.upstream_cost);
+    const todayCostMicros = Math.round(
+      Number(gatewayStats?.today_actual_cost || 0) * 1_000_000,
+    );
 
     return Response.json(
       {
@@ -64,21 +62,27 @@ export async function GET(request: Request): Promise<Response> {
         revenue: formatCny(row.revenue),
         paid_orders: toNumber(row.paid_orders),
         new_users: toNumber(row.new_users),
-        requests: toNumber(row.requests),
-        failures: toNumber(row.failures),
-        input_tokens: toNumber(row.input_tokens),
-        output_tokens: toNumber(row.output_tokens),
-        charged_micros: charged,
-        upstream_cost_micros: upstreamCost,
-        gross_margin_micros: charged - upstreamCost,
+        // Gateway usage (today, Sub2API timezone Asia/Shanghai).
+        requests: toNumber(gatewayStats?.today_requests),
+        failures: 0,
+        input_tokens: 0,
+        output_tokens: 0,
+        charged_micros: todayCostMicros,
+        upstream_cost_micros: 0,
+        gross_margin_micros: 0,
+        today_tokens: toNumber(gatewayStats?.today_tokens),
+        total_requests: toNumber(gatewayStats?.total_requests),
+        total_actual_cost_micros: Math.round(
+          Number(gatewayStats?.total_actual_cost || 0) * 1_000_000,
+        ),
+        gateway_error: gatewayError,
         pending_orders_older_than_2h: toNumber(row.pending_orders),
+        credit_ops_pending: toNumber(row.pending_ops),
+        credit_ops_failed: toNumber(row.failed_ops),
+        prices_active: toNumber(row.active_prices),
+        prices_paused: toNumber(row.paused_prices),
         commission_pending_micros: toNumber(row.commission_pending),
         commission_available_micros: toNumber(row.commission_available),
-        top_models: topModels.rows.map((item) => ({
-          model: item.model_id,
-          requests: toNumber(item.requests),
-          charged_micros: toNumber(item.charged),
-        })),
       },
       { headers: { "Cache-Control": "no-store" } },
     );

@@ -12,7 +12,10 @@
       "name": "使用说明",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
-      "position": [-520, -80]
+      "position": [
+        -520,
+        -80
+      ]
     },
     {
       "parameters": {
@@ -29,7 +32,10 @@
       "name": "每天 00:15",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
-      "position": [-40, 80]
+      "position": [
+        -40,
+        80
+      ]
     },
     {
       "parameters": {
@@ -52,7 +58,10 @@
       "name": "解锁到期佣金",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [200, 80],
+      "position": [
+        200,
+        80
+      ],
       "onError": "continueRegularOutput"
     },
     {
@@ -75,17 +84,23 @@
       "name": "拉取每日对账",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [430, 80]
+      "position": [
+        430,
+        80
+      ]
     },
     {
       "parameters": {
-        "jsCode": "const report = $input.first().json;\n\nconst formatCny = (micros) => `¥${(Number(micros || 0) / 1000000).toFixed(2)}`;\nconst lines = [\n  'CokeAI 每日对账（最近 24 小时）',\n  `收入：${report.revenue || formatCny(report.revenue_micros)}（${report.paid_orders || 0} 笔已支付）`,\n  `新增用户：${report.new_users || 0}`,\n  `请求：${report.requests || 0}，失败：${report.failures || 0}`,\n  `输入 Token：${report.input_tokens || 0}`,\n  `输出 Token：${report.output_tokens || 0}`,\n  `用户消耗：${formatCny(report.charged_micros)}`,\n  `上游成本：${formatCny(report.upstream_cost_micros)}`,\n  `用量毛利：${formatCny(report.gross_margin_micros)}`,\n  `超过 2 小时未处理订单：${report.pending_orders_older_than_2h || 0}`,\n  `待结算佣金：${formatCny(report.commission_available_micros)}`,\n].join('\\n');\n\nif (!$env.ALERT_WEBHOOK_URL) {\n  return [];\n}\n\nreturn [{ json: { text: lines, content: lines } }];"
+        "jsCode": "const report = $input.first().json;\n\nconst formatCny = (micros) => `¥${(Number(micros || 0) / 1000000).toFixed(2)}`;\nconst lines = [\n  'CokeAI 每日对账',\n  `收入（24h）：${report.revenue || formatCny(report.revenue_micros)}（${report.paid_orders || 0} 笔已支付）`,\n  `新增用户：${report.new_users || 0}`,\n  `网关今日请求：${report.requests || 0}`,\n  `网关今日 Token：${report.today_tokens || 0}`,\n  `今日消耗：${formatCny(report.charged_micros)}`,\n  `累计消耗：${formatCny(report.total_actual_cost_micros)}`,\n  `加额度队列：待处理 ${report.credit_ops_pending || 0}，失败 ${report.credit_ops_failed || 0}`,\n  `模型价格：在售 ${report.prices_active || 0}，暂停 ${report.prices_paused || 0}`,\n  `超过 2 小时未处理订单：${report.pending_orders_older_than_2h || 0}`,\n  `待结算佣金：${formatCny(report.commission_available_micros)}`,\n];\n\nif (report.gateway_error) {\n  lines.push(`网关读取失败：${report.gateway_error}`);\n}\n\nif (!$env.ALERT_WEBHOOK_URL) {\n  return [];\n}\n\nreturn [{ json: { text: lines.join('\\n'), content: lines.join('\\n') } }];"
       },
       "id": "25e0ac8f-9a43-4b73-b92c-f3d56d1baabb",
       "name": "格式化报告",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [660, 80]
+      "position": [
+        660,
+        80
+      ]
     },
     {
       "parameters": {
@@ -102,7 +117,10 @@
       "name": "推送对账摘要",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [890, 80],
+      "position": [
+        890,
+        80
+      ],
       "onError": "continueRegularOutput"
     }
   ],

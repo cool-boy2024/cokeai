@@ -14,7 +14,7 @@ end
 return redis.call("DECR", KEYS[1])
 `;
 
-function getRedis(): Redis | null {
+export function getRedis(): Redis | null {
   if (!process.env.REDIS_URL) return null;
   if ((globalForRedis.cokeaiRedisDisabledUntil || 0) > Date.now()) return null;
   if (!globalForRedis.cokeaiRedis) {
@@ -33,7 +33,7 @@ function getRedis(): Redis | null {
   return globalForRedis.cokeaiRedis;
 }
 
-async function ensureConnected(client: Redis): Promise<void> {
+export async function ensureConnected(client: Redis): Promise<void> {
   if (client.status === "wait") await client.connect();
 }
 
