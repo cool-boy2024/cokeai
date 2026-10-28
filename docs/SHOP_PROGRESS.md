@@ -571,8 +571,11 @@ UI 实测：浏览 → 登录 → 下单（人工）→ 后台确认到账 → �
 - Sub2API 容器健康，管理端 `http://127.0.0.1:18080/` 返回 200；公网打不开是
   设计如此，只能通过 SSH 隧道访问：
   `ssh -i ~/.ssh/cokeai_deploy -L 18080:127.0.0.1:18080 deploy@47.83.178.22`。
-- 8 个容器全部 `healthy`：app、edge、cloudflared、n8n、postgres、redis、
-  sub2api 及其独立 postgres/redis。
+- 线上共 9 个容器：app、edge、postgres、redis、sub2api 及其独立 postgres/redis
+  共 7 个带健康检查且为 `healthy`；cloudflared、n8n 没有 healthcheck，状态为
+  `Up`。
+- 2026-10-29 03:39 CST 复核：9 个容器仍在运行，公网 `/api/health` 返回 200，
+  `USDT_ENABLED=false`、`USDT_QUOTE_MINUTES=10` 未变。
 
 ### 待确认：Cloudflare Tunnel 源站
 
