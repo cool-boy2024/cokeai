@@ -1092,3 +1092,35 @@ UI 实测：浏览 → 登录 → 下单（人工）→ 后台确认到账 → �
   `cokeai-app:pre-muse-logo`；rsync + build + up 后 app healthy。公网
   `/brand/muse-logo.svg` 200 `image/svg+xml`，
   `/shop/muse-ai-310b-account` 200。
+
+### 2026-10-29 20:30 CST AIClient2API OpenAI 上游部署与地区限制
+
+- 运营指定部署 `justlovemaki/AIClient-2-API`，目标是 OpenAI Codex OAuth
+  转 OpenAI 兼容接口，再由 Sub2API 作为 `openai` 平台上游调用。
+- 新增 `ops/aiclient2api/compose.yaml`，已合并 PR #30，`main=9506cd9`：
+  - 镜像按 linux/amd64 digest 固定；
+  - 容器 `cokeai-aiclient2api` 只加入 `cokeai_net`，Sub2API 使用
+    `http://aiclient2api:3000/v1`；
+  - 控制台 `127.0.0.1:13000`、Codex OAuth 回调 `127.0.0.1:1455` 只绑定
+    本机，供 SSH 隧道使用；
+  - 运行数据放在 gitignored 的 `aiclient2api-data/`，不提交配置、密钥或
+    OAuth token；容器约 123MB，`healthy`。
+- Sub2API 已创建账号 `id=1`：`platform=openai`、`type=apikey`、
+  `base_url=http://aiclient2api:3000/v1`、分组 `cokeai`、
+  `schedulable=false`。账号测试能到达 AIClient2API，返回
+  `No healthy provider found for openai-codex-oauth`，说明网络与协议链路
+  已通，只差 OAuth 凭据。
+- **硬阻塞：OpenAI 地区限制。** 2026-10-29 实测本机网络与香港生产出口访问
+  `auth.openai.com` 均 HTTP 403 `unsupported_country_region_territory`；
+  `api.openai.com` 与 `chatgpt.com/backend-api/codex` 从生产同样 403。
+  因此当前环境无法完成 Codex OAuth，也不能调用 OpenAI API；未做代理、指纹
+  或换出口绕过。Sub2API 账号继续保持暂停调度，不影响线上 `/v1`、支付和
+  小店。
+- 控制台密码与 `REQUIRED_API_KEY` 只写入服务器
+  `/home/deploy/cokeai/.aiclient2api-credentials.txt` 与本机
+  `~/.aiclient2api-credentials.txt`（均 `0600`），不进入仓库、数据库或聊天；
+  过期的一次性 OAuth 诊断文件已删除。
+- 待运营决定：受支持地区主机部署 AIClient2API、使用 Azure OpenAI 等官方
+  兼容渠道、或改用其他上游。上线前不要开启该 Sub2API 账号调度。
+- 未改 app、支付、订单状态机、数据库结构或 `/v1` 路由；生产 app、Sub2API、
+  AIClient2API 均 healthy，公网 `/api/health` 200。
