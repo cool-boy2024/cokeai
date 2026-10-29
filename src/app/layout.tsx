@@ -8,7 +8,6 @@ import { config } from "@/lib/config";
 import "./globals.css";
 import "./v2.css";
 import "./public.css";
-import "./taste.css";
 
 export const metadata: Metadata = {
   metadataBase: new URL(config.appUrl),
@@ -53,7 +52,7 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  themeColor: "#1c1c1c",
+  themeColor: "#f7f6f3",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

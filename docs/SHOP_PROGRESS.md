@@ -866,13 +866,11 @@ UI 实测：浏览 → 登录 → 下单（人工）→ 后台确认到账 → �
 
 ### 当前状态
 
-- 应用代码与生产均为 `14cc70f`；`main` 另含后续文档提交，
-  CI `build` / `e2e` / `compose-smoke` 全绿。
-- 生产已运行 `14cc70f`；7 个真实商品 + 1 个测试商品，订单与余额未动；
-  `USDT_ENABLED=false` 未变。
+- 首页已回滚到浅色旧版；生产在本轮回滚发布后与 `main` 同步
+  （上一版应用代码 `14cc70f`）。CI `build` / `e2e` / `compose-smoke` 全绿。
+- 7 个真实商品 + 1 个测试商品，订单与余额未动；`USDT_ENABLED=false` 未变。
 - 本地预览：`PORT=3010 npm run start` → http://127.0.0.1:3010（生产构建）。
-- 待决定：内页是否整体转深色；`usdt-e2e-test` 是否归档；
-  Gemini / Grok 新货源。
+- 待决定：`usdt-e2e-test` 是否归档；Gemini / Grok 新货源。
 - GitHub 双人流程：`wjlwww` 已收到 write 邀请，等待接受；
   `.github/CODEOWNERS` 已包含两位维护者。
 - 本机 `origin` 已改为 SSH `git@github.com:cool-boy2024/cokeai.git`；
@@ -1001,3 +999,14 @@ UI 实测：浏览 → 登录 → 下单（人工）→ 后台确认到账 → �
     且出现在公开列表；本次未删除，待运营决定是否归档。
 - 回滚：`docker tag cokeai-app:pre-muse cokeai-app:local && up -d app`；
   数据用上面的 pg_dump 恢复两张表。
+
+### 2026-10-29 17:50 CST 首页回滚到浅色版
+
+- 运营查看生产首页后确认不要 taste-skill 深色版，要求回滚到旧版浅色首页。
+- 只回滚首页视觉：`page.tsx`、`layout.tsx`、`SiteNav`、`SiteFooter` 和旧首页组件
+  （HeroOrbit / HeroBrandStrip / ShopRing / TaglineReveal / brandMarks）恢复到
+  `f33859c`；删除 `taste.css`、CostMeter / EndpointDemo / PlanPicker / StageSteps
+  以及两张首页照片。
+- 商品、Muse、货源文案、后台、支付、订单全部保留；首页小店文案补上 Muse。
+- 验证：typecheck / build 通过；`/`、`/shop`、Muse 详情页、`/pricing`、`/docs`
+  在 1440 / 390 无横向溢出；导航、页脚恢复浅色。
