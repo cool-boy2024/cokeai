@@ -81,6 +81,29 @@ function museSource(warrantyNote: string): ShopSourceCopy {
   };
 }
 
+const CODEX_SOURCE_TEXT = `
+Codex收码，单次。
+只支持OpenAI的app的登录验证，其他网址或功能的验证均不保证，乱拍不退。
+无法接google账户风控验证，无法用于注册账号，只支持下面这个页面，看清楚拍：
+单次收码会从系统号码池中选择剩余天数较少的号码，单次有效，保底能接，如果有长期需要，请选购长期收码。
+虚拟产品售出无质量问题不支持无理由退换货。
+🎉🎉🎉码接不到自己就能换号，只要不成功，哪怕换100个号，CDK都不消耗！！告别繁琐售后流程，自己就能简单操作。
+本店全套自研证码系统，保你稳稳接到验证码！
+收码视频演示：https://www.acfun.cn/v/ac48780323
+用于国际短信认证，保底能接。
+支持OpenAI官方codex验证码
+平台地址：卡密中包含
+（如果打不开挂网络，遇到无法获取自助换号即可）
+发货格式：CDK，在平台中使用。
+（注：号码有效期平均25天超长效，但少量号码可能在10-30天波动，都属正常现象，未收码号码可以变更）
+虚拟产品具有保密性，已发出的卡密不支持无理由退款，请勿乱拍，乱拍不退。
+如果接不到码，请点击“释放号码”后重新获取新号码！！
+只要没收到验证码就不会消耗卡密，可以重新获取更换号码再做尝试。
+（收不到码，或是提示whatsapp等，可以点击释放号码自助换号，无限换）
+号码为美国号码，默认美国代码即可。
+一次购买保保底绑定1个账号，理论1个（只保1个），可保底获取1次。
+`.trim();
+
 export const SHOP_SOURCE_COPY: Record<string, ShopSourceCopy> = {
   // 货源：Tokyo / AI补给站 https://aibuji.com/item/51；抓取：2026-10-29
   "chatgpt-plus-1m-code": {
@@ -324,4 +347,11 @@ Claude风控增强，有概率性不到账和掉订阅，如果出现不到账�
   ),
   "muse-310b-7d": museSource("7 天之内死了就换"),
   "muse-310b-30d": museSource("1 个月之内死了就换"),
+  // 货源：AI小店 https://wzyp.cn/item/jqfe2k；抓取：2026-10-30
+  "codex-sms-single": {
+    url: "https://wzyp.cn/item/jqfe2k",
+    capturedAt: "2026-10-30",
+    warrantyNote: "未收码不消耗卡密",
+    text: CODEX_SOURCE_TEXT,
+  },
 };

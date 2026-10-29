@@ -423,6 +423,44 @@ export const PRODUCTS: SeedProduct[] = [
     sort: 60,
     offer: { store: "Tokyo", titleLike: "%Grok Super 30美刀%" },
   },
+  {
+    slug: "codex-sms-single",
+    brand: "chatgpt",
+    category: "giftcard",
+    productType: "giftcard",
+    name: "Codex 单次短信接码（美国号）",
+    subtitle: "单次 OpenAI Codex 登录验证码，CDK 卡密发货",
+    description:
+      "单次 Codex 短信验证码，CDK 卡密交付，卡密内含接码平台地址。只支持 OpenAI app 登录验证，未收码可释放号码换号。",
+    cover: "codex-sms",
+    price: 5,
+    etaMin: 10,
+    etaMax: 60,
+    warrantyType: "none",
+    warrantyDays: 0,
+    warrantyNote: "未收码不消耗卡密",
+    includes: [
+      "单次 Codex 短信验证码 CDK",
+      "接码平台地址（卡密中包含）",
+      "未收码可释放号码换号，不消耗 CDK",
+    ],
+    usage: [
+      "下单后在本站订单页获取 CDK 卡密与接码平台地址。",
+      "打开接码平台，使用卡密进入接码页面。",
+      "在 OpenAI app 的 Codex 登录验证页选择美国（+1）并获取短信验证码。",
+      "回到接码平台查看验证码并填入登录页。",
+      "未收到码时点击「释放号码」更换号码；未收到验证码不会消耗卡密。",
+      "号码为美国号码，默认美国代码即可。",
+    ],
+    notice:
+      "只支持OpenAI的app的登录验证，其他网址或功能的验证均不保证，乱拍不退。\n无法接google账户风控验证，无法用于注册账号。\n单次收码会从系统号码池中选择剩余天数较少的号码，单次有效，保底能接，如果有长期需要，请选购长期收码。\n如果接不到码，请点击“释放号码”后重新获取新号码！！\n只要没收到验证码就不会消耗卡密，可以重新获取更换号码再做尝试。\n号码为美国号码，默认美国代码即可。",
+    refund:
+      "虚拟产品售出无质量问题不支持无理由退换货。\n虚拟产品具有保密性，已发出的卡密不支持无理由退款，请勿乱拍，乱拍不退。\n一次购买保保底绑定1个账号，理论1个（只保1个），可保底获取1次。",
+    inputFields: [],
+    featured: false,
+    sort: 80,
+    offer: { store: "启航AI", titleLike: "%单次codex短信验证码收码%" },
+  },
   ...MUSE_VARIANTS.map(museProduct),
 ];
 
