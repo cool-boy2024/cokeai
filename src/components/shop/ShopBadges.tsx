@@ -3,7 +3,7 @@ import {
   availabilityLabel,
   deliveryLabel,
   etaLabel,
-  warrantyLabel,
+  warrantyShortLabel,
   type ShopDeliveryMethod,
   type ShopWarrantyType,
 } from "@/lib/shop/copy";
@@ -36,11 +36,15 @@ export function DeliveryBadge({ method }: { method: ShopDeliveryMethod | string 
 export function WarrantyBadge({
   type,
   days,
+  note,
 }: {
   type: ShopWarrantyType | string;
   days?: number | null;
+  note?: string | null;
 }) {
-  return <span className="shop-badge shop-badge-muted">{warrantyLabel(type, days)}</span>;
+  return (
+    <span className="shop-badge shop-badge-muted">{warrantyShortLabel(type, days, note)}</span>
+  );
 }
 
 export function EtaBadge({ min, max }: { min: number; max: number }) {

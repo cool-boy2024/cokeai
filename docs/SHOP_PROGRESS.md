@@ -875,3 +875,97 @@ UI 实测：浏览 → 登录 → 下单（人工）→ 后台确认到账 → �
 - 既有待办不变：#16 USDT 真实小额走单、#18 过期支付宝测试单
   `CK20261027ACEC06A1`、#19 供货源同步观察、#30 双人 PR 流程（等用户名）、
   #33 USDT 支付启用。
+
+### 2026-10-29 16:20 CST 商品介绍改为货源原文
+
+- 商品详情页「商品介绍」改为直接渲染 `shop_products.description`，
+  `white-space: pre-wrap` 保留货源页的换行与缩进；删除 `intro.ts` 里按
+  商品类型生成的段落和「适合 / 需要你配合」模板。
+- 新增 `scripts/shop-source-copy.ts`：按 slug 保存货源商品页
+  「商品详情 / 宝贝详情」原文、来源 URL 与抓取日期；`shop-seed.ts`
+  写入商品时优先使用这份原文，没有条目的商品继续用手写 description。
+- 已采集三条：
+  - `chatgpt-plus-1m-code` ← aibuji.com/item/51（Tokyo）
+  - `claude-pro-1m-code` ← wzyp.cn/item/9q65u2（咕咕咕）
+  - `claude-max-5x-1m` ← aibuji.com/item/127（Tokyo）
+- 未采集：
+  - `chatgpt-pro-5x-1m`：catfk.com/item/m30pw6，本机 Chrome 连接被重置；
+    生产服务器 curl 可拿到 SPA 外壳，但服务器没有浏览器可渲染。
+  - `gemini-pro-1y`：wzyp 商品页提示「商品未上架」。
+  - `grok-super-1m`：aibuji 返回「该商品暂未上架」。
+- 货源页为 Vue SPA，正文由前端渲染；连续请求后 wzyp 返回 403，
+  正文只能低频人工复制，不做自动抓取。
+- 后台商品编辑把「商品说明」标注为原样粘贴货源页，输入框加高到 12 行。
+- 验证：`npm run typecheck`、`npm run build` 通过；1440 / 390 无横向溢出；
+  三条原文长度 1273 / 1406 / 1732 字。
+- PR #19（`feat/shop-source-copy`）已开，CI `build` / `e2e` / `compose-smoke` 全绿，
+  尚未合并、未发布生产。
+- 待确认：
+  - 是否发布到生产。
+  - 货源原文引用了图片（如「如下图」），目前只复制文字，图片未搬。
+  - 结构化字段仍写「质保 7 天」，与部分货源表述不一致
+    （chatgpt-plus 写「质保30天订阅」、claude-max 写「掉线按实际使用天数退款，
+    封号不质保」）；改质保天数与退款口径属于运营决定。
+
+### 2026-10-29 17:05 CST 货源文案全量同步、Muse 上架与质保口径
+
+运营决定：Gemini、Grok 不下架，后续另找货源；其余商品按可查到的货源同步
+说明、教程、注意事项和质保口径；新增 Muse；全部发布。
+
+- 货源原文覆盖 7 个商品中的 5 个（`scripts/shop-source-copy.ts`）：
+  - `chatgpt-plus-1m-code` ← aibuji.com/item/51（Tokyo）
+  - `claude-pro-1m-code` ← wzyp.cn/item/9q65u2（咕咕咕）
+  - `chatgpt-pro-5x-1m` ← wzyp.cn/item/l35pj1（启航AI，智利渠道）
+    - 原货源 catfk.com/item/m30pw6 在本机被重置，改用同款智利渠道、
+      现货、可渲染的条目；拿货价 ¥694.35，售价仍 ¥849，毛利 18.2%。
+  - `claude-max-5x-1m` ← aibuji.com/item/127（Tokyo）
+  - `muse-ai-310b-account` ← wzyp.cn/item/ho1whr（AI小店）
+- ChatGPT Pro 5x 与 Claude Max 5x 的货源都是自助充值卡密（CDK / session），
+  不再需要登录客户账号，因此 `product_type` 由 `topup` 改为 `giftcard`，
+  删除「账号密码 / 两步验证」输入项，只交付卡密和教程；商品名改为
+  「ChatGPT Pro 5x 月度卡密」「Claude Max 5x 月度卡密」，发货时效 10–60 分钟。
+- 新增 Muse 商品：
+  - slug `muse-ai-310b-account`，brand `muse`，成品账号，¥59 / 成本 ¥44.80 /
+    毛利 24.1%；封面为墨色 `M` 字母标 + `Muse AI` 字样（自有字母标，
+    不是官方 Logo 文件）。
+  - 商品介绍按货源「商品详情」原文展示；登录方法、取码网站、
+    风控提醒和 1 小时首登保障写入使用说明与重点注意事项。
+  - 该货源没有进入聚合 feed（生产库标 `missing`），但 2026-10-29 直接打开
+    货源页确认仍在售；因此库存由人工设为现货，货源记录在发布时标为停用，
+    避免每小时同步把它改成「补货中」。feed 恢复后可重新启用货源。
+- 质保口径改为按货源：
+  - ChatGPT Plus：首登（质保开通），「订阅掉线与账号封禁不在质保范围」。
+  - Claude Pro：无结构化天数，「掉订阅包赔；封号不质保」。
+  - ChatGPT Pro 5x：30 天，「质保一个月订阅，掉订阅可按比例退款」。
+  - Claude Max 5x：无结构化天数，「订阅掉线按实际使用天数计算退款，
+    账号封禁不质保」。
+  - Muse：首登，「登录保障仅持续 1 小时，一旦能够登录账号，保障即失效」。
+  - Gemini、Grok：货源页已下架，暂保留原本文案与 7 天字段，待新货源后替换。
+- 删除 `src/lib/shop/notices.ts` 的按类型生成模板；「重点注意事项」只渲染
+  商品的 `customer_notice` 与 `refund_policy`，不再自动生成质保、24 小时兑换、
+  1 分钟换绑等本站承诺。后台可编辑这两个字段。
+- 数据库：
+  - `shop_products` 新增 `warranty_note TEXT NOT NULL DEFAULT ''`，
+    有值时优先于「质保 X 天」显示，卡片和详情用短标签，商品介绍用全文。
+  - `brand` 约束加入 `muse`；`ALTER TABLE ... ADD COLUMN IF NOT EXISTS`
+    与约束重建在同一份 `db/schema.sql`，容器启动幂等执行。
+  - 后台商品编辑新增「质保说明（按货源原文）」输入框。
+- 生产文案同步工具：
+  - `npm run shop:content` 把种子目录导出为 `scripts/shop-content.json`。
+  - `npm run shop:publish` 只改公开文案与展示字段，已存在商品的状态、售价、
+    库存、合规确认全部保留；`--publish-new` 才创建新商品并写入管理员合规确认，
+    生产环境必须带 `--confirm-production`，支持 `--dry-run`。
+  - 本地已跑 `db:migrate` → `shop:seed` → `shop:content` → `shop:publish`，
+    7 个商品全部 active，7 条货源映射有效。
+- 验证：
+  - `npm run typecheck`、`npm run build` 通过。
+  - 7 个商品详情页 200；1440 / 390 无横向溢出。
+  - 货源原文长度（连续空行已压成一个）：1273 / 1394 / 456 / 1732 / 425 字；
+    Gemini 75、Grok 55 仍为原手写说明。
+  - 截图检查：Muse 列表卡、详情首屏、重点注意事项、移动端 390。
+- GitHub 协作：已向 `wjlwww` 发出写入权限邀请（个人仓库不支持 maintain 角色），
+  `.github/CODEOWNERS` 已改为 `* @cool-boy2024 @wjlwww`；对方接受后生效。
+- 待办：
+  - 合并 PR、发布生产并执行 `shop:publish`（发布前先备份 shop_products 相关表）。
+  - Gemini、Grok 找到新货源后替换文案与质保口径。
+  - 货源原文引用的图片仍未搬运；Muse 仅有字母标，未使用官方 Logo。

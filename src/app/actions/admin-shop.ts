@@ -256,6 +256,7 @@ export async function adminSaveShopProductAction(formData: FormData): Promise<vo
   const etaMax = Number(formData.get("etaMax") || 0);
   const warrantyType = text(formData, "warrantyType") || "first_login";
   const warrantyDays = Number(formData.get("warrantyDays") || 0);
+  const warrantyNote = text(formData, "warrantyNote");
   const status = text(formData, "status") || "draft";
   const complianceAck = formData.get("complianceAck") === "1";
 
@@ -277,19 +278,19 @@ export async function adminSaveShopProductAction(formData: FormData): Promise<vo
             customer_notice = $7, refund_policy = $8,
             price_micros = CASE WHEN $9 > 0 THEN $9 ELSE price_micros END,
             eta_min_minutes = $10, eta_max_minutes = $11,
-            warranty_type = $12, warranty_days = $13,
-            copy_ready = $14,
-            status = $15,
+            warranty_type = $12, warranty_days = $13, warranty_note = $14,
+            copy_ready = $15,
+            status = $16,
             compliance_ack_at = CASE
-              WHEN $15 = 'active' AND $16 = TRUE THEN COALESCE(compliance_ack_at, now())
+              WHEN $16 = 'active' AND $17 = TRUE THEN COALESCE(compliance_ack_at, now())
               ELSE compliance_ack_at
             END,
             compliance_ack_by = CASE
-              WHEN $15 = 'active' AND $16 = TRUE THEN COALESCE(compliance_ack_by, $17)
+              WHEN $16 = 'active' AND $17 = TRUE THEN COALESCE(compliance_ack_by, $18)
               ELSE compliance_ack_by
             END,
             published_at = CASE
-              WHEN $15 = 'active' AND $16 = TRUE THEN COALESCE(published_at, now())
+              WHEN $16 = 'active' AND $17 = TRUE THEN COALESCE(published_at, now())
               ELSE published_at
             END,
             updated_at = now()
@@ -308,6 +309,7 @@ export async function adminSaveShopProductAction(formData: FormData): Promise<vo
       etaMax,
       warrantyType,
       warrantyDays,
+      warrantyNote,
       copyReady,
       finalStatus,
       complianceAck,

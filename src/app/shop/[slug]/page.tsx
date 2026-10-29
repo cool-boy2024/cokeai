@@ -80,7 +80,11 @@ export default async function ShopProductPage({
                   <AvailabilityBadge availability={product.availability} />
                   <DeliveryBadge method={product.delivery_method} />
                   <EtaBadge min={product.eta_min_minutes} max={product.eta_max_minutes} />
-                  <WarrantyBadge type={product.warranty_type} days={product.warranty_days} />
+                  <WarrantyBadge
+                    type={product.warranty_type}
+                    days={product.warranty_days}
+                    note={product.warranty_note}
+                  />
                 </div>
               </div>
 
