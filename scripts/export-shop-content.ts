@@ -27,6 +27,7 @@ const content = PRODUCTS.map((product) => {
     warrantyType: product.warrantyType,
     warrantyDays: product.warrantyDays,
     warrantyNote: source?.warrantyNote ?? product.warrantyNote,
+    manualAvailability: product.manualAvailability ?? null,
     includes: product.includes,
     usage: product.usage,
     notice: product.notice,

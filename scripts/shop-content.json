@@ -14,6 +14,7 @@
     "warrantyType": "first_login",
     "warrantyDays": 0,
     "warrantyNote": "质保开通：保证充值开通成功；订阅掉线与账号封禁不在质保范围",
+    "manualAvailability": null,
     "includes": [
       "ChatGPT Plus 1 个月开通 CDK 卡密",
       "激活地址与兑换说明",
@@ -62,6 +63,7 @@
     "warrantyType": "none",
     "warrantyDays": 0,
     "warrantyNote": "掉订阅包赔；封号不质保",
+    "manualAvailability": null,
     "includes": [
       "Claude Pro 1 个月充值卡密",
       "充值地址与网页教程"
@@ -109,6 +111,7 @@
     "warrantyType": "days",
     "warrantyDays": 30,
     "warrantyNote": "质保一个月订阅，掉订阅可按比例退款",
+    "manualAvailability": null,
     "includes": [
       "ChatGPT Pro 5x 1 个月订阅",
       "充值卡密与兑换网站 https://lovecodex.cn/",
@@ -149,6 +152,7 @@
     "warrantyType": "none",
     "warrantyDays": 0,
     "warrantyNote": "订阅掉线按实际使用天数计算退款，账号封禁不质保",
+    "manualAvailability": null,
     "includes": [
       "Claude Max 5x 1 个月订阅",
       "充值完成通知",
@@ -190,6 +194,7 @@
     "warrantyType": "days",
     "warrantyDays": 7,
     "warrantyNote": "",
+    "manualAvailability": null,
     "includes": [
       "Gemini Pro 12 个月订阅",
       "开通完成通知",
@@ -254,6 +259,7 @@
     "warrantyType": "days",
     "warrantyDays": 7,
     "warrantyNote": "",
+    "manualAvailability": null,
     "includes": [
       "SuperGrok 1 个月订阅",
       "充值完成通知",
@@ -318,6 +324,7 @@
     "warrantyType": "first_login",
     "warrantyDays": 0,
     "warrantyNote": "本产品质保首登；登录保障仅持续 1 小时，一旦能够登录账号，保障即失效",
+    "manualAvailability": "in_stock",
     "includes": [
       "Muse AI 310 亿 token 成品号",
       "邮箱与邮件接收地址",

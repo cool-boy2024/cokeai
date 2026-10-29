@@ -20,6 +20,11 @@ type SeedProduct = {
   warrantyDays: number;
   /** 货源页面原样的质保口径；非空时优先于天数字段显示。 */
   warrantyNote: string;
+  /**
+   * 货源没有进入聚合 feed、但已人工打开货源页确认可购买时，设置这个库存；
+   * 发布脚本会把货源标记为停用，避免每小时同步把它改成补货中。
+   */
+  manualAvailability?: "in_stock" | "low_stock" | "out_of_stock";
   includes: string[];
   usage: string[];
   notice: string;
@@ -328,6 +333,7 @@ export const PRODUCTS: SeedProduct[] = [
     warrantyType: "first_login",
     warrantyDays: 0,
     warrantyNote: "本产品质保首登；登录保障仅持续 1 小时，一旦能够登录账号，保障即失效",
+    manualAvailability: "in_stock",
     includes: ["Muse AI 310 亿 token 成品号", "邮箱与邮件接收地址", "取码登录说明"],
     usage: [
       "在 Muse 中输入你的邮箱地址，然后打开发货的取件地址进行取码登录。",

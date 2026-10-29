@@ -59,6 +59,7 @@ try {
       [product.offer.store, product.offer.titleLike],
     );
     const offerRow = offer.rows[0] ?? null;
+    const manual = product.manualAvailability ?? null;
 
     const existing = await client.query(
       "SELECT id FROM shop_products WHERE slug = $1 LIMIT 1",
@@ -80,6 +81,7 @@ try {
                 includes = $14::jsonb, usage_notes = $15::jsonb,
                 customer_notice = $16, refund_policy = $17,
                 input_fields = $18::jsonb, featured = $19, sort_order = $20,
+                availability = COALESCE($21, availability),
                 copy_ready = TRUE, updated_at = now()
           WHERE id = $1`,
         [
@@ -103,11 +105,12 @@ try {
           JSON.stringify(product.inputFields),
           Boolean(product.featured),
           product.sort,
+          manual,
         ],
       );
       updated += 1;
     } else {
-      if (!offerRow) {
+      if (!offerRow && !manual) {
         console.warn(`skip ${product.slug}: no supplier offer, refusing to create an unsourced product`);
         missingOffers += 1;
         continue;
@@ -149,7 +152,7 @@ try {
           product.refund,
           JSON.stringify(product.inputFields),
           active ? "active" : "draft",
-          availabilityOf(offerRow),
+          manual ?? availabilityOf(offerRow),
           adminId,
           Boolean(product.featured),
           product.sort,
@@ -160,24 +163,42 @@ try {
     }
 
     if (offerRow) {
+      const sourceActive = !manual;
       await client.query(
         `UPDATE shop_product_sources SET active = FALSE
           WHERE product_id = $1 AND offer_id <> $2`,
         [productId, offerRow.id],
       );
+      if (manual) {
+        await client.query(
+          "UPDATE shop_product_sources SET active = FALSE WHERE product_id = $1",
+          [productId],
+        );
+      }
       await client.query(
         `INSERT INTO shop_product_sources
            (product_id, offer_id, role, active, supplier_cost_micros,
             supplier_availability, last_synced_at)
-         VALUES ($1, $2, 'primary', TRUE, $3, $4, now())
+         VALUES ($1, $2, 'primary', $5, $3, $4, now())
          ON CONFLICT (product_id, offer_id) DO UPDATE SET
-           role = 'primary', active = TRUE,
+           role = 'primary', active = EXCLUDED.active,
            supplier_cost_micros = EXCLUDED.supplier_cost_micros,
            supplier_availability = EXCLUDED.supplier_availability,
            last_synced_at = now()`,
-        [productId, offerRow.id, offerRow.price_micros, offerRow.availability],
+        [
+          productId,
+          offerRow.id,
+          offerRow.price_micros,
+          offerRow.availability,
+          sourceActive,
+        ],
       );
       linked += 1;
+    } else if (manual) {
+      await client.query(
+        "UPDATE shop_product_sources SET active = FALSE WHERE product_id = $1",
+        [productId],
+      );
     } else {
       console.warn(`warn ${product.slug}: supplier offer not found, content updated only`);
       missingOffers += 1;
