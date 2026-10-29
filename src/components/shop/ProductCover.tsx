@@ -36,7 +36,17 @@ export function ProductCover({
   return (
     <div className={`shop-cover shop-cover-${key} ${className}`.trim()} aria-hidden="true">
       <span className="shop-cover-grid" />
-      <span className="shop-cover-label">{label}</span>
+      {key === "muse" ? (
+        <img
+          className="shop-cover-label shop-cover-muse-mark"
+          src="/brand/muse-logo.svg"
+          alt=""
+          width={72}
+          height={72}
+        />
+      ) : (
+        <span className="shop-cover-label">{label}</span>
+      )}
       <span className="shop-cover-caption">{caption}</span>
       <span className="shop-cover-orbit" />
     </div>
