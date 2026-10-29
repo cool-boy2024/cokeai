@@ -118,8 +118,8 @@ export default async function AdminShopProductEditPage({
             </div>
 
             <label className="shop-field">
-              <span>商品说明</span>
-              <textarea name="description" defaultValue={product.description} rows={4} />
+              <span>商品说明（原样粘贴货源页「商品详情」，换行和缩进会保留）</span>
+              <textarea name="description" defaultValue={product.description} rows={12} />
             </label>
 
             <div className="shop-form-grid">

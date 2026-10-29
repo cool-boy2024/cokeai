@@ -875,3 +875,32 @@ UI 实测：浏览 → 登录 → 下单（人工）→ 后台确认到账 → �
 - 既有待办不变：#16 USDT 真实小额走单、#18 过期支付宝测试单
   `CK20261027ACEC06A1`、#19 供货源同步观察、#30 双人 PR 流程（等用户名）、
   #33 USDT 支付启用。
+
+### 2026-10-29 16:20 CST 商品介绍改为货源原文
+
+- 商品详情页「商品介绍」改为直接渲染 `shop_products.description`，
+  `white-space: pre-wrap` 保留货源页的换行与缩进；删除 `intro.ts` 里按
+  商品类型生成的段落和「适合 / 需要你配合」模板。
+- 新增 `scripts/shop-source-copy.ts`：按 slug 保存货源商品页
+  「商品详情 / 宝贝详情」原文、来源 URL 与抓取日期；`shop-seed.ts`
+  写入商品时优先使用这份原文，没有条目的商品继续用手写 description。
+- 已采集三条：
+  - `chatgpt-plus-1m-code` ← aibuji.com/item/51（Tokyo）
+  - `claude-pro-1m-code` ← wzyp.cn/item/9q65u2（咕咕咕）
+  - `claude-max-5x-1m` ← aibuji.com/item/127（Tokyo）
+- 未采集：
+  - `chatgpt-pro-5x-1m`：catfk.com/item/m30pw6，本机 Chrome 连接被重置；
+    生产服务器 curl 可拿到 SPA 外壳，但服务器没有浏览器可渲染。
+  - `gemini-pro-1y`：wzyp 商品页提示「商品未上架」。
+  - `grok-super-1m`：aibuji 返回「该商品暂未上架」。
+- 货源页为 Vue SPA，正文由前端渲染；连续请求后 wzyp 返回 403，
+  正文只能低频人工复制，不做自动抓取。
+- 后台商品编辑把「商品说明」标注为原样粘贴货源页，输入框加高到 12 行。
+- 验证：`npm run typecheck`、`npm run build` 通过；1440 / 390 无横向溢出；
+  三条原文长度 1273 / 1406 / 1732 字。
+- 待确认：
+  - 是否发布到生产。
+  - 货源原文引用了图片（如「如下图」），目前只复制文字，图片未搬。
+  - 结构化字段仍写「质保 7 天」，与部分货源表述不一致
+    （chatgpt-plus 写「质保30天订阅」、claude-max 写「掉线按实际使用天数退款，
+    封号不质保」）；改质保天数与退款口径属于运营决定。

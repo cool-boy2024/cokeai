@@ -1,4 +1,5 @@
 import { loadEnv } from "./env.mjs";
+import { SHOP_SOURCE_COPY } from "./shop-source-copy";
 
 loadEnv();
 
@@ -451,7 +452,7 @@ async function main() {
         product.productType,
         product.name,
         product.subtitle,
-        product.description,
+        SHOP_SOURCE_COPY[product.slug]?.text ?? product.description,
         product.cover,
         priceMicros,
         product.etaMin,
