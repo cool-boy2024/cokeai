@@ -505,6 +505,32 @@ CREATE TABLE IF NOT EXISTS shop_product_sources (
 CREATE INDEX IF NOT EXISTS shop_product_sources_offer_idx
   ON shop_product_sources(offer_id);
 
+-- 2026-10-30: 货源 AI 上架任务。一条货源一次任务，生成的商品始终是 draft，
+-- 需要运营在后台审核并确认合规后再手动发布。
+CREATE TABLE IF NOT EXISTS shop_import_jobs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  offer_id UUID NOT NULL REFERENCES shop_offers(id) ON DELETE CASCADE,
+  product_id UUID REFERENCES shop_products(id) ON DELETE SET NULL,
+  status TEXT NOT NULL DEFAULT 'queued'
+    CHECK (status IN ('queued', 'running', 'draft_ready', 'failed', 'skipped')),
+  engine TEXT NOT NULL DEFAULT 'heuristic'
+    CHECK (engine IN ('heuristic', 'ai', 'n8n')),
+  error TEXT,
+  note TEXT,
+  created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  started_at TIMESTAMPTZ,
+  finished_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS shop_import_jobs_status_idx
+  ON shop_import_jobs(status, created_at);
+CREATE INDEX IF NOT EXISTS shop_import_jobs_offer_idx
+  ON shop_import_jobs(offer_id, created_at DESC);
+-- 同一条货源同时只允许一个排队中/生成中的任务。
+CREATE UNIQUE INDEX IF NOT EXISTS shop_import_jobs_active_offer_idx
+  ON shop_import_jobs(offer_id) WHERE status IN ('queued', 'running');
+
 CREATE TABLE IF NOT EXISTS shop_orders (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   order_no TEXT NOT NULL UNIQUE,

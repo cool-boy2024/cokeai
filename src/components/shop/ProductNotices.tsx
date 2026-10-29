@@ -6,7 +6,13 @@ import type { PublicShopProduct } from "@/lib/shop/catalog";
  * these fields from the supplier's product page, so the page never invents
  * warranty or refund promises the supplier does not make.
  */
-export function ProductNotices({ product }: { product: PublicShopProduct }) {
+export function ProductNotices({
+  product,
+  image,
+}: {
+  product: PublicShopProduct;
+  image?: { src: string; alt: string; caption: string };
+}) {
   const groups = [
     { key: "notice", title: "购买须知", text: product.customer_notice.trim() },
     { key: "refund", title: "售后与退款", text: product.refund_policy.trim() },
@@ -29,6 +35,12 @@ export function ProductNotices({ product }: { product: PublicShopProduct }) {
           <div key={group.key} className="shop-notice-group is-warning">
             <h3>{group.title}</h3>
             <p className="shop-notice-text">{group.text}</p>
+            {group.key === "notice" && image ? (
+              <figure className="shop-notice-figure">
+                <img src={image.src} alt={image.alt} loading="lazy" decoding="async" />
+                <figcaption>{image.caption}</figcaption>
+              </figure>
+            ) : null}
           </div>
         ))}
       </div>

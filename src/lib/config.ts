@@ -105,6 +105,13 @@ export const config = {
   shopMaxQty: intEnv("SHOP_MAX_QTY", 5),
   shopMaxOpenOrders: intEnv("SHOP_MAX_OPEN_ORDERS", 3),
   shopCustomerInputRetentionDays: intEnv("SHOP_CUSTOMER_INPUT_RETENTION_DAYS", 7),
+  // 货源 AI 上架：只在配置了 OpenAI 兼容接口时才调用模型，否则用规则提取。
+  // 生成的商品一律是 draft，必须人工审核后才发布。
+  shopImportAiBaseUrl: process.env.SHOP_IMPORT_AI_BASE_URL || "",
+  shopImportAiApiKey: process.env.SHOP_IMPORT_AI_API_KEY || "",
+  shopImportAiModel: process.env.SHOP_IMPORT_AI_MODEL || "",
+  shopImportWebhookUrl: process.env.SHOP_IMPORT_WEBHOOK_URL || "",
+  shopImportTargetMarginBps: intEnv("SHOP_IMPORT_TARGET_MARGIN_BPS", 3_000),
   shopSupportEmail:
     process.env.SHOP_SUPPORT_EMAIL ||
     process.env.SUPPORT_EMAIL ||

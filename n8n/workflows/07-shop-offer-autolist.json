@@ -1,0 +1,209 @@
+{
+  "name": "CokeAI｜货源 AI 上架（队列与即时任务）",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## 货源 AI 上架\n\n后台「货源状态」页点「AI 上架」时：\n\n1. app 创建 `shop_import_jobs` 任务；\n2. 如果配置了 `SHOP_IMPORT_WEBHOOK_URL=http://n8n:5678/webhook/shop-offer-autolist`，app 立刻把 `jobId` 推给本工作流；\n3. 本工作流调用 `/api/internal/shop/import-jobs/run` 生成商品草稿；\n4. 草稿只能由运营在后台审核并勾选合规确认后手动发布。\n\n另外每 2 分钟兜底清空一次排队任务，防止 webhook 丢失。\n\n`/api/internal/shop/import-jobs/run` 需要 `x-internal-secret` 头，值取自 n8n 环境变量 `INTERNAL_API_SECRET`。",
+        "height": 320,
+        "width": 420,
+        "color": 6
+      },
+      "id": "d7a1c2e4-0f10-4c11-9b21-000000000001",
+      "name": "使用说明",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -620,
+        -140
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "*/2 * * * *"
+            }
+          ]
+        }
+      },
+      "id": "d7a1c2e4-0f10-4c11-9b21-000000000002",
+      "name": "每 2 分钟兜底",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -120,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "shop-offer-autolist",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "d7a1c2e4-0f10-4c11-9b21-000000000003",
+      "name": "后台点击 AI 上架",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -120,
+        260
+      ],
+      "webhookId": "shop-offer-autolist"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "d7a1c2e4-0f10-4c11-9b21-000000000006",
+              "leftValue": "={{ $json.headers['x-internal-secret'] }}",
+              "rightValue": "={{ $env.INTERNAL_API_SECRET }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "d7a1c2e4-0f10-4c11-9b21-000000000007",
+      "name": "校验密钥",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        60,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://app:3000/api/internal/shop/import-jobs/run",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-internal-secret",
+              "value": "={{ $env.INTERNAL_API_SECRET }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"limit\":2}",
+        "options": {
+          "timeout": 300000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "d7a1c2e4-0f10-4c11-9b21-000000000004",
+      "name": "清空排队任务",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        180,
+        60
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://app:3000/api/internal/shop/import-jobs/run",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-internal-secret",
+              "value": "={{ $env.INTERNAL_API_SECRET }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ jobId: $json.body && $json.body.jobId ? $json.body.jobId : undefined }) }}",
+        "options": {
+          "timeout": 300000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "d7a1c2e4-0f10-4c11-9b21-000000000005",
+      "name": "生成这一条草稿",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        360,
+        180
+      ],
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "每 2 分钟兜底": {
+      "main": [
+        [
+          {
+            "node": "清空排队任务",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "后台点击 AI 上架": {
+      "main": [
+        [
+          {
+            "node": "校验密钥",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "校验密钥": {
+      "main": [
+        [
+          {
+            "node": "生成这一条草稿",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Shanghai"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": []
+}

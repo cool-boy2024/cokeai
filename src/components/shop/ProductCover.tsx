@@ -23,9 +23,10 @@ const COVER_CAPTIONS: Record<string, string> = {
   neutral: "CokeAI",
 };
 
-/** Supplier product covers, used only where the supplier image is the source. */
+/** Image covers. Supplier covers are used only where the image is the source. */
 const COVER_IMAGES: Record<string, string> = {
   "muse-supplier": "/shop/muse-supplier.jpg",
+  "codex-sms": "/shop/codex-sms-cover.png",
 };
 
 export function ProductCover({
