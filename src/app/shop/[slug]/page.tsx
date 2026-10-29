@@ -136,6 +136,8 @@ export default async function ShopProductPage({
               <BuyForm
                 product={product}
                 loggedIn={Boolean(user)}
+                defaultEmail={user?.email || ""}
+                qtyMax={config.shopMaxQty}
                 paymentOptions={{
                   // Personal Alipay QR and manual transfers stay off. The
                   // merchant EasyPay option appears only when configured.

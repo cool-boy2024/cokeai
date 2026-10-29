@@ -102,7 +102,7 @@ export const config = {
   shopMissingRunsLimit: intEnv("SHOP_MISSING_RUNS_LIMIT", 3),
   shopOrderExpireMinutes: intEnv("SHOP_ORDER_EXPIRE_MINUTES", 30),
   shopUsdtGraceHours: intEnv("SHOP_USDT_GRACE_HOURS", 24),
-  shopMaxQty: intEnv("SHOP_MAX_QTY", 1),
+  shopMaxQty: intEnv("SHOP_MAX_QTY", 5),
   shopMaxOpenOrders: intEnv("SHOP_MAX_OPEN_ORDERS", 3),
   shopCustomerInputRetentionDays: intEnv("SHOP_CUSTOMER_INPUT_RETENTION_DAYS", 7),
   shopSupportEmail:

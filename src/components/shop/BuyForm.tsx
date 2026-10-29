@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { LockSimple, ShieldCheck } from "@phosphor-icons/react";
 import { createShopCheckoutAction, type ShopCheckoutState } from "@/app/actions/shop";
 import type { PublicShopProduct } from "@/lib/shop/catalog";
@@ -9,18 +9,56 @@ import { isPurchasable, productPriceLabel, SHOP_COPY } from "@/lib/shop/copy";
 
 const initial: ShopCheckoutState = {};
 
+type Captcha = { token: string; image: string };
+
 export function BuyForm({
   product,
   loggedIn,
+  defaultEmail,
+  qtyMax,
   paymentOptions,
 }: {
   product: PublicShopProduct;
   loggedIn: boolean;
+  defaultEmail: string;
+  qtyMax: number;
   paymentOptions: { alipay: boolean; alipayManual: boolean; usdt: boolean; manual: boolean };
 }) {
   const [state, action, pending] = useActionState(createShopCheckoutAction, initial);
   const [step, setStep] = useState<"idle" | "method">("idle");
+  const [qty, setQty] = useState(1);
+  const [captcha, setCaptcha] = useState<Captcha | null>(null);
+  const [captchaVersion, setCaptchaVersion] = useState(0);
   const available = isPurchasable(product.availability);
+  const maxQty = Math.max(1, Math.trunc(qtyMax));
+  const totalMicros = product.price_micros * qty;
+
+  useEffect(() => {
+    if (step !== "method") return;
+    let cancelled = false;
+    setCaptcha(null);
+    fetch("/api/shop/captcha", { cache: "no-store" })
+      .then((response) => {
+        if (!response.ok) throw new Error("captcha unavailable");
+        return response.json();
+      })
+      .then((data: Captcha) => {
+        if (!cancelled) setCaptcha(data);
+      })
+      .catch(() => {
+        if (!cancelled) setCaptcha(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [step, captchaVersion]);
+
+  useEffect(() => {
+    if (state.error?.includes("验证码")) {
+      setCaptchaVersion((value) => value + 1);
+    }
+  }, [state.error]);
+
   const methods = [
     paymentOptions.usdt ? { key: "usdt", label: "USDT TRC20", hint: "加密货币 · 链上确认" } : null,
     paymentOptions.alipay ? { key: "alipay", label: "支付宝（易支付）", hint: "第三方网关 · 即时到账" } : null,
@@ -81,8 +119,14 @@ export function BuyForm({
       <input type="hidden" name="expectedPriceMicros" value={product.price_micros} />
 
       <div className="shop-buy-price">
-        <strong>{productPriceLabel(product.price_micros)}</strong>
-        <span>{available ? "含人工服务" : "补货中"}</span>
+        <strong>{productPriceLabel(totalMicros)}</strong>
+        <span>
+          {qty > 1
+            ? `单价 ${productPriceLabel(product.price_micros)} · ${qty} 件`
+            : available
+              ? "含人工服务"
+              : "补货中"}
+        </span>
       </div>
 
       <div className="shop-pay-step-head">
@@ -90,6 +134,93 @@ export function BuyForm({
         <button className="shop-step-back" type="button" onClick={() => setStep("idle")}>
           返回
         </button>
+      </div>
+
+      <label className="shop-field">
+        <span>
+          联系邮箱<em>*</em>
+        </span>
+        <input
+          name="contactEmail"
+          type="email"
+          required
+          defaultValue={defaultEmail}
+          maxLength={254}
+          autoComplete="email"
+          placeholder="用于接收订单通知"
+        />
+        <small>订单通知和售后联系使用这个邮箱，不会用于登录。</small>
+      </label>
+
+      <div className="shop-field">
+        <span>购买数量</span>
+        <div className="shop-qty">
+          <button
+            type="button"
+            onClick={() => setQty((value) => Math.max(1, value - 1))}
+            disabled={qty <= 1}
+            aria-label="减少数量"
+          >
+            −
+          </button>
+          <input
+            name="qty"
+            type="number"
+            inputMode="numeric"
+            min={1}
+            max={maxQty}
+            value={qty}
+            aria-label="购买数量"
+            onChange={(event) => {
+              const next = Math.trunc(Number(event.target.value) || 1);
+              setQty(Math.min(maxQty, Math.max(1, next)));
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => setQty((value) => Math.min(maxQty, value + 1))}
+            disabled={qty >= maxQty}
+            aria-label="增加数量"
+          >
+            +
+          </button>
+        </div>
+        <small>单次最多 {maxQty} 件，合计按单价 × 数量计算。</small>
+      </div>
+
+      <div className="shop-field">
+        <span>
+          人机验证<em>*</em>
+        </span>
+        <div className="shop-captcha">
+          {captcha ? (
+            <img
+              src={captcha.image}
+              alt="人机验证码"
+              width={140}
+              height={48}
+            />
+          ) : (
+            <span className="shop-captcha-loading">验证码加载中…</span>
+          )}
+          <button
+            type="button"
+            onClick={() => setCaptchaVersion((value) => value + 1)}
+          >
+            换一张
+          </button>
+        </div>
+        <input
+          name="captchaCode"
+          type="text"
+          required
+          maxLength={4}
+          autoComplete="off"
+          autoCapitalize="characters"
+          placeholder="输入图中 4 位字符"
+          aria-label="人机验证码"
+        />
+        <input type="hidden" name="captchaToken" value={captcha?.token || ""} />
       </div>
 
       {product.input_fields.length > 0 ? (
@@ -156,7 +287,7 @@ export function BuyForm({
       <button
         className="btn btn-primary btn-block"
         type="submit"
-        disabled={pending || !available || methods.length === 0}
+        disabled={pending || !available || methods.length === 0 || !captcha}
       >
         {!available
           ? SHOP_COPY.buy.outOfStock

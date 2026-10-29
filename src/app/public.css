@@ -2570,6 +2570,88 @@ body {
   box-shadow: 0 0 0 3px rgba(31, 111, 92, 0.1);
 }
 
+.public-main .shop-qty {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
+  gap: 8px;
+}
+
+.public-main .shop-qty input {
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fcfbf8;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  outline: none;
+}
+
+.public-main .shop-qty input:focus {
+  border-color: var(--green);
+  box-shadow: 0 0 0 3px rgba(31, 111, 92, 0.1);
+}
+
+.public-main .shop-qty button,
+.public-main .shop-captcha button {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fcfbf8;
+  color: var(--ink);
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color var(--dur-color) var(--ease-out-quint),
+    background var(--dur-color) var(--ease-out-quint);
+}
+
+.public-main .shop-qty button {
+  min-height: 44px;
+  font-size: 18px;
+}
+
+.public-main .shop-qty button:hover:not(:disabled),
+.public-main .shop-captcha button:hover {
+  border-color: #a9bfb5;
+  background: #fff;
+}
+
+.public-main .shop-qty button:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.public-main .shop-captcha {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.public-main .shop-captcha img,
+.public-main .shop-captcha-loading {
+  width: 140px;
+  height: 48px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f7f6f3;
+}
+
+.public-main .shop-captcha-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.public-main .shop-captcha button {
+  height: 48px;
+  padding: 0 12px;
+  font-size: 14px;
+}
+
 /* --------------------------------------------------------------------------
    Pricing / page heads
    -------------------------------------------------------------------------- */
