@@ -1256,3 +1256,44 @@ UI 实测：浏览 → 登录 → 下单（人工）→ 后台确认到账 → �
   `usdt-e2e-test` 仍待归档；本地 18080 隧道在监听，13000 / 1455 未监听，
   公网站点不受影响。
 - 现在可以输入 `/compact` 压缩上下文。
+
+### 2026-10-30 00:35 CST Codex 接码上架与首页 Muse 轨道
+
+- 运营要求「上架」，并按首页截图把 Muse 加入模型轨道；同时要求进入网站
+  默认停在首屏，而不是被 `#models` 带到模型表。
+- Codex 货源核对：`https://wzyp.cn/item/jqfe2k`，公开接口
+  `status=1`、`goods_type=card`、售价 ¥2.24、参考价 ¥5，美国号码单次收码；
+  生产 feed 对应 `启航AI` 同款 offer，拿货价 ¥2.10、`in_stock`。
+- 新商品 `codex-sms-single`：
+  - 售价 ¥5.00，毛利约 58%；
+  - `category=product_type=giftcard`，人工交付 CDK 卡密；
+  - 商品介绍、注意事项、售后说明均按货源原文同步；
+  - 封面使用 CokeAI 自有 `codex-sms` 平色变体，不直接使用含
+    OpenAI/Codex 标识的货源主图；
+  - `shop_product_sources` 关联 `启航AI` offer，active。
+- 首页模型轨道加入 `/brand/muse-logo.svg`，移动端品牌条以 Muse 替换
+  Qwen 的位置；桌面轨道仍保留全部 11 个品牌。
+- 模型导航：首页点击「模型」用 `scrollIntoView` 滚动，不再把 `#models`
+  写进地址栏；从其它页进入时用 sessionStorage 标记本次跳转，落地后清掉
+  hash 但保留滚动位置；直接访问 `/#models` 会清理到 `/` 并回到首屏。
+- 本地验证：`npm run typecheck`、`npm run build`、`npm run test:shop` 均通过；
+  `/shop` 与 `/shop/codex-sms-single` 200，价格 ¥5.00、封面与货源说明正常。
+- 发布：
+  - PR #37 CI `build` / `e2e` / `compose-smoke` 全绿，squash 合并为
+    `b9f1d0d`；
+  - 备份镜像 `cokeai-app:pre-codex-sms`；
+  - `shop_products` + `shop_product_sources` 备份
+    `/home/deploy/backups/cokeai-shop-pre-codex-20261030-001937.sql`
+    （`0600 deploy:deploy`）；
+  - rsync + `docker compose build app && up -d app`，app healthy。
+- 首次构建卡在 `COPY . .`：本地 `tools/supplier-scraper` 约 427MB 进入了
+  构建上下文。已在 `.dockerignore` 排除 `tools`，重建约 50 秒完成；
+  该改动尚待随本次记录合并回 `main`。
+- 生产 publish dry-run 与正式执行均为 updated 12 / created 1 / linked 7 /
+  missingOffers 0。商品 active、in_stock、¥5.00，来源 active、拿货价 ¥2.10。
+- 生产验收：`/api/health` 200、`/shop` 200、
+  `/shop/codex-sms-single` 200；首页 HTML 含 Muse Logo；公网经 Cloudflare
+  访问同样 200。
+- 未改支付回调、订单状态机、USDT 扫描、数据库结构或 `/v1`；未创建订单。
+- 回滚：`docker tag cokeai-app:pre-codex-sms cokeai-app:local && up -d app`；
+  数据恢复上述 SQL；若只需下架，把商品置为 archived / paused。
