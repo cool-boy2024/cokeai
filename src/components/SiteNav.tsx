@@ -8,10 +8,10 @@ import { X } from "@phosphor-icons/react";
 import { Logo } from "./Logo";
 
 const LINKS = [
-  { href: "/shop", label: "小店", index: "01" },
-  { href: "/#models", label: "模型", index: "02" },
-  { href: "/pricing", label: "价格", index: "03" },
-  { href: "/docs", label: "教程", index: "04" },
+  { href: "/shop", label: "小店" },
+  { href: "/#models", label: "模型" },
+  { href: "/pricing", label: "价格" },
+  { href: "/docs", label: "教程" },
 ];
 
 function isActive(pathname: string, href: string) {
@@ -35,62 +35,6 @@ export function SiteNav({ loggedIn }: { loggedIn: boolean }) {
   useEffect(() => {
     setOpen(false);
   }, [pathname]);
-
-  // Keep the floating bar on the first screen and out of the reading path.
-  // It slides away when scrolling down, and returns on scroll up or when the
-  // pointer reaches the top edge of the viewport.
-  useEffect(() => {
-    const header = document.querySelector<HTMLElement>(
-      ".public-header.site-header",
-    );
-    if (!header) return;
-
-    let lastY = window.scrollY;
-    let hidden = false;
-    let frame = 0;
-
-    const setHidden = (next: boolean) => {
-      if (hidden === next) return;
-      hidden = next;
-      header.classList.toggle("is-away", next);
-    };
-
-    const update = () => {
-      frame = 0;
-      const y = window.scrollY;
-      if (y < 96) setHidden(false);
-      else if (y < lastY - 4) setHidden(false);
-      else if (y > lastY + 4) setHidden(true);
-      lastY = y;
-    };
-    const onScroll = () => {
-      if (!frame) frame = window.requestAnimationFrame(update);
-    };
-    const onPointerMove = (event: PointerEvent) => {
-      if (event.pointerType === "mouse" && event.clientY <= 56) {
-        setHidden(false);
-      }
-    };
-    const onPointerLeave = () => {
-      if (window.scrollY > 96) setHidden(true);
-    };
-    const onFocusIn = () => setHidden(false);
-
-    update();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("pointermove", onPointerMove, { passive: true });
-    header.addEventListener("pointerleave", onPointerLeave);
-    header.addEventListener("focusin", onFocusIn);
-
-    return () => {
-      if (frame) window.cancelAnimationFrame(frame);
-      window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("pointermove", onPointerMove);
-      header.removeEventListener("pointerleave", onPointerLeave);
-      header.removeEventListener("focusin", onFocusIn);
-      header.classList.remove("is-away");
-    };
-  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -172,7 +116,6 @@ export function SiteNav({ loggedIn }: { loggedIn: boolean }) {
             onClick={close}
           >
             {link.label}
-            <span>{link.index}</span>
           </Link>
         ))}
       </nav>
@@ -192,7 +135,7 @@ export function SiteNav({ loggedIn }: { loggedIn: boolean }) {
             </Link>
           </>
         )}
-        <p>OpenAI 兼容接口 · 余额不过期</p>
+        <p>兼容 OpenAI SDK · 余额不过期</p>
       </div>
     </div>
   );
@@ -223,7 +166,7 @@ export function SiteNav({ loggedIn }: { loggedIn: boolean }) {
               登录
             </Link>
             <Link className="btn btn-primary" href="/register">
-              开始使用
+              创建账号
             </Link>
           </>
         )}
