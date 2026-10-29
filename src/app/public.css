@@ -2331,6 +2331,139 @@ body {
   gap: 32px;
 }
 
+.shop-notices {
+  margin: 8px 0 24px;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background: var(--surface);
+}
+
+.shop-notices-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.public-main .shop-notices h2 {
+  margin: 0;
+  font-size: 24px;
+  line-height: 32px;
+  letter-spacing: -0.03em;
+  font-weight: 600;
+}
+
+.shop-notices-tag {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--paper-deep);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+}
+
+.shop-notices-lead {
+  max-width: 62ch;
+  margin: 12px 0 0;
+  color: var(--ink-soft);
+  font-size: 16px;
+  line-height: 26px;
+}
+
+.shop-notices-groups {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px 32px;
+  margin-top: 24px;
+}
+
+.shop-notice-group {
+  min-width: 0;
+}
+
+.public-main .shop-notice-group h3 {
+  margin: 0 0 8px;
+  color: var(--ink);
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.shop-notice-group ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.shop-notice-group li {
+  position: relative;
+  padding-left: 16px;
+  color: var(--ink-soft);
+  font-size: 15px;
+  line-height: 24px;
+}
+
+.shop-notice-group li::before {
+  content: "";
+  position: absolute;
+  top: 0.72em;
+  left: 2px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--green);
+}
+
+.shop-notice-group.is-warning {
+  grid-column: 1 / -1;
+  padding: 16px 20px;
+  border-radius: 16px;
+  background: var(--yellow-soft);
+}
+
+.shop-notice-group.is-warning li {
+  color: var(--ink);
+}
+
+.shop-notice-group.is-warning li::before {
+  background: #a9780f;
+}
+
+.shop-notices-foot {
+  margin: 20px 0 0;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 22px;
+}
+
+.shop-notices-foot a {
+  color: var(--green);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+@media (max-width: 720px) {
+  .shop-notices {
+    padding: 20px;
+    border-radius: 16px;
+  }
+
+  .shop-notices-groups {
+    grid-template-columns: 1fr;
+  }
+
+  .shop-notice-group.is-warning {
+    grid-column: auto;
+  }
+}
+
 .shop-steps {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

@@ -6,6 +6,7 @@ import { SiteFooter } from "@/components/SiteFooter";
 import { SiteHeader } from "@/components/SiteHeader";
 import { BuyForm } from "@/components/shop/BuyForm";
 import { ProductCover } from "@/components/shop/ProductCover";
+import { ProductNotices } from "@/components/shop/ProductNotices";
 import {
   AvailabilityBadge,
   DeliveryBadge,
@@ -87,6 +88,8 @@ export default async function ShopProductPage({
                 <p className="shop-description">{product.description}</p>
               </section>
 
+              <ProductNotices product={product} />
+
               <section className="shop-section">
                 <h2>交付流程</h2>
                 <div className="shop-steps">
@@ -125,17 +128,6 @@ export default async function ShopProductPage({
                   ))}
                 </ol>
               </section>
-
-              <div className="shop-section-pair">
-                <section className="shop-section">
-                  <h2>{SHOP_COPY.sections.notice}</h2>
-                  <p>{product.customer_notice}</p>
-                </section>
-                <section className="shop-section">
-                  <h2>{SHOP_COPY.sections.refund}</h2>
-                  <p>{product.refund_policy}</p>
-                </section>
-              </div>
             </div>
 
             <aside className="shop-detail-aside">

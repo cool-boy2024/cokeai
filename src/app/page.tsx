@@ -192,7 +192,7 @@ export default async function HomePage() {
           </Reveal>
         </section>
 
-        <section className="home-list" aria-labelledby="list-title">
+        <section id="models" className="home-list" aria-labelledby="list-title">
           <div className="home-list-grid">
             <Reveal className="home-list-copy">
               <h2 id="list-title">价目表</h2>
