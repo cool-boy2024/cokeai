@@ -866,8 +866,8 @@ UI 实测：浏览 → 登录 → 下单（人工）→ 后台确认到账 → �
 
 ### 当前状态
 
-- 首页已回滚到浅色旧版，且已发布生产；`main` 与生产应用代码均为
-  `72b2847`。CI `build` / `e2e` / `compose-smoke` 全绿。
+- 首页已回滚到浅色旧版，且已发布生产；生产应用代码为 `9bd17d7`，
+  main 另含后续文档提交。CI `build` / `e2e` / `compose-smoke` 全绿。
 - 7 个真实商品 + 1 个测试商品，订单与余额未动；`USDT_ENABLED=false` 未变。
 - 本地预览：`PORT=3010 npm run start` → http://127.0.0.1:3010（生产构建）。
 - 待决定：`usdt-e2e-test` 是否归档；Gemini / Grok 新货源。
@@ -1086,3 +1086,7 @@ UI 实测：浏览 → 登录 → 下单（人工）→ 后台确认到账 → �
   Muse 商品，不作为 CokeAI 自身 Logo，也不暗示 Meta 官方合作或背书。
 - 验证：typecheck / build 通过；本地 1440 列表卡与详情封面显示正常，
   `naturalWidth/Height = 100/100`，无横向溢出。
+- **2026-10-29 19:22 CST 已合并 `9bd17d7` 并发布生产**：发布前镜像备份
+  `cokeai-app:pre-muse-logo`；rsync + build + up 后 app healthy。公网
+  `/brand/muse-logo.svg` 200 `image/svg+xml`，
+  `/shop/muse-ai-310b-account` 200。
