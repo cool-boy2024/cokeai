@@ -16,11 +16,20 @@ export const maxDuration = 300;
 export async function POST(request: Request): Promise<Response> {
   if (!verifyInternalSecret(request)) return unauthorized();
 
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   let jobId: string | null = null;
-  let limit = 3;
+  let limit = 2;
   try {
     const body = (await request.json()) as { jobId?: unknown; limit?: unknown };
-    if (typeof body?.jobId === "string" && body.jobId) jobId = body.jobId;
+    if (body?.jobId !== undefined) {
+      if (typeof body.jobId !== "string" || !UUID.test(body.jobId)) {
+        return Response.json(
+          { ok: false, error: "invalid_job_id" },
+          { status: 400, headers: { "Cache-Control": "no-store" } },
+        );
+      }
+      jobId = body.jobId;
+    }
     if (typeof body?.limit === "number" && Number.isFinite(body.limit)) {
       limit = Math.min(Math.max(Math.trunc(body.limit), 1), 5);
     }

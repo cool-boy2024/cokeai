@@ -56,6 +56,39 @@
     },
     {
       "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "d7a1c2e4-0f10-4c11-9b21-000000000006",
+              "leftValue": "={{ $json.headers['x-internal-secret'] }}",
+              "rightValue": "={{ $env.INTERNAL_API_SECRET }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "d7a1c2e4-0f10-4c11-9b21-000000000007",
+      "name": "校验密钥",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        60,
+        260
+      ]
+    },
+    {
+      "parameters": {
         "method": "POST",
         "url": "http://app:3000/api/internal/shop/import-jobs/run",
         "sendHeaders": true,
@@ -69,7 +102,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "{\"limit\":3}",
+        "jsonBody": "{\"limit\":2}",
         "options": {
           "timeout": 300000,
           "response": {
@@ -121,8 +154,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        180,
-        260
+        360,
+        180
       ],
       "onError": "continueRegularOutput"
     }
@@ -144,11 +177,23 @@
       "main": [
         [
           {
-            "node": "生成这一条草稿",
+            "node": "校验密钥",
             "type": "main",
             "index": 0
           }
         ]
+      ]
+    },
+    "校验密钥": {
+      "main": [
+        [
+          {
+            "node": "生成这一条草稿",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
       ]
     }
   },

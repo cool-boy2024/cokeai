@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/auth";
 import { config } from "@/lib/config";
 import { query } from "@/lib/db";
-import { createImportJob, runImportJob } from "@/lib/shop/import";
+import { createImportJob, runImportJob, runQueuedJobs } from "@/lib/shop/import";
 import {
   deliverShopItem,
   markShopItemOutOfStock,
@@ -263,20 +263,7 @@ export async function adminStartShopOfferImportAction(formData: FormData): Promi
   }
   if (!jobId) redirect("/admin/shop/sources?import=queue_failed");
 
-  let handedToN8n = false;
-  if (config.shopImportWebhookUrl) {
-    try {
-      const response = await fetch(config.shopImportWebhookUrl, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ jobId, offerId }),
-        signal: AbortSignal.timeout(5_000),
-      });
-      handedToN8n = response.ok;
-    } catch (error) {
-      console.error("[shop] n8n webhook failed, running inline", error);
-    }
-  }
+  const handedToN8n = await notifyImportWebhook(jobId, offerId);
 
   revalidatePath("/admin/shop/sources");
 
@@ -294,6 +281,98 @@ export async function adminStartShopOfferImportAction(formData: FormData): Promi
     redirect(`/admin/shop/products/${result.productId}?existing=1`);
   }
   redirect(`/admin/shop/sources?import=${result.status}`);
+}
+
+async function notifyImportWebhook(jobId: string, offerId: string): Promise<boolean> {
+  if (!config.shopImportWebhookUrl) return false;
+  try {
+    const response = await fetch(config.shopImportWebhookUrl, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-internal-secret": process.env.INTERNAL_API_SECRET || "",
+      },
+      body: JSON.stringify({ jobId, offerId }),
+      signal: AbortSignal.timeout(5_000),
+    });
+    return response.ok;
+  } catch (error) {
+    console.error("[shop] n8n webhook failed", error);
+    return false;
+  }
+}
+
+/**
+ * Batch version of "AI 上架": queue up to 20 visible offers, then either hand
+ * them to n8n or process the first few inline. Drafts still need review.
+ */
+export async function adminBulkShopOfferImportAction(formData: FormData): Promise<void> {
+  const admin = await requireAdmin();
+  if (formData.get("confirm") !== "on") {
+    redirect("/admin/shop/sources?import=batch_unconfirmed");
+  }
+
+  const ids = text(formData, "offerIds")
+    .split(",")
+    .map((value) => value.trim())
+    .filter((value) =>
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value),
+    )
+    .slice(0, 20);
+  if (ids.length === 0) redirect("/admin/shop/sources?import=missing_offer");
+
+  const eligible = await query<{ id: string }>(
+    `SELECT o.id
+       FROM shop_offers o
+       LEFT JOIN shop_product_sources s ON s.offer_id = o.id AND s.active = TRUE
+      WHERE o.id = ANY($1::uuid[])
+        AND s.id IS NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM shop_import_jobs j
+           WHERE j.offer_id = o.id AND j.status IN ('queued', 'running')
+        )`,
+    [ids],
+  );
+
+  let queued = 0;
+  const jobs: { id: string; offerId: string }[] = [];
+  for (const row of eligible.rows) {
+    try {
+      const job = await createImportJob(row.id, admin.id);
+      jobs.push({ id: job.id, offerId: row.id });
+      queued += 1;
+    } catch (error) {
+      console.error("[shop] bulk import enqueue failed", error);
+    }
+  }
+
+  let handedToN8n = false;
+  if (config.shopImportWebhookUrl) {
+    const results = await Promise.all(
+      jobs.map((job) => notifyImportWebhook(job.id, job.offerId)),
+    );
+    handedToN8n = results.some(Boolean);
+  }
+
+  revalidatePath("/admin/shop/sources");
+
+  if (handedToN8n) {
+    redirect(`/admin/shop/sources?import=batch_queued&queued=${queued}`);
+  }
+
+  const processed = await runQueuedJobs(3);
+  revalidatePath("/admin/shop/products");
+  redirect(
+    `/admin/shop/sources?import=batch_partial&queued=${queued}&processed=${processed.length}`,
+  );
+}
+
+export async function adminRunShopImportQueueAction(): Promise<void> {
+  await requireAdmin();
+  const results = await runQueuedJobs(3);
+  revalidatePath("/admin/shop/sources");
+  revalidatePath("/admin/shop/products");
+  redirect(`/admin/shop/sources?import=queue_run&processed=${results.length}`);
 }
 
 export async function adminSaveShopProductAction(formData: FormData): Promise<void> {

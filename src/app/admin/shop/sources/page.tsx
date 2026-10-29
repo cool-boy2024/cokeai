@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { RefreshCw } from "lucide-react";
 import {
+  adminBulkShopOfferImportAction,
   adminCreateShopProductFromOfferAction,
+  adminRunShopImportQueueAction,
   adminStartShopOfferImportAction,
   adminSyncShopAction,
 } from "@/app/actions/admin-shop";
@@ -99,8 +101,14 @@ export default async function AdminShopSourcesPage({
               p.status AS product_status, p.price_micros AS retail_micros,
               j.status AS import_status, j.note AS import_note, j.error AS import_error
          FROM shop_offers o
-         LEFT JOIN shop_product_sources s ON s.offer_id = o.id AND s.active = TRUE
-         LEFT JOIN shop_products p ON p.id = s.product_id
+         LEFT JOIN LATERAL (
+           SELECT sp.slug, sp.name, sp.id, sp.status, sp.price_micros
+             FROM shop_product_sources s
+             JOIN shop_products sp ON sp.id = s.product_id
+            WHERE s.offer_id = o.id AND s.active = TRUE
+            ORDER BY s.created_at ASC
+            LIMIT 1
+         ) p ON TRUE
          LEFT JOIN LATERAL (
            SELECT status, note, error
              FROM shop_import_jobs
@@ -108,7 +116,7 @@ export default async function AdminShopSourcesPage({
             ORDER BY created_at DESC
             LIMIT 1
          ) j ON TRUE
-        ORDER BY (s.id IS NULL), o.last_seen_at DESC
+        ORDER BY (p.id IS NULL), o.last_seen_at DESC
         LIMIT 1000`,
     ),
     query<{
@@ -117,14 +125,14 @@ export default async function AdminShopSourcesPage({
       stores: string;
       missing: string;
       needs_review: string;
+      import_pending: string;
     }>(
-      `SELECT COUNT(*)::text AS offers,
-              COUNT(*) FILTER (WHERE s.id IS NOT NULL AND s.active = TRUE)::text AS mapped,
-              COUNT(DISTINCT o.source_store)::text AS stores,
-              COUNT(*) FILTER (WHERE o.availability = 'missing')::text AS missing,
-              (SELECT COUNT(*) FROM shop_products WHERE pricing_review_required = TRUE)::text AS needs_review
-         FROM shop_offers o
-         LEFT JOIN shop_product_sources s ON s.offer_id = o.id`,
+      `SELECT (SELECT COUNT(*) FROM shop_offers)::text AS offers,
+              (SELECT COUNT(DISTINCT offer_id) FROM shop_product_sources WHERE active = TRUE)::text AS mapped,
+              (SELECT COUNT(DISTINCT source_store) FROM shop_offers)::text AS stores,
+              (SELECT COUNT(*) FROM shop_offers WHERE availability = 'missing')::text AS missing,
+              (SELECT COUNT(*) FROM shop_products WHERE pricing_review_required = TRUE)::text AS needs_review,
+              (SELECT COUNT(*) FROM shop_import_jobs WHERE status IN ('queued', 'running'))::text AS import_pending`,
     ),
   ]);
 
@@ -145,11 +153,17 @@ export default async function AdminShopSourcesPage({
     }
   }
 
-  const activeCategory = (params.cat || "all") as OfferCategory | "all";
+  const categoryKeys = new Set<string>(OFFER_CATEGORIES.map((item) => item.key));
+  const requestedCategory = params.cat || "all";
+  const activeCategory: OfferCategory | "all" =
+    requestedCategory === "all" || categoryKeys.has(requestedCategory)
+      ? (requestedCategory as OfferCategory | "all")
+      : "all";
   const activeRegion = params.region || "all";
   const activeStore = params.store || "all";
   const activeState = params.state || "all";
-  const search = (params.q || "").trim().toLowerCase();
+  const rawSearch = (params.q || "").trim();
+  const search = rawSearch.toLowerCase();
 
   const visibleOffers = classified.filter((offer) => {
     if (activeCategory !== "all" && offer.category !== activeCategory) return false;
@@ -172,6 +186,41 @@ export default async function AdminShopSourcesPage({
   const averageMargin =
     margins.length > 0 ? margins.reduce((sum, value) => sum + value, 0) / margins.length : 0;
 
+  const importable = visibleOffers
+    .filter(
+      (offer) =>
+        !offer.product_id &&
+        offer.import_status !== "queued" &&
+        offer.import_status !== "running",
+    )
+    .slice(0, 20);
+  const importPending = Number(stats?.import_pending || 0);
+
+  const importNotice = (() => {
+    if (!params.import) return null;
+    switch (params.import) {
+      case "queued":
+        return "已交给 n8n 生成草稿，通常 1–2 分钟完成，刷新本页查看。";
+      case "batch_queued":
+        return `已排队 ${params.queued || 0} 条，交给 n8n 生成草稿，稍后刷新查看。`;
+      case "batch_partial":
+        return `已排队 ${params.queued || 0} 条，本次生成 ${params.processed || 0} 条草稿；其余点「处理队列」继续。`;
+      case "queue_run":
+        return `本次处理了 ${params.processed || 0} 条排队任务。`;
+      case "batch_unconfirmed":
+        return "批量生成前请勾选确认。";
+      case "failed":
+        return "生成失败，请点「打开」核对货源页后手动建草稿。";
+      case "queue_failed":
+        return "无法创建上架任务，请稍后重试。";
+      case "offer_not_found":
+      case "missing_offer":
+        return "找不到这条货源，可能已经下架。";
+      default:
+        return "上架任务已结束，请查看商品状态。";
+    }
+  })();
+
   const hrefFor = (patch: Record<string, string | undefined>) => {
     const next = new URLSearchParams();
     const merged = {
@@ -179,7 +228,7 @@ export default async function AdminShopSourcesPage({
       region: activeRegion === "all" ? undefined : activeRegion,
       store: activeStore === "all" ? undefined : activeStore,
       state: activeState === "all" ? undefined : activeState,
-      q: search || undefined,
+      q: rawSearch || undefined,
       ...patch,
     };
     for (const [key, value] of Object.entries(merged)) {
@@ -203,18 +252,8 @@ export default async function AdminShopSourcesPage({
         </form>
       </div>
 
-      {params.import ? (
-        <div className={`shop-import-banner is-${params.import}`}>
-          {params.import === "queued"
-            ? "已交给 n8n 生成草稿，通常 1–2 分钟完成，刷新本页查看。"
-            : params.import === "failed"
-              ? "生成失败，请点「打开」核对货源页后手动建草稿。"
-              : params.import === "queue_failed"
-                ? "无法创建上架任务，请稍后重试。"
-                : params.import === "offer_not_found" || params.import === "missing_offer"
-                  ? "找不到这条货源，可能已经下架。"
-                  : "上架任务已结束，请查看商品状态。"}
-        </div>
+      {importNotice ? (
+        <div className={`shop-import-banner is-${params.import}`}>{importNotice}</div>
       ) : null}
 
       <div className="stat-grid">
@@ -420,6 +459,39 @@ export default async function AdminShopSourcesPage({
               </button>
             </form>
           </div>
+        </div>
+      </section>
+
+      <section className="panel mt-16">
+        <div className="panel-head">
+          <div>
+            <h2>AI 上架</h2>
+            <p>生成草稿商品，不会直接发布；仍需在商品页逐项审核并确认合规。</p>
+          </div>
+          <span className="badge">队列 {importPending}</span>
+        </div>
+        <div className="panel-body shop-import-actions">
+          <form action={adminBulkShopOfferImportAction} className="shop-import-batch">
+            <input type="hidden" name="offerIds" value={importable.map((offer) => offer.id).join(",")} />
+            <label>
+              <input type="checkbox" name="confirm" />
+              我确认按当前筛选批量生成草稿（本次 {importable.length} 条，单次最多 20 条）
+            </label>
+            <button
+              className="btn btn-dark btn-sm"
+              type="submit"
+              disabled={importable.length === 0}
+            >
+              批量 AI 上架
+            </button>
+          </form>
+          {importPending > 0 ? (
+            <form action={adminRunShopImportQueueAction}>
+              <button className="btn btn-ghost btn-sm" type="submit">
+                处理队列（3 条）
+              </button>
+            </form>
+          ) : null}
         </div>
       </section>
 

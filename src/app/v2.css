@@ -3598,6 +3598,40 @@ tbody tr:hover {
   color: var(--red-deep);
 }
 
+.shop-import-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+}
+
+.shop-import-batch {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+}
+
+.shop-import-batch label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink-soft);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.shop-import-batch input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--green);
+}
+
+.shop-import-batch .btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .offer-filters {
   display: flex;
   flex-direction: column;
