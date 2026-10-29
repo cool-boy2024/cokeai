@@ -845,14 +845,31 @@ UI 实测：浏览 → 登录 → 下单（人工）→ 后台确认到账 → �
   Scrapling 用于本地分析、选品和 HTML 交叉校验。
 - 本地库 250 条 vs 当前 feed 211 条，差值为连续缺失记录，不自动删除。
 
+### 2026-10-29 15:45 CST 生产发布 f79da63
+
+- 发布前备份镜像：`docker tag cokeai-app:local cokeai-app:pre-taste`。
+- 代码用 rsync 同步到 `deploy@47.83.178.22:/home/deploy/cokeai/`，排除
+  `.git`、`.claude`、`.env*`、`node_modules`、`.next`、`.local-data`、
+  `.taste-skill`、`tools`；服务器 `.env` 与 `.env.bak.pricing` 保留。
+- `docker compose -f docker-compose.yml -f ops/sub2api/compose.yaml build app`
+  后 `up -d app`；app 启动即 healthy，日志显示迁移幂等、seed 就绪：
+  `Database schema is up to date` / `Seed data is ready`。
+- postgres、redis、sub2api、edge、cloudflared、n8n 均未重建，Sub2API 与 `/v1` 未动。
+- 上线内容：首页 taste 深色版（首次发布）、商品介绍、重点注意事项、
+  后台返回网站入口与中文标签。
+- 公网检查：`/`、`/shop`、`/shop/chatgpt-pro-5x-1m`、`/pricing`、`/docs`、
+  `/login` 均 200；`/nope-404` 404；`/opengraph-image` 200 `image/png`；
+  `/v1/models` 401 JSON；Cloudflare `cf-cache-status: DYNAMIC`，
+  新 CSS 含 `shop-facts`。
+- 回滚：
+  `docker tag cokeai-app:pre-taste cokeai-app:local && docker compose -f docker-compose.yml -f ops/sub2api/compose.yaml up -d app`。
+
 ### 当前状态
 
-- `main` = `3cde46e`；CI `build` / `e2e` / `compose-smoke` 全绿。
-- 生产仍运行旧镜像：首页 taste 重做、商品注意事项、后台布局与中文标签均未发布；
-  `USDT_ENABLED=false` 未变。
+- `main` = `f79da63`；CI `build` / `e2e` / `compose-smoke` 全绿。
+- 生产已运行 `f79da63`，数据与订单未动；`USDT_ENABLED=false` 未变。
 - 本地预览：`PORT=3010 npm run start` → http://127.0.0.1:3010（生产构建）。
-- 待决定：生产发布（先备份 `cokeai-app:pre-taste`）；注意事项质保/退款措辞；
-  内页是否整体转深色。
+- 待决定：注意事项质保/退款措辞；内页是否整体转深色。
 - 本机 `origin` 已改为 SSH `git@github.com:cool-boy2024/cokeai.git`；
   HTTPS fetch 会卡住，SSH push/fetch 正常。
 - 既有待办不变：#16 USDT 真实小额走单、#18 过期支付宝测试单
