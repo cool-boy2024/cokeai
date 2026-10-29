@@ -76,6 +76,45 @@ export function availabilityLabel(value: ShopAvailability | string | null | unde
   return SHOP_COPY.availability[value as ShopAvailability] || SHOP_COPY.availability.out_of_stock;
 }
 
+/**
+ * Supplier offer stock states. "missing" means the offer has been absent from
+ * the feed for several runs, not that the supplier is sold out today.
+ */
+const OFFER_AVAILABILITY_LABELS: Record<string, string> = {
+  in_stock: "有货",
+  low_stock: "库存紧张",
+  out_of_stock: "缺货",
+  missing: "连续缺失",
+};
+
+export function offerAvailabilityLabel(value: string | null | undefined): string {
+  if (!value) return "未知";
+  return OFFER_AVAILABILITY_LABELS[value] || value;
+}
+
+const PRODUCT_STATUS_LABELS: Record<string, string> = {
+  draft: "草稿",
+  active: "已上架",
+  paused: "已暂停",
+  archived: "已归档",
+};
+
+export function productStatusLabel(value: string | null | undefined): string {
+  if (!value) return "未知";
+  return PRODUCT_STATUS_LABELS[value] || value;
+}
+
+const SYNC_STATUS_LABELS: Record<string, string> = {
+  success: "正常",
+  partial: "部分成功",
+  failed: "失败",
+};
+
+export function syncStatusLabel(value: string | null | undefined): string {
+  if (!value) return "未知";
+  return SYNC_STATUS_LABELS[value] || value;
+}
+
 export function deliveryLabel(value: ShopDeliveryMethod | string | null | undefined): string {
   return value === "auto" ? SHOP_COPY.delivery.auto : SHOP_COPY.delivery.manual;
 }

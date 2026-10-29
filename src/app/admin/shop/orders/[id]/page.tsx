@@ -14,7 +14,7 @@ import { requireAdmin } from "@/lib/auth";
 import { query } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { formatCny } from "@/lib/money";
-import { SHOP_COPY } from "@/lib/shop/copy";
+import { offerAvailabilityLabel, SHOP_COPY } from "@/lib/shop/copy";
 import { decryptCustomerInput, getAdminShopOrder } from "@/lib/shop/orders";
 
 export const metadata: Metadata = { title: "小店订单详情" };
@@ -173,7 +173,7 @@ export default async function AdminShopOrderDetailPage({
                   <code>{offer.source_title}</code>
                   <span>成本 / 库存</span>
                   <strong>
-                    {formatCny(offer.price_micros)} · {offer.availability}
+                    {formatCny(offer.price_micros)} · {offerAvailabilityLabel(offer.availability)}
                   </strong>
                   <span>采购数量</span>
                   <strong>{order.qty}</strong>
