@@ -9,9 +9,17 @@ import { requireAdmin } from "@/lib/auth";
 import { query } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { formatCny } from "@/lib/money";
+import { offerAvailabilityLabel } from "@/lib/shop/copy";
 
 export const metadata: Metadata = { title: "小店货源" };
 export const dynamic = "force-dynamic";
+
+const OFFER_BADGE_CLASS: Record<string, string> = {
+  in_stock: "badge-green",
+  low_stock: "badge-yellow",
+  out_of_stock: "badge-red",
+  missing: "badge",
+};
 
 export default async function AdminShopSourcesPage() {
   await requireAdmin();
@@ -109,7 +117,7 @@ export default async function AdminShopSourcesPage() {
 
       <div className="stat-grid">
         <div className="stat-card">
-          <div className="stat-label">Offer</div>
+          <div className="stat-label">货源条目</div>
           <div className="stat-value">{Number(stats?.offers || 0)}</div>
           <div className="stat-foot">{Number(stats?.stores || 0)} 个店铺</div>
         </div>
@@ -203,7 +211,7 @@ export default async function AdminShopSourcesPage() {
       <section className="panel mt-16">
         <div className="panel-head">
           <div>
-            <h2>Offer 列表</h2>
+            <h2>货源列表</h2>
           </div>
           <span className="badge">当前显示最近 150 条</span>
         </div>
@@ -232,7 +240,9 @@ export default async function AdminShopSourcesPage() {
                     <td className="nowrap">{offer.source_store}</td>
                     <td className="nowrap">{formatCny(cost)}</td>
                     <td className="nowrap">
-                      <span className="badge">{offer.availability}</span>
+                      <span className={`badge ${OFFER_BADGE_CLASS[offer.availability] || ""}`}>
+                        {offerAvailabilityLabel(offer.availability)}
+                      </span>
                     </td>
                     <td className="nowrap">
                       {offer.product_id ? (
@@ -240,7 +250,7 @@ export default async function AdminShopSourcesPage() {
                           {offer.product_name}
                         </Link>
                       ) : (
-                        <span className="muted">未上架</span>
+                        <span className="muted">未上架到小店</span>
                       )}
                     </td>
                     <td className="nowrap">

@@ -11,7 +11,7 @@ import { query } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { formatCny } from "@/lib/money";
 import { getAdminProduct } from "@/lib/shop/catalog";
-import { validateProductCopy } from "@/lib/shop/copy";
+import { offerAvailabilityLabel, validateProductCopy } from "@/lib/shop/copy";
 
 export const metadata: Metadata = { title: "编辑小店商品" };
 export const dynamic = "force-dynamic";
@@ -253,7 +253,8 @@ export default async function AdminShopProductEditPage({
                     </div>
                     <p>{source.source_title}</p>
                     <small>
-                      {formatCny(source.supplier_cost_micros)} · {source.supplier_availability} ·{" "}
+                      {formatCny(source.supplier_cost_micros)} ·{" "}
+                      {offerAvailabilityLabel(source.supplier_availability)} ·{" "}
                       {source.last_synced_at ? formatDateTime(source.last_synced_at) : "—"}
                     </small>
                     <a href={source.url} target="_blank" rel="noreferrer" className="shop-muted">

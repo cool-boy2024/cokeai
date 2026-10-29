@@ -6,6 +6,7 @@ import { requireAdmin } from "@/lib/auth";
 import { query, toNumber } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { formatCny } from "@/lib/money";
+import { syncStatusLabel } from "@/lib/shop/copy";
 
 export const metadata: Metadata = { title: "小店" };
 export const dynamic = "force-dynamic";
@@ -190,7 +191,7 @@ export default async function AdminShopPage() {
           {sync ? (
             <div className="shop-sync-card">
               <span className={`badge ${sync.status === "success" ? "badge-green" : "badge-red"}`}>
-                {sync.status === "success" ? "正常" : sync.status}
+                {syncStatusLabel(sync.status)}
               </span>
               <dl className="shop-summary shop-summary-tight">
                 <div>
@@ -198,7 +199,7 @@ export default async function AdminShopPage() {
                   <dd>{formatDateTime(sync.started_at)}</dd>
                 </div>
                 <div>
-                  <dt>Offer 数</dt>
+                  <dt>货源条目</dt>
                   <dd>{sync.offers_seen}</dd>
                 </div>
                 <div>

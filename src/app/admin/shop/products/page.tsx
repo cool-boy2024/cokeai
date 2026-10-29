@@ -3,7 +3,7 @@ import Link from "next/link";
 import { requireAdmin } from "@/lib/auth";
 import { query } from "@/lib/db";
 import { formatCny } from "@/lib/money";
-import { availabilityLabel } from "@/lib/shop/copy";
+import { availabilityLabel, productStatusLabel } from "@/lib/shop/copy";
 
 export const metadata: Metadata = { title: "小店商品" };
 export const dynamic = "force-dynamic";
@@ -106,7 +106,7 @@ export default async function AdminShopProductsPage() {
                         )}
                       </td>
                       <td>
-                        <span className="badge">{product.status}</span>
+                        <span className="badge">{productStatusLabel(product.status)}</span>
                         {product.pricing_review_required ? (
                           <span className="badge badge-red">需复核</span>
                         ) : null}
