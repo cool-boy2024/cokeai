@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type MouseEvent,
+} from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -138,6 +144,55 @@ export function SiteNav({ loggedIn }: { loggedIn: boolean }) {
     window.setTimeout(() => toggleRef.current?.focus(), 0);
   };
 
+  // On the home page, scroll to the model table without leaving #models in the
+  // address bar. A reload or a fresh visit then opens on the hero again.
+  const scrollToModels = (
+    event: MouseEvent<HTMLAnchorElement>,
+    href: string,
+  ) => {
+    if (href !== "/#models") return;
+    if (pathname !== "/") {
+      try {
+        window.sessionStorage.setItem("cokeai:model-nav", "1");
+      } catch {
+        // Storage can be unavailable in private modes; the link still works.
+      }
+      return;
+    }
+    const target = document.getElementById("models");
+    if (!target) return;
+    event.preventDefault();
+    const reduced = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+    target.scrollIntoView({
+      behavior: reduced ? "auto" : "smooth",
+      block: "start",
+    });
+    window.history.replaceState(
+      null,
+      "",
+      `${window.location.pathname}${window.location.search}`,
+    );
+  };
+
+  useEffect(() => {
+    if (window.location.pathname !== "/" || window.location.hash !== "#models") {
+      return;
+    }
+    let fromNav = false;
+    try {
+      fromNav = window.sessionStorage.getItem("cokeai:model-nav") === "1";
+      window.sessionStorage.removeItem("cokeai:model-nav");
+    } catch {
+      // Ignore unavailable storage.
+    }
+    window.history.replaceState(null, "", "/");
+    if (!fromNav) {
+      window.scrollTo({ top: 0, behavior: "auto" });
+    }
+  }, [pathname]);
+
   const panel = (
     <div
       ref={panelRef}
@@ -169,7 +224,10 @@ export function SiteNav({ loggedIn }: { loggedIn: boolean }) {
             href={link.href}
             aria-current={isActive(pathname, link.href) ? "page" : undefined}
             style={{ "--menu-i": index } as CSSProperties}
-            onClick={close}
+            onClick={(event) => {
+              scrollToModels(event, link.href);
+              close();
+            }}
           >
             {link.label}
             <span>{link.index}</span>
@@ -206,6 +264,7 @@ export function SiteNav({ loggedIn }: { loggedIn: boolean }) {
             href={link.href}
             className="public-nav-link"
             aria-current={isActive(pathname, link.href) ? "page" : undefined}
+            onClick={(event) => scrollToModels(event, link.href)}
           >
             {link.label}
           </Link>

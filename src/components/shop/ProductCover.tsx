@@ -6,6 +6,7 @@ const COVER_LABELS: Record<string, string> = {
   gemini: "G",
   grok: "X",
   muse: "M",
+  "codex-sms": "SMS",
   neutral: "AI",
 };
 
@@ -18,6 +19,7 @@ const COVER_CAPTIONS: Record<string, string> = {
   grok: "xAI",
   muse: "Muse AI",
   "muse-supplier": "Muse AI",
+  "codex-sms": "Codex 接码",
   neutral: "CokeAI",
 };
 

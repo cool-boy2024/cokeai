@@ -11,6 +11,7 @@ export const BRAND_MARKS: BrandMark[] = [
   { name: "Claude", file: "/brands/claude.svg" },
   { name: "Gemini", file: "/brands/gemini.svg" },
   { name: "Grok", file: "/brands/grok.svg" },
+  { name: "Muse", file: "/brand/muse-logo.svg" },
   { name: "Qwen", file: "/brands/qwen.svg" },
   { name: "Mistral", file: "/brands/mistral.svg" },
   { name: "Kimi", file: "/brands/kimi.svg" },
@@ -24,5 +25,5 @@ export const MOBILE_MARKS = [
   BRAND_MARKS[3],
   BRAND_MARKS[1],
   BRAND_MARKS[4],
-  BRAND_MARKS[5],
+  BRAND_MARKS.find((mark) => mark.name === "Muse")!,
 ];

@@ -1296,6 +1296,12 @@ body {
   --cover-line: rgba(8, 102, 255, 0.12);
 }
 
+.public-main .shop-cover-codex-sms {
+  --cover-bg: #e7f0ea;
+  --cover-ink: #1b4d3e;
+  --cover-line: rgba(27, 77, 62, 0.1);
+}
+
 .public-main .shop-cover-muse-mark {
   width: 72px;
   height: 72px;
