@@ -1,6 +1,6 @@
 # 小店实施进度
 
-更新时间：2026-10-28
+更新时间：2026-10-29
 
 ## 已完成
 
@@ -797,3 +797,64 @@ UI 实测：浏览 → 登录 → 下单（人工）→ 后台确认到账 → �
 - 待定两件事：① `/shop`、商品详情、`/pricing`、`/docs`、登录注册是否也转深色；
   ② 是否发布到生产。发布前先备份镜像 `cokeai-app:pre-taste`，回滚只需
   `docker tag cokeai-app:pre-taste cokeai-app:local && docker compose up -d app`。
+
+## 2026-10-29 15:10 CST 商品重点注意事项、CLAUDE.md 与后台货源页整理
+
+### 商品详情重点注意事项（PR #12，`4d7ea1b`，已合并，生产未发布）
+
+- 新增 `src/lib/shop/notices.ts` 与 `src/components/shop/ProductNotices.tsx`，按
+  `product_type` 生成 `代充 / 卡密 / 成品账号 / 通用` 四套模板；每套包含质保说明、
+  下单或兑换前确认、处理期间要求、黄色警示块“以下情况不属于售后范围”，
+  末尾追加该商品自己的 `customer_notice` / `refund_policy`。
+- 商品页 `src/app/shop/[slug]/page.tsx` 插入区块；原底部重复的“购买须知 /
+  售后说明”已并入，不再重复。
+- 6 个商品页在 1440 / 390 验证：区块存在、无横向溢出、旧区块已移除。
+- 未照搬 zyanai 的 20 元退费手续费；代充质保写成“非买家原因掉线优先补开，
+  无法补开按剩余质保天数退款”，**待运营确认措辞**。
+- 同轮修复首页导航“模型”无反应：`src/app/page.tsx` 恢复 `id="models"` 锚点。
+
+### CLAUDE.md 与双人协作（PR #13，`1a296c5`）
+
+- 根目录新增 `CLAUDE.md`：技术栈、目录、本地启动、常用命令、PR 规则、
+  不可触碰项、验证要求、文档索引。仓库为私有，只有 owner 与受邀协作者可见。
+- 与 `CONTRIBUTING.md` 一致：`main` 只接受 PR；免费私有仓库无法强制分支保护，
+  靠双人自觉执行；Deploy 工作流仍只允许 owner 触发。
+- 待办：伙伴的 GitHub 用户名尚未提供，**尚未发送 Maintain 邀请**；
+  `.github/CODEOWNERS` 仍只有 `@cool-boy2024`。
+
+### 后台货源页整理（PR #14 `f18f6d3`、PR #15 `3cde46e`）
+
+- “店铺”表移到页面顶部并占满整行，“已映射”列不再被截断；“同步状态”移到店铺表
+  之后，四项（数据源 / 上次同步 / 上次成功 / 条件请求）横向四列，≤980px 两列，
+  ≤680px 单列。
+- 英文枚举改中文：
+  - 库存：`in_stock` 有货、`low_stock` 库存紧张、`out_of_stock` 缺货、
+    `missing` 连续缺失；
+  - 商品状态：`draft` 草稿、`active` 已上架、`paused` 已暂停、`archived` 已归档；
+  - 同步状态：`partial` 部分成功、`failed` 失败；
+  - `Offer` / `Offer 列表` → 货源条目 / 货源列表；未映射显示“未上架到小店”。
+- 新增 `offerAvailabilityLabel` / `productStatusLabel` / `syncStatusLabel`
+  （`src/lib/shop/copy.ts`）；库存徽标按状态着色。
+- 验证：1440 / 390 无横向溢出，货源页与商品页中文标签正确。
+
+### Scrapling 抓取复核（2026-10-29 14:41 CST）
+
+- 运行 `tools/supplier-scraper/.venv/bin/python scraper.py --mode feed`：
+  211 offers、143 available，SHA-256 与 offer_count 均匹配。
+- 生产每小时同步仍由 Node 直接拉同一份公开 JSON（容器无 Python）；
+  Scrapling 用于本地分析、选品和 HTML 交叉校验。
+- 本地库 250 条 vs 当前 feed 211 条，差值为连续缺失记录，不自动删除。
+
+### 当前状态
+
+- `main` = `3cde46e`；CI `build` / `e2e` / `compose-smoke` 全绿。
+- 生产仍运行旧镜像：首页 taste 重做、商品注意事项、后台布局与中文标签均未发布；
+  `USDT_ENABLED=false` 未变。
+- 本地预览：`PORT=3010 npm run start` → http://127.0.0.1:3010（生产构建）。
+- 待决定：生产发布（先备份 `cokeai-app:pre-taste`）；注意事项质保/退款措辞；
+  内页是否整体转深色。
+- 本机 `origin` 已改为 SSH `git@github.com:cool-boy2024/cokeai.git`；
+  HTTPS fetch 会卡住，SSH push/fetch 正常。
+- 既有待办不变：#16 USDT 真实小额走单、#18 过期支付宝测试单
+  `CK20261027ACEC06A1`、#19 供货源同步观察、#30 双人 PR 流程（等用户名）、
+  #33 USDT 支付启用。
