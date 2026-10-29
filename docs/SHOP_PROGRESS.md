@@ -867,7 +867,7 @@ UI 实测：浏览 → 登录 → 下单（人工）→ 后台确认到账 → �
 ### 当前状态
 
 - 首页已回滚到浅色旧版，且已发布生产；`main` 与生产应用代码均为
-  `7f30a78`。CI `build` / `e2e` / `compose-smoke` 全绿。
+  `72b2847`。CI `build` / `e2e` / `compose-smoke` 全绿。
 - 7 个真实商品 + 1 个测试商品，订单与余额未动；`USDT_ENABLED=false` 未变。
 - 本地预览：`PORT=3010 npm run start` → http://127.0.0.1:3010（生产构建）。
 - 待决定：`usdt-e2e-test` 是否归档；Gemini / Grok 新货源。
@@ -1064,3 +1064,8 @@ UI 实测：浏览 → 登录 → 下单（人工）→ 后台确认到账 → �
   签名正确、重放被拒、错误验证码端到端返回“验证码错误或已过期”；1440 / 390
   下单面板无横向溢出，数量加到 3 时合计显示 ¥177.00。
 - 未改支付回调、订单状态机、USDT 扫描与数据库结构；未提交真实订单。
+- **2026-10-29 19:05 CST 已合并 `72b2847` 并发布生产**：发布前镜像备份
+  `cokeai-app:pre-checkout-fields`；生产 `.env` 的 `SHOP_MAX_QTY` 由 1 改为 5，
+  原文件备份为 `.env.bak.shop-qty-20261029`（均为 `0600 deploy:deploy`）。
+  rsync + build + up 后 app healthy；公网 `/api/health` 200、
+  `/shop/muse-ai-310b-account` 200、`/api/shop/captcha` 返回 token + SVG。
