@@ -594,3 +594,54 @@ UI 实测：浏览 → 登录 → 下单（人工）→ 后台确认到账 → �
   避免小内存 VPS 上 QUIC 丢包导致的秒级卡顿。
 - 从中国大陆经代理访问时仍会出现数秒到数十秒延迟，属于本地到 Cloudflare 边缘
   的链路问题；服务器侧公网自测 0.09–0.25s，应用和数据库不是瓶颈。
+
+## 2026-10-29 08:39 CST 管理员账户与后台入口
+
+### 账户
+
+- 站点管理员是 `admin@cokeai.cc.cd`（`users.role='admin'`，状态 active），在
+  `/login` 登录后进入 `/admin`。
+- Sub2API 后台使用同一邮箱（`SUB2API_ADMIN_EMAIL`），但密码与站点密码相互独立。
+- 两个密码分别在服务器 `.env` 的 `ADMIN_PASSWORD` 与 `SUB2API_ADMIN_PASSWORD`；
+  不写入仓库，也不发送到聊天。
+
+### 修改密码
+
+- `scripts/seed.mjs` 只在用户不存在时创建管理员，直接改 `.env` 不会更新已有账号。
+- 重置站点管理员密码：在服务器上读取新密码（不回显），在 app 容器内用 bcryptjs
+  重算哈希并更新 `users.password_hash`。已验证容器内存在 `bcryptjs` 与 `pg`：
+
+  ```bash
+  cd /home/deploy/cokeai
+  read -rsp "新密码（至少 10 位）: " NEWPASS; echo
+  docker compose exec -T -e NEWPASS app node -e '
+  const bcrypt = require("bcryptjs");
+  const { Client } = require("pg");
+  (async () => {
+    if (!process.env.NEWPASS || process.env.NEWPASS.length < 10) {
+      console.error("密码至少 10 位"); process.exit(1);
+    }
+    const client = new Client({ connectionString: process.env.DATABASE_URL });
+    await client.connect();
+    const hash = await bcrypt.hash(process.env.NEWPASS, 12);
+    const res = await client.query(
+      "UPDATE users SET password_hash = $1 WHERE email = $2 AND role = $3 RETURNING email",
+      [hash, process.env.ADMIN_EMAIL, "admin"]
+    );
+    console.log(res.rowCount ? "已更新: " + res.rows[0].email : "未找到管理员账户");
+    await client.end();
+  })().catch((e) => { console.error(e.message); process.exit(1); });
+  '
+  unset NEWPASS
+  ```
+
+- 重置 Sub2API 管理员密码：登录后台修改；`.env` 同样不会覆盖已存在管理员。
+- 新增管理员：先确认对方已注册，再执行
+  `UPDATE users SET role = 'admin' WHERE email = '...';`
+
+### 入口
+
+- 站点：https://cokeai.cc.cd/login
+- Sub2API：仅监听 `127.0.0.1:18080`。先建隧道
+  `ssh -i ~/.ssh/cokeai_deploy -L 18080:127.0.0.1:18080 deploy@47.83.178.22`，
+  再访问 `http://127.0.0.1:18080/`。
