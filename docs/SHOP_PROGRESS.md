@@ -866,15 +866,18 @@ UI 实测：浏览 → 登录 → 下单（人工）→ 后台确认到账 → �
 
 ### 当前状态
 
-- `main` = `f79da63`；CI `build` / `e2e` / `compose-smoke` 全绿。
-- 生产已运行 `f79da63`，数据与订单未动；`USDT_ENABLED=false` 未变。
+- `main` = `14cc70f`；CI `build` / `e2e` / `compose-smoke` 全绿。
+- 生产已运行 `14cc70f`；7 个真实商品 + 1 个测试商品，订单与余额未动；
+  `USDT_ENABLED=false` 未变。
 - 本地预览：`PORT=3010 npm run start` → http://127.0.0.1:3010（生产构建）。
-- 待决定：注意事项质保/退款措辞；内页是否整体转深色。
+- 待决定：内页是否整体转深色；`usdt-e2e-test` 是否归档；
+  Gemini / Grok 新货源。
+- GitHub 双人流程：`wjlwww` 已收到 write 邀请，等待接受；
+  `.github/CODEOWNERS` 已包含两位维护者。
 - 本机 `origin` 已改为 SSH `git@github.com:cool-boy2024/cokeai.git`；
   HTTPS fetch 会卡住，SSH push/fetch 正常。
 - 既有待办不变：#16 USDT 真实小额走单、#18 过期支付宝测试单
-  `CK20261027ACEC06A1`、#19 供货源同步观察、#30 双人 PR 流程（等用户名）、
-  #33 USDT 支付启用。
+  `CK20261027ACEC06A1`、#19 供货源同步观察、#33 USDT 支付启用。
 
 ### 2026-10-29 16:20 CST 商品介绍改为货源原文
 
@@ -985,6 +988,9 @@ UI 实测：浏览 → 登录 → 下单（人工）→ 后台确认到账 → �
 - 首次执行报 `compliance_ack_by is of type uuid but expression is of type text`，
   已在脚本里补 `$22::uuid`；为不阻塞发布，先把修复后的脚本 `docker cp` 进运行中的
   容器完成发布，随后用单独 PR 把修复带回 main 并重建镜像。
+- 17:34 CST 修复 PR #20 合并为 `14cc70f`，rsync + 重建 app；容器内脚本已含
+  `$22::uuid`，`shop:publish --dry-run` 通过（updated 7 / created 0），
+  页面继续 200，数据库文案未回退。
 - 生产核对：
   - `/shop` 与 6 个详情页 200；Muse 显示现货、货源原文、1 小时首登；
     Pro 5x 显示「月度卡密」且没有账号密码/两步验证输入；Claude Max 同理。
