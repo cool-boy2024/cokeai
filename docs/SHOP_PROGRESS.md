@@ -645,3 +645,42 @@ UI 实测：浏览 → 登录 → 下单（人工）→ 后台确认到账 → �
 - Sub2API：仅监听 `127.0.0.1:18080`。先建隧道
   `ssh -i ~/.ssh/cokeai_deploy -L 18080:127.0.0.1:18080 deploy@47.83.178.22`，
   再访问 `http://127.0.0.1:18080/`。
+
+## 2026-10-29 09:39 CST Sub2API 登录验证与网页版转 API 受阻
+
+### 登录入口已核实
+
+- 本机 18080 上已有隧道进程
+  (`ssh -i ~/.ssh/cokeai_deploy -L 18080:127.0.0.1:18080 deploy@47.83.178.22`)，
+  仍在运行，无需重建；进程退出后按同一命令重开。
+- `http://127.0.0.1:18080/health` 返回 `{"status":"ok"}`，`/` 与 `/login`
+  均 200，页面标题 `Sub2API - AI API Gateway`。
+- `SUB2API_ADMIN_EMAIL=admin@cokeai.cc.cd`；`SUB2API_ADMIN_PASSWORD` 已设置
+  （32 位），口令内容不读出、不写入仓库，需要时由运营在自己的终端查看。
+- 后台管理接口在合规确认前返回 `423 ADMIN_COMPLIANCE_ACK_REQUIRED`，该确认只能
+  由运营在界面上自行完成，不由自动化代点。
+
+### 网页版 OpenAI 转 API（OAuth）当前不可用
+
+- 症状：为账户创建 OAuth 授权链接后，浏览器打开
+  `auth.openai.com/oauth/authorize?...` 返回
+  `{"error":{"code":"unsupported_country_region_territory","type":"request_forbidden"}}`。
+- 该错误由 OpenAI 授权端点直接返回，Sub2API 不产生这个错误码；同一时段
+  Sub2API 日志没有 OAuth 失败记录。
+- 生产出口实测：`47.83.178.22` → 香港（`country=HK`，AS45102 阿里云）。
+  香港不在 OpenAI 支持区域。
+- 客户端侧另有「自动测试软件正在控制 Chrome」的自动化标记，属于独立的判定因素。
+- 关键结论：即便浏览器这一步拿到授权码，Sub2API 刷新 token 与转发请求都走同一
+  香港出口，会再次被同样的地区检查拦下。因此该账号类型在当前部署上不可用，
+  不是配置或代码缺陷。
+- 边界：不做地区限制绕过（更换出口节点伪装地区、浏览器指纹伪装等），也不建议把
+  订阅额度当作出售 API 的货源；`docs/SUB2API_OPERATIONS.md` 已要求
+  「正式 API Key 或经书面授权的 OAuth」。
+- 可行路径：接入各服务商官方 API Key，Key 在服务商后台生成后直接录入服务器，
+  不经过聊天。渠道仍待运营确定，对应任务 #10。
+
+### 生产复核
+
+- 09:39 CST：9 个容器全部在运行，其中 7 个带健康检查且 `healthy`
+  （cloudflared、n8n 无 healthcheck，状态 `Up`）；公网 `/api/health` 200；
+  `USDT_ENABLED=false`、`USDT_QUOTE_MINUTES=10` 未变。
