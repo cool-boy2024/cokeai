@@ -1275,9 +1275,30 @@ body {
 }
 
 .public-main .shop-cover-muse {
-  --cover-bg: #23262f;
-  --cover-ink: #f0ede5;
-  --cover-line: rgba(255, 255, 255, 0.12);
+  --cover-bg: #eef3ff;
+  --cover-ink: #16233d;
+  --cover-line: rgba(8, 102, 255, 0.12);
+}
+
+.public-main .shop-cover-muse-mark {
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
+}
+
+.public-main .shop-product-card.is-featured .shop-cover-muse-mark {
+  width: 96px;
+  height: 96px;
+}
+
+.public-main .shop-detail-cover .shop-cover-muse-mark {
+  width: 120px;
+  height: 120px;
+}
+
+.public-main .shop-ring-card .shop-cover-muse-mark {
+  width: 44px;
+  height: 44px;
 }
 
 .public-main .shop-cover-neutral {
@@ -3567,6 +3588,11 @@ body {
 
   .public-main .shop-detail-cover .shop-cover-label {
     font-size: 72px;
+  }
+
+  .public-main .shop-detail-cover .shop-cover-muse-mark {
+    width: 88px;
+    height: 88px;
   }
 
   .public-main .shop-detail-meta {

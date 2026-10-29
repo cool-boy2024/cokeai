@@ -1069,3 +1069,20 @@ UI 实测：浏览 → 登录 → 下单（人工）→ 后台确认到账 → �
   原文件备份为 `.env.bak.shop-qty-20261029`（均为 `0600 deploy:deploy`）。
   rsync + build + up 后 app healthy；公网 `/api/health` 200、
   `/shop/muse-ai-310b-account` 200、`/api/shop/captcha` 返回 token + SVG。
+
+### 2026-10-29 19:15 CST Muse 封面换成官方 Logo
+
+- 素材来自 Muse 官网实际使用的
+  `https://muse.ai/images/landing/brand/muse-logo.svg`，与 Wikimedia Commons
+  `File:Muse_icon.svg` 的 SHA256 一致：
+  `e3fc40d72c2d4574bcde117e5e7213d8de0e10516784fe8e43c5a02a88e63844`。
+  官方图形是单条填充轮廓 + 三段蓝色渐变（`#0082FB → #0064E0 → #0040DC`），
+  不是三根圆头描边；已保存为 `public/brand/muse-logo.svg`。
+- `ProductCover.tsx` 在 `key === "muse"` 时渲染该 SVG，替换原来的纯字母 M；
+  保留 `Muse AI` caption。封面配色由深色改为浅蓝底 `#eef3ff`，避免官方渐变
+  暗端在深底上对比不足；列表卡 / 精选卡 / 详情页分别使用 72 / 96 / 120px，
+  移动端详情 88px，环形卡 44px。
+- 商标说明：Wikimedia 标注 PD-textlogo 不等于商标授权；该 Logo 只用于识别
+  Muse 商品，不作为 CokeAI 自身 Logo，也不暗示 Meta 官方合作或背书。
+- 验证：typecheck / build 通过；本地 1440 列表卡与详情封面显示正常，
+  `naturalWidth/Height = 100/100`，无横向溢出。
