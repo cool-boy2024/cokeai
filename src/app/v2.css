@@ -3015,6 +3015,29 @@ tbody tr:hover {
   padding: 6px 0;
 }
 
+.shop-sync-facts {
+  display: grid;
+  grid-template-columns: minmax(0, 2.2fr) repeat(3, minmax(0, 1fr));
+  gap: 20px 24px;
+  margin: 0;
+}
+
+.shop-sync-facts > div {
+  min-width: 0;
+}
+
+.shop-sync-facts dt {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.shop-sync-facts dd {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
 .shop-pay-panel {
   display: flex;
   flex-direction: column;
@@ -3586,9 +3609,18 @@ tbody tr:hover {
   .shop-detail-badges {
     justify-content: flex-start;
   }
+
+  .shop-sync-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 680px) {
+  .shop-sync-facts {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
   .shop-hero {
     padding-top: 52px;
   }
