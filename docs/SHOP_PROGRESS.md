@@ -1352,3 +1352,28 @@ UI 实测：浏览 → 登录 → 下单（人工）→ 后台确认到账 → �
   或先用浏览器抓取正文，再用 `scripts/shop-draft-from-pages.ts` 生成。
 - 批量入口每次最多排队 20 条；未配置 n8n 时每次同步处理 3 条，其余留在
   队列里点「处理队列」继续。
+
+### 2026-10-30 01:55 CST 发布：站内教程、货源分类与 AI 上架
+
+- PR #41 squash 合并为 `0e2490e`，CI `build` / `e2e` / `compose-smoke`
+  全绿；`compose-smoke` 的 n8n 工作流数量断言已改为按目录文件数校验。
+- 备份：`/home/deploy/backups/shop-pre-autolist-20261030-014330.sql`
+  （`shop_products` + `shop_product_sources`，`0600`）；镜像
+  `cokeai-app:pre-autolist`。
+- rsync + `docker compose build app && up -d app`，app healthy；
+  启动迁移已创建 `shop_import_jobs` 及索引。`/api/health`、`/shop`、
+  Codex 与 Muse 商品页均 200；站内 mp4 与截图可访问。
+- 商品文案发布：`shop-publish.mjs --confirm-production` updated 13 /
+  created 0 / linked 7 / missing 0；商品页已无 zyanai.cc 与 acfun.cn 外链。
+- 货源 AI 上架生成了 29 个 `draft` 商品（28 个 `copy_ready`，0 个缺
+  注意事项）：23 条来自浏览器抓取的接码/账号页，6 条来自 aibuji 高价
+  订阅页；全部未发布，等待运营在 `/admin/shop/products` 审核。
+- n8n 工作流「CokeAI｜货源 AI 上架（队列与即时任务）」已导入并启用，
+  webhook `/webhook/shop-offer-autolist` 返回 200。生产 app 尚未配置
+  `SHOP_IMPORT_WEBHOOK_URL`，点击按钮时同步生成；n8n 每 2 分钟兜底
+  处理排队任务。
+- 生产 app 未配置 `SHOP_IMPORT_AI_*`，29 个草稿均使用规则提取；在服务器
+  `.env` 补 `SHOP_IMPORT_AI_BASE_URL/API_KEY/MODEL` 并重建 app 后可切换
+  为模型写文案（注意事项仍从原文摘录，不交给模型）。
+- 已知边界：wzyp.cn 为 SPA，纯 HTTP 抓取失败时草稿会 `copy_ready=false`；
+  此类页面需要浏览器抓取后用 `scripts/shop-draft-from-pages.ts` 生成。
