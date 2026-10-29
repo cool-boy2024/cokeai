@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ArrowUpRight } from "@phosphor-icons/react/dist/ssr";
 import type { PublicShopProduct } from "@/lib/shop/catalog";
-import { etaLabel, productPriceLabel, warrantyLabel } from "@/lib/shop/copy";
+import { etaLabel, productPriceLabel, warrantyShortLabel } from "@/lib/shop/copy";
 import { ProductCover } from "./ProductCover";
 import { AvailabilityBadge } from "./ShopBadges";
 
@@ -30,7 +30,11 @@ export function ProductCard({
             <strong>{productPriceLabel(product.price_micros)}</strong>
             <span>
               {etaLabel(product.eta_min_minutes, product.eta_max_minutes)} ·{" "}
-              {warrantyLabel(product.warranty_type, product.warranty_days)}
+              {warrantyShortLabel(
+                product.warranty_type,
+                product.warranty_days,
+                product.warranty_note,
+              )}
             </span>
           </div>
           <span className="shop-card-arrow">

@@ -9,14 +9,26 @@
 export type ShopSourceCopy = {
   url: string;
   capturedAt: string;
+  /** 货源页里的质保口径原文；没有时沿用结构化质保字段。 */
+  warrantyNote?: string;
   text: string;
 };
+
+/**
+ * 只整理空白：去掉首尾空行，把连续 3 行以上的空行压成一个空行。
+ * 文字本身不改动；货源页因为图片没搬过来会留下大片空白。
+ */
+export function sourceCopyText(slug: string): string | undefined {
+  const text = SHOP_SOURCE_COPY[slug]?.text;
+  return text ? text.trim().replace(/\n{3,}/g, "\n\n") : undefined;
+}
 
 export const SHOP_SOURCE_COPY: Record<string, ShopSourceCopy> = {
   // 货源：Tokyo / AI补给站 https://aibuji.com/item/51；抓取：2026-10-29
   "chatgpt-plus-1m-code": {
     url: "https://aibuji.com/item/51",
     capturedAt: "2026-10-29",
+    warrantyNote: "质保开通：保证充值开通成功；订阅掉线与账号封禁不在质保范围",
     text: `
 GPT 全自动充值激活码
 本商品为 CDK 自动发货。下单付款后，系统会自动显示充值卡密。 如果没有看到卡密，可使用 订单号 前往订单查询页面重新查看。
@@ -65,6 +77,7 @@ GPT 全自动充值激活码
   "claude-pro-1m-code": {
     url: "https://wzyp.cn/item/9q65u2",
     capturedAt: "2026-10-29",
+    warrantyNote: "掉订阅包赔；封号不质保",
     text: `
 下单前，请先了解商品的特殊性。
 
@@ -145,6 +158,7 @@ GPT 全自动充值激活码
   "claude-max-5x-1m": {
     url: "https://aibuji.com/item/127",
     capturedAt: "2026-10-29",
+    warrantyNote: "订阅掉线按实际使用天数计算退款，账号封禁不质保",
     text: `
 Claude Max 5x / 20x 充值前必看
 近期 Claude 风控较严格，充值前请务必确认账号符合下面所有条件，
@@ -203,6 +217,90 @@ Claude风控增强，有概率性不到账和掉订阅，如果出现不到账�
 9. 有异常免费订阅记录的账号不要充值
 10.当前账号确定没有过 kyc
 11. 订阅掉线按实际使用天数计算退款，账号封禁不质保
+`.trim(),
+  },
+  // 货源：启航AI https://wzyp.cn/item/l35pj1；抓取：2026-10-29
+  // 原货源 catfk.com/item/m30pw6 在本机被重置，改用同款智利渠道、可访问且现货的条目。
+  "chatgpt-pro-5x-1m": {
+    url: "https://wzyp.cn/item/l35pj1",
+    capturedAt: "2026-10-29",
+    warrantyNote: "质保一个月订阅，掉订阅可按比例退款",
+    text: `
+⚠️ 下单前必读
+
+1.下单时设置的“安全密码”，请勿填写 QQ 号、手机号、常用密码等个人信息，以免卡密被他人盗取
+
+2.适用于目前无订阅的普通账号（该账号目前没有GO、PLUS、PRO等订阅）
+
+3.支持提前续费（系统会提前绑定新卡，在账单到期后自动扣费完成续费）
+
+4.充值之后大概率可直接使用codex，无需再次绑定手机号进行验证
+
+5.如因账号不符合充值条件而失败，可申请全额退款
+
+6.质保方式：质保一个月订阅，掉订阅可按比例退款，稳定0封号问题（目前1000单0封）
+
+🚀 自助充值流程
+
+1.下单后复制收到的充值卡密
+
+2.打开兑换网站 https://lovecodex.cn/
+
+3按照页面提示登录需要充值的账号
+
+4.根据兑换页面指引跳转打开session网站，复制完整的凭证，粘贴后提交充值
+
+5.提交充值后等待约 1 分钟。如果提示充值失败，请重新提交session尝试一遍
+
+6.充值成功后刷新官网页面，并在订阅或账单页面查看 Pro 状态。同时可在官网设置的账单查看和下单官方账单
+`.trim(),
+  },
+  // 货源：AI小店 https://wzyp.cn/item/ho1whr；抓取：2026-10-29
+  "muse-ai-310b-account": {
+    url: "https://wzyp.cn/item/ho1whr",
+    capturedAt: "2026-10-29",
+    warrantyNote: "本产品质保首登；登录保障仅持续 1 小时，一旦能够登录账号，保障即失效",
+    text: `
+Muse AI 310亿token成品号
+本产品质保首登
+
+发货格式：邮箱-邮件接收地址
+
+登录方法：
+
+在 Muse 中输入您的邮箱地址 然后打开发货的取件地址 进行取码登录
+
+将邮件输入邮箱，然后在以下3个网站中的1个中填写邮件以获取代码（请务必输入）
+
+Https://generator.email/
+
+Https://luuvan.site/？收件箱=
+
+Https://tmpmails.net/
+
+
+
+
+例如，发送电子邮件至abc@aivn
+
+
+
+
+填写网络邮件是：
+
+Https://generator.email/abc@aivn 或
+
+Https://luuvan.site/？
+
+
+
+
+收件箱=abc@aivn
+
+
+账户存在风控风险，不能接受不要拍
+
+1. 请使用干净的IP地址登录。2. 购买后请勿更改信息，也请勿关联Facebook。3. 如有任何疑问，请在操作账号前先联系店铺。*注意：登录保障仅持续1小时（一旦您能够登录账号，保障即失效）。
 `.trim(),
   },
 };

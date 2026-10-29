@@ -441,7 +441,7 @@ CREATE TABLE IF NOT EXISTS shop_products (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   slug TEXT NOT NULL UNIQUE,
   brand TEXT NOT NULL DEFAULT 'other'
-    CHECK (brand IN ('chatgpt', 'claude', 'gemini', 'grok', 'other')),
+    CHECK (brand IN ('chatgpt', 'claude', 'gemini', 'grok', 'muse', 'other')),
   category TEXT NOT NULL DEFAULT 'subscription'
     CHECK (category IN ('subscription', 'account', 'topup', 'giftcard', 'other')),
   product_type TEXT NOT NULL DEFAULT 'manual'
@@ -458,6 +458,7 @@ CREATE TABLE IF NOT EXISTS shop_products (
   warranty_type TEXT NOT NULL DEFAULT 'first_login'
     CHECK (warranty_type IN ('first_login', 'days', 'none')),
   warranty_days INTEGER NOT NULL DEFAULT 0 CHECK (warranty_days >= 0),
+  warranty_note TEXT NOT NULL DEFAULT '',
   includes JSONB NOT NULL DEFAULT '[]'::jsonb,
   usage_notes JSONB NOT NULL DEFAULT '[]'::jsonb,
   customer_notice TEXT NOT NULL DEFAULT '',
@@ -482,6 +483,12 @@ CREATE INDEX IF NOT EXISTS shop_products_public_idx
   ON shop_products(status, availability, sort_order);
 CREATE INDEX IF NOT EXISTS shop_products_brand_idx
   ON shop_products(brand, status);
+
+-- 2026-10-29: 增加 Muse 品牌与按货源原文显示的质保口径。
+ALTER TABLE shop_products ADD COLUMN IF NOT EXISTS warranty_note TEXT NOT NULL DEFAULT '';
+ALTER TABLE shop_products DROP CONSTRAINT IF EXISTS shop_products_brand_check;
+ALTER TABLE shop_products ADD CONSTRAINT shop_products_brand_check
+  CHECK (brand IN ('chatgpt', 'claude', 'gemini', 'grok', 'muse', 'other'));
 
 CREATE TABLE IF NOT EXISTS shop_product_sources (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

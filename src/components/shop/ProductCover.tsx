@@ -5,6 +5,7 @@ const COVER_LABELS: Record<string, string> = {
   "claude-max": "C",
   gemini: "G",
   grok: "X",
+  muse: "M",
   neutral: "AI",
 };
 
@@ -15,6 +16,7 @@ const COVER_CAPTIONS: Record<string, string> = {
   "claude-max": "Anthropic",
   gemini: "Google",
   grok: "xAI",
+  muse: "Muse AI",
   neutral: "CokeAI",
 };
 

@@ -1274,6 +1274,12 @@ body {
   --cover-line: rgba(22, 22, 21, 0.09);
 }
 
+.public-main .shop-cover-muse {
+  --cover-bg: #23262f;
+  --cover-ink: #f0ede5;
+  --cover-line: rgba(255, 255, 255, 0.12);
+}
+
 .public-main .shop-cover-neutral {
   --cover-bg: #eeece6;
   --cover-ink: #161615;
@@ -2433,31 +2439,14 @@ body {
   letter-spacing: -0.01em;
 }
 
-.shop-notice-group ul {
-  display: grid;
-  gap: 6px;
+.shop-notice-text {
+  max-width: 78ch;
   margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.shop-notice-group li {
-  position: relative;
-  padding-left: 16px;
   color: var(--ink-soft);
   font-size: 15px;
   line-height: 24px;
-}
-
-.shop-notice-group li::before {
-  content: "";
-  position: absolute;
-  top: 0.72em;
-  left: 2px;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--green);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .shop-notice-group.is-warning {
@@ -2467,12 +2456,8 @@ body {
   background: var(--yellow-soft);
 }
 
-.shop-notice-group.is-warning li {
+.shop-notice-group.is-warning .shop-notice-text {
   color: var(--ink);
-}
-
-.shop-notice-group.is-warning li::before {
-  background: #a9780f;
 }
 
 .shop-notices-foot {

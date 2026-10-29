@@ -122,13 +122,31 @@ export function deliveryLabel(value: ShopDeliveryMethod | string | null | undefi
 export function warrantyLabel(
   type: ShopWarrantyType | string | null | undefined,
   days?: number | null,
+  note?: string | null,
 ): string {
+  const custom = note?.trim();
+  if (custom) return custom;
   if (type === "none") return "无质保";
   if (type === "days") {
     const count = Number(days || 0);
     return count > 0 ? `质保 ${count} 天` : "质保";
   }
   return "首登质保";
+}
+
+/**
+ * Compact warranty text for cards and badges. The full supplier wording lives
+ * in `warrantyLabel` / the product facts; long notes would break the card footer.
+ */
+export function warrantyShortLabel(
+  type: ShopWarrantyType | string | null | undefined,
+  days?: number | null,
+  note?: string | null,
+): string {
+  const custom = note?.trim();
+  if (!custom) return warrantyLabel(type, days);
+  const head = custom.split(/[；;，,。]/)[0]?.trim() || "";
+  return head && head.length <= 12 ? head : "按货源说明";
 }
 
 export function etaLabel(minMinutes: number, maxMinutes: number): string {

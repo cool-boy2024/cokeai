@@ -207,6 +207,12 @@ export default async function AdminShopProductEditPage({
                 </select>
               </label>
             </div>
+
+            <label className="shop-field">
+              <span>质保说明（按货源原文，留空则显示上面的质保类型和天数）</span>
+              <input name="warrantyNote" defaultValue={product.warranty_note} maxLength={300} />
+            </label>
+
             {missing.length > 0 ? (
               <p className="shop-muted">缺少：{missing.join("、")}。文案不完整时保存为草稿。</p>
             ) : null}

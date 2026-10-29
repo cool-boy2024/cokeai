@@ -13,6 +13,8 @@
     "db:setup": "npm run db:migrate && npm run db:seed",
     "shop:seed": "tsx scripts/shop-seed.ts",
     "shop:draft": "tsx scripts/shop-seed.ts --draft",
+    "shop:content": "tsx scripts/export-shop-content.ts",
+    "shop:publish": "node scripts/shop-publish.mjs",
     "shop:sync": "tsx scripts/shop-sync.ts",
     "test:shop": "tsx scripts/test-shop.ts",
     "pricing:sync": "node scripts/pricing-sync.mjs",

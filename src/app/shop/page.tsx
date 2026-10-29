@@ -18,7 +18,7 @@ import { listPublicProducts, SHOP_BRANDS } from "@/lib/shop/catalog";
 
 export const metadata: Metadata = {
   title: "CokeAI 小店",
-  description: "ChatGPT、Claude、Gemini、Grok 订阅与代充，人工发货，订单可追踪。",
+  description: "ChatGPT、Claude、Gemini、Grok、Muse 订阅、代充与成品号，人工发货，订单可追踪。",
 };
 
 export const dynamic = "force-dynamic";
@@ -55,7 +55,7 @@ export default async function ShopPage({
                   <em>在这里一次买齐。</em>
                 </h1>
                 <p>
-                  ChatGPT、Claude、Gemini、Grok。下单后人工处理，订单进度随时可查，
+                  ChatGPT、Claude、Gemini、Grok、Muse。下单后人工处理，订单进度随时可查，
                   完成后在订单页领取交付内容。
                 </p>
               </div>

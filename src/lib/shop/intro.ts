@@ -4,7 +4,7 @@ import { deliveryLabel, etaLabel, warrantyLabel } from "./copy";
 const TYPE_LABELS: Record<string, string> = {
   topup: "代充，开通到你的账号",
   giftcard: "卡密，一次性兑换码",
-  account: "成品账号，交付后换绑",
+  account: "成品账号，按说明登录",
 };
 
 export type ShopIntroFact = {
@@ -23,6 +23,13 @@ export function buildShopFacts(product: PublicShopProduct): ShopIntroFact[] {
     { label: "商品类型", value: TYPE_LABELS[product.product_type] || "数字商品" },
     { label: "交付方式", value: deliveryLabel(product.delivery_method) },
     { label: "预计发货", value: etaLabel(product.eta_min_minutes, product.eta_max_minutes) },
-    { label: "售后质保", value: warrantyLabel(product.warranty_type, product.warranty_days) },
+    {
+      label: "售后质保",
+      value: warrantyLabel(
+        product.warranty_type,
+        product.warranty_days,
+        product.warranty_note,
+      ),
+    },
   ];
 }

@@ -1,11 +1,12 @@
+import { pathToFileURL } from "node:url";
 import { loadEnv } from "./env.mjs";
-import { SHOP_SOURCE_COPY } from "./shop-source-copy";
+import { SHOP_SOURCE_COPY, sourceCopyText } from "./shop-source-copy";
 
 loadEnv();
 
 type SeedProduct = {
   slug: string;
-  brand: "chatgpt" | "claude" | "gemini" | "grok";
+  brand: "chatgpt" | "claude" | "gemini" | "grok" | "muse";
   category: "subscription" | "account" | "topup" | "giftcard";
   productType: "subscription" | "account" | "topup" | "giftcard";
   name: string;
@@ -17,6 +18,8 @@ type SeedProduct = {
   etaMax: number;
   warrantyType: "first_login" | "days" | "none";
   warrantyDays: number;
+  /** 货源页面原样的质保口径；非空时优先于天数字段显示。 */
+  warrantyNote: string;
   includes: string[];
   usage: string[];
   notice: string;
@@ -27,7 +30,7 @@ type SeedProduct = {
   offer: { store: string; titleLike: string };
 };
 
-const PRODUCTS: SeedProduct[] = [
+export const PRODUCTS: SeedProduct[] = [
   {
     slug: "chatgpt-plus-1m-code",
     brand: "chatgpt",
@@ -41,19 +44,25 @@ const PRODUCTS: SeedProduct[] = [
     price: 169,
     etaMin: 10,
     etaMax: 60,
-    warrantyType: "days",
-    warrantyDays: 7,
-    includes: ["ChatGPT Plus 1 个月开通卡密", "图文兑换说明", "订单售后记录"],
+    warrantyType: "first_login",
+    warrantyDays: 0,
+    warrantyNote: "质保开通：保证充值开通成功；订阅掉线与账号封禁不在质保范围",
+    includes: [
+      "ChatGPT Plus 1 个月开通 CDK 卡密",
+      "激活地址与兑换说明",
+      "本站订单页随时查看卡密",
+    ],
     usage: [
-      "付款后在订单页点击“查看卡密”",
-      "确认登录的是自己的 ChatGPT 账号，再按说明完成兑换",
-      "兑换成功后回到订单页确认结果",
-      "如兑换失败，请保留页面截图并联系在线客服",
+      "下单后获取 CDK 卡密和激活地址，请留意订单页面显示的信息。",
+      "打开激活页面并输入 CDK 卡密（激活页面会随卡密一起发送）。",
+      "按激活页面提示操作，并确保需要充值的 GPT 账号已经在浏览器中登录。",
+      "根据激活页面提示完成账号授权信息获取。",
+      "将页面要求的信息提交到激活页面，系统会自动完成充值。",
     ],
     notice:
-      "数字商品，发货后不支持无理由退款。请在收到卡密后 24 小时内完成兑换，逾期未兑换产生的失效风险由买家承担。",
+      "本商品为 CDK 自动发货，卡密本身不会过期，建议现买现用。\n安全提醒：登录凭证属于敏感账号信息，请确认激活页面来源可信后再操作，不要将相关信息发送给陌生人。\n渠道 1 使用前请注意：如果 GPT 账号此前使用 iOS、Google Pay 或其他非银行卡方式订阅，通常需要等待约 3 天后再尝试渠道 1。",
     refund:
-      "卡密未使用且兑换失败，经核实可补发或退款；已成功兑换的订单不支持退款。",
+      "质保开通：保证充值开通成功；订阅异常掉线、账号被封不在质保范围。\n渠道 1：账号被封时，可自行尝试向 GPT 官方申请退款；符合官方退款条件的订单可申请处理。退款成功可退金额按实际官方退款金额的 80% 结算，另外 20% 为卡台手续费。退款需买家自行查询流程并向官方申请，货源方不提供退款话术或代申请服务。\n模型表现、响应速度、服务器卡顿、功能调整等平台自身服务情况，不属于充值售后范围。",
     inputFields: [
       {
         key: "chatgpt_email",
@@ -81,19 +90,21 @@ const PRODUCTS: SeedProduct[] = [
     price: 199,
     etaMin: 10,
     etaMax: 60,
-    warrantyType: "days",
-    warrantyDays: 7,
-    includes: ["Claude Pro 1 个月开通卡密", "图文兑换说明", "订单售后记录"],
+    warrantyType: "none",
+    warrantyDays: 0,
+    warrantyNote: "掉订阅包赔；封号不质保",
+    includes: ["Claude Pro 1 个月充值卡密", "充值地址与网页教程"],
     usage: [
-      "付款后在订单页点击“查看卡密”",
-      "确认登录的是自己的 Claude 账号，再按说明完成兑换",
-      "兑换成功后回到订单页确认结果",
-      "如兑换失败，请保留页面截图并联系在线客服",
+      "付款后在本站订单页获取充值卡密以及充值地址，按照网页教程进行充值。",
+      "打开充值网站，自助充值激活会员。",
+      "充值前确认账号没有未到期订阅、没有欠费或退款记录。",
+      "在官网对话框发送一条消息，确认组织 ID 未被封禁。",
+      "进入升级订阅页面，确认右上角没有组织 ID 被封禁提示。",
     ],
     notice:
-      "数字商品，发货后不支持无理由退款。请在收到卡密后 24 小时内完成兑换，逾期未兑换产生的失效风险由买家承担。",
+      "下单前请先了解商品的特殊性：不质保封号。哪怕你用了 1 分钟或者没用上，都没有售后退款。\n以下情况充值会无法到账，遇到以下情况导致的订阅不到账无法退款：订阅未到期的不可充值；账户账单中有欠费、有退款记录的不可充值；组织 ID 被隐性封禁的不可充值。\n部分账号充值完成后会随机出现 KYC 验证，必须完成身份验证后订阅才能激活；KYC 有认证不通过的风险，本店不承担任何责任，无法退款。\n支持在现有会员到期前提前续费，新充值的时间会直接覆盖原有时间，并非累计叠加。",
     refund:
-      "卡密未使用且兑换失败，经核实可补发或退款；已成功兑换的订单不支持退款。",
+      "只能保证充值渠道正规，充值有问题只会掉订阅，掉订阅包赔。\n封号都是因为环境问题，无法质保，哪怕刚充就封号也无法质保。\n防风控技巧见商品说明原文；以上只能降低风险，被封不处理售后。",
     inputFields: [
       {
         key: "claude_email",
@@ -111,113 +122,76 @@ const PRODUCTS: SeedProduct[] = [
   {
     slug: "chatgpt-pro-5x-1m",
     brand: "chatgpt",
-    category: "topup",
-    productType: "topup",
-    name: "ChatGPT Pro 5x 月度代充",
-    subtitle: "1 个月 Pro 5x，登录你的账号完成充值",
+    category: "giftcard",
+    productType: "giftcard",
+    name: "ChatGPT Pro 5x 月度卡密",
+    subtitle: "开通卡密，按货源教程自助充值 1 个月 Pro 5x",
     description:
-      "由人工登录你的 ChatGPT 账号完成 Pro 5x 月度订阅充值。下单后请填写账号信息，客服会在发货时效内处理。",
+      "开通卡密自助充值到你自己的 ChatGPT 账号，按货源教程在兑换网站提交 session 完成 Pro 5x 订阅。",
     cover: "chatgpt-pro",
     price: 849,
-    etaMin: 30,
-    etaMax: 180,
+    etaMin: 10,
+    etaMax: 60,
     warrantyType: "days",
-    warrantyDays: 7,
-    includes: ["ChatGPT Pro 5x 1 个月订阅", "充值完成通知", "7 天售后支持"],
+    warrantyDays: 30,
+    warrantyNote: "质保一个月订阅，掉订阅可按比例退款",
+    includes: [
+      "ChatGPT Pro 5x 1 个月订阅",
+      "充值卡密与兑换网站 https://lovecodex.cn/",
+      "可在官网账单页查看官方账单",
+    ],
     usage: [
-      "下单时填写 ChatGPT 登录邮箱、密码和可用的两步验证信息",
-      "充值期间请保持账号可登录，不要修改密码或切换地区",
-      "到账后建议立即修改密码并检查登录设备",
-      "如 3 小时未到账，请联系在线客服",
+      "下单后复制收到的充值卡密。",
+      "打开兑换网站 https://lovecodex.cn/。",
+      "按照页面提示登录需要充值的账号。",
+      "根据兑换页面指引跳转到 session 网站，复制完整的凭证，粘贴后提交充值。",
+      "提交后等待约 1 分钟；如果提示充值失败，重新提交 session 再试一遍。",
+      "充值成功后刷新官网页面，在订阅或账单页面查看 Pro 状态。",
     ],
     notice:
-      "该商品需要登录你的账号完成代充。账号信息使用 AES-256-GCM 加密保存，交付完成 7 天后自动清除，仅用于本次充值。",
+      "下单时设置的“安全密码”，请勿填写 QQ 号、手机号、常用密码等个人信息，以免卡密被他人盗取。\n适用于目前无订阅的普通账号（该账号目前没有 GO、PLUS、PRO 等订阅）。\n支持提前续费：系统会提前绑定新卡，在账单到期后自动扣费完成续费。\n充值之后大概率可直接使用 codex，无需再次绑定手机号验证。\n如因账号不符合充值条件而失败，可申请全额退款。",
     refund:
-      "未开始代充可全额退款；已到账不支持退款。24 小时内未到账，经核实可全额退款。",
-    inputFields: [
-      {
-        key: "account_email",
-        label: "ChatGPT 登录邮箱",
-        placeholder: "name@example.com",
-        type: "text",
-        required: true,
-        maxLength: 200,
-      },
-      {
-        key: "account_password",
-        label: "账号密码",
-        placeholder: "仅用于本次代充",
-        type: "password",
-        required: true,
-        maxLength: 200,
-        help: "加密保存，交付完成 7 天后自动清除。",
-      },
-      {
-        key: "two_factor",
-        label: "两步验证 / 备用码（如有）",
-        placeholder: "没有可留空",
-        type: "text",
-        required: false,
-        maxLength: 300,
-      },
-    ],
+      "质保方式：质保一个月订阅，掉订阅可按比例退款。\n如因账号不符合充值条件而失败，可申请全额退款。",
+    inputFields: [],
     featured: false,
     sort: 30,
-    offer: { store: "山姆AI", titleLike: "%Pro5x 1个月%正规代充%" },
+    offer: { store: "启航AI", titleLike: "%智利渠道%Pro5x正价代充%" },
   },
   {
     slug: "claude-max-5x-1m",
     brand: "claude",
-    category: "topup",
-    productType: "topup",
-    name: "Claude Max 5x 月度代充",
-    subtitle: "1 个月 Max 5x，登录你的账号完成充值",
+    category: "giftcard",
+    productType: "giftcard",
+    name: "Claude Max 5x 月度卡密",
+    subtitle: "开通卡密，按货源教程自助充值 1 个月 Max 5x",
     description:
-      "由人工登录你的 Claude 账号完成 Max 5x 月度订阅充值。下单后请填写账号信息，客服会在发货时效内处理。",
+      "开通卡密自助充值到你自己的 Claude 账号，按货源说明完成 iOS 订阅凭证充值。",
     cover: "claude-max",
     price: 1099,
-    etaMin: 30,
-    etaMax: 180,
-    warrantyType: "days",
-    warrantyDays: 7,
-    includes: ["Claude Max 5x 1 个月订阅", "充值完成通知", "7 天售后支持"],
+    etaMin: 10,
+    etaMax: 60,
+    warrantyType: "none",
+    warrantyDays: 0,
+    warrantyNote: "订阅掉线按实际使用天数计算退款，账号封禁不质保",
+    includes: [
+      "Claude Max 5x 1 个月订阅",
+      "充值完成通知",
+      "未到账时提供 AppleId 与充值订单（货源方口径）",
+    ],
     usage: [
-      "下单时填写 Claude 登录邮箱、密码和可用的两步验证信息",
-      "充值期间请保持账号可登录，不要修改密码或切换地区",
-      "到账后建议立即修改密码并检查登录设备",
-      "如 3 小时未到账，请联系在线客服",
+      "确认账号当前没有生效中的 Claude 会员。",
+      "确认账号此前订阅过 Claude Pro / Max。",
+      "确认账号没有做过 KYC；Max 5x / 20x 一定会触发 KYC。",
+      "检查 Google 账单没有欠费，Google Pay 旧订阅结束后建议等待 7 天以上。",
+      "关闭 Google 自动续费，移除 Claude 账单页绑定的银行卡。",
+      "确认是个人版账号，且没有异常免费订阅记录。",
+      "提交充值后等待处理；未到账时按售后说明联系客服。",
     ],
     notice:
-      "该商品需要登录你的账号完成代充。账号信息使用 AES-256-GCM 加密保存，交付完成 7 天后自动清除，仅用于本次充值。",
+      "下单前快速检查：\n1. 当前不能有正在生效的 Claude 会员\n2. 账号以前必须订阅过 Claude\n3. Max 5x / 20x 需要做好 KYC 准备\n4. Google 不能存在欠费账单\n5. Google Pay 旧订阅结束后建议等待 7 天以上\n6. 必须关闭自动续费\n7. Claude 账单页面不能绑定银行卡\n8. 必须是个人版账号，不能是团队版\n9. 有异常免费订阅记录的账号不要充值\n10. 当前账号确定没有过 KYC",
     refund:
-      "未开始代充可全额退款；已到账不支持退款。24 小时内未到账，经核实可全额退款。",
-    inputFields: [
-      {
-        key: "account_email",
-        label: "Claude 登录邮箱",
-        placeholder: "name@example.com",
-        type: "text",
-        required: true,
-        maxLength: 200,
-      },
-      {
-        key: "account_password",
-        label: "账号密码",
-        placeholder: "仅用于本次代充",
-        type: "password",
-        required: true,
-        maxLength: 200,
-        help: "加密保存，交付完成 7 天后自动清除。",
-      },
-      {
-        key: "two_factor",
-        label: "两步验证 / 备用码（如有）",
-        placeholder: "没有可留空",
-        type: "text",
-        required: false,
-        maxLength: 300,
-      },
-    ],
+      "Claude 风控增强，有概率（概率不高，但是有）不到账和掉订阅。如果出现不到账或掉订阅，只提供 AppleId 自行尝试退款（不一定能退回来）。\n近几天销出 139 单 5x 和 20x，报告不到账 29 例，使用 AppleId 退款成功 11 个，其余退款全部 AppleId 被封，购买需要谨慎。充 Claude 5x 和 20x 相当于赌博，我们能做的只是在不到账后提供 AppleId 和充值订单，不承担其他的。\n订阅掉线按实际使用天数计算退款，账号封禁不质保。",
+    inputFields: [],
     featured: false,
     sort: 40,
     offer: { store: "Tokyo", titleLike: "%Claude MAX5x/20x%· 5x%" },
@@ -237,6 +211,7 @@ const PRODUCTS: SeedProduct[] = [
     etaMax: 240,
     warrantyType: "days",
     warrantyDays: 7,
+    warrantyNote: "",
     includes: ["Gemini Pro 12 个月订阅", "开通完成通知", "7 天售后支持"],
     usage: [
       "下单时填写 Google 登录邮箱、密码和可用的两步验证信息",
@@ -294,6 +269,7 @@ const PRODUCTS: SeedProduct[] = [
     etaMax: 240,
     warrantyType: "days",
     warrantyDays: 7,
+    warrantyNote: "",
     includes: ["SuperGrok 1 个月订阅", "充值完成通知", "7 天售后支持"],
     usage: [
       "下单时填写 X 登录邮箱、密码和可用的两步验证信息",
@@ -335,6 +311,38 @@ const PRODUCTS: SeedProduct[] = [
     featured: false,
     sort: 60,
     offer: { store: "Tokyo", titleLike: "%Grok Super 30美刀%" },
+  },
+  {
+    slug: "muse-ai-310b-account",
+    brand: "muse",
+    category: "account",
+    productType: "account",
+    name: "Muse AI 310 亿 token 成品号",
+    subtitle: "成品账号，邮箱与取件地址交付",
+    description:
+      "Muse AI 310 亿 token 成品号，交付邮箱与邮件接收地址，按说明取码登录。",
+    cover: "muse",
+    price: 59,
+    etaMin: 30,
+    etaMax: 120,
+    warrantyType: "first_login",
+    warrantyDays: 0,
+    warrantyNote: "本产品质保首登；登录保障仅持续 1 小时，一旦能够登录账号，保障即失效",
+    includes: ["Muse AI 310 亿 token 成品号", "邮箱与邮件接收地址", "取码登录说明"],
+    usage: [
+      "在 Muse 中输入你的邮箱地址，然后打开发货的取件地址进行取码登录。",
+      "将邮箱输入以下任一网站获取验证码（请务必输入）：generator.email、luuvan.site、tmpmails.net。",
+      "例如邮箱 abc@aivn：打开 generator.email/abc@aivn，或 luuvan.site/?收件箱=abc@aivn。",
+      "登录时使用干净的 IP 地址；购买后不要更改信息，不要关联 Facebook。",
+    ],
+    notice:
+      "账户存在风控风险，不能接受不要拍。\n1. 请使用干净的 IP 地址登录。\n2. 购买后请勿更改信息，也请勿关联 Facebook。\n3. 如有任何疑问，请在操作账号前先联系订单页客服。\n登录保障仅持续 1 小时（一旦您能够登录账号，保障即失效）。\n账号有问题，务必当天带图联系订单页客服，超时难以处理；账号务必现买现用，别囤号，有问题在 1 小时内反馈。",
+    refund:
+      "本产品质保首登：登录保障仅持续 1 小时，一旦能够登录账号，保障即失效。\n账号有问题，务必当天带图联系订单页客服，超时难以处理。",
+    inputFields: [],
+    featured: false,
+    sort: 70,
+    offer: { store: "AI小店", titleLike: "%Muse AI 310亿token成品号%" },
   },
 ];
 
@@ -398,13 +406,14 @@ async function main() {
       `INSERT INTO shop_products
          (slug, brand, category, product_type, name, subtitle, description,
           cover_variant, price_micros, delivery_method, eta_min_minutes,
-          eta_max_minutes, warranty_type, warranty_days, includes, usage_notes,
-          customer_notice, refund_policy, input_fields, status, availability,
-          copy_ready, compliance_ack_at, featured, sort_order, published_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'manual',$10,$11,$12,$13,
-               $14::jsonb,$15::jsonb,$16,$17,$18::jsonb,$19,$20,
-               TRUE, CASE WHEN $21 THEN now() ELSE NULL END, $22, $23,
-               CASE WHEN $24 THEN now() ELSE NULL END)
+          eta_max_minutes, warranty_type, warranty_days, warranty_note,
+          includes, usage_notes, customer_notice, refund_policy, input_fields,
+          status, availability, copy_ready, compliance_ack_at, featured,
+          sort_order, published_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'manual',$10,$11,$12,$13,$14,
+               $15::jsonb,$16::jsonb,$17,$18,$19::jsonb,$20,$21,
+               TRUE, CASE WHEN $22 THEN now() ELSE NULL END, $23, $24,
+               CASE WHEN $25 THEN now() ELSE NULL END)
        ON CONFLICT (slug) DO UPDATE SET
          brand = EXCLUDED.brand,
          category = EXCLUDED.category,
@@ -418,6 +427,7 @@ async function main() {
          eta_max_minutes = EXCLUDED.eta_max_minutes,
          warranty_type = EXCLUDED.warranty_type,
          warranty_days = EXCLUDED.warranty_days,
+         warranty_note = EXCLUDED.warranty_note,
          includes = EXCLUDED.includes,
          usage_notes = EXCLUDED.usage_notes,
          customer_notice = EXCLUDED.customer_notice,
@@ -452,13 +462,14 @@ async function main() {
         product.productType,
         product.name,
         product.subtitle,
-        SHOP_SOURCE_COPY[product.slug]?.text ?? product.description,
+        sourceCopyText(product.slug) ?? product.description,
         product.cover,
         priceMicros,
         product.etaMin,
         product.etaMax,
         product.warrantyType,
         product.warrantyDays,
+        SHOP_SOURCE_COPY[product.slug]?.warrantyNote ?? product.warrantyNote,
         JSON.stringify(product.includes),
         JSON.stringify(product.usage),
         product.notice,
@@ -510,7 +521,12 @@ async function main() {
   );
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+const isDirectRun =
+  Boolean(process.argv[1]) && import.meta.url === pathToFileURL(process.argv[1]).href;
+
+if (isDirectRun) {
+  main().catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
+}

@@ -120,7 +120,7 @@ export default async function HomePage() {
               </h1>
               <p className="home-lead">
                 兼容 OpenAI SDK 的 API 中转，人民币按量计费。小店另售
-                ChatGPT、Claude、Gemini 的订阅和代充。
+                ChatGPT、Claude、Gemini、Muse 的订阅、代充和成品号。
               </p>
               <div className="home-actions">
                 <Link className="action-primary" href="/register">

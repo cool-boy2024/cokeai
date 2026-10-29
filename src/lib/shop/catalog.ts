@@ -7,6 +7,7 @@ export const SHOP_BRANDS = [
   { key: "claude", label: "Claude" },
   { key: "gemini", label: "Gemini" },
   { key: "grok", label: "Grok" },
+  { key: "muse", label: "Muse" },
 ] as const;
 
 export type ShopBrand = Exclude<(typeof SHOP_BRANDS)[number]["key"], "all"> | "other";
@@ -27,6 +28,7 @@ export type PublicShopProduct = {
   eta_max_minutes: number;
   warranty_type: string;
   warranty_days: number;
+  warranty_note: string;
   includes: string[];
   usage_notes: string[];
   customer_notice: string;
@@ -61,7 +63,7 @@ function hydrate(row: RawProduct): PublicShopProduct {
 const PUBLIC_COLUMNS = `
   id, slug, brand, category, product_type, name, subtitle, description,
   cover_variant, price_micros, delivery_method, eta_min_minutes, eta_max_minutes,
-  warranty_type, warranty_days, includes, usage_notes, customer_notice,
+  warranty_type, warranty_days, warranty_note, includes, usage_notes, customer_notice,
   refund_policy, input_fields, availability, featured, sort_order
 `;
 
