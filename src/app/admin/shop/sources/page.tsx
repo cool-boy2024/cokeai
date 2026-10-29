@@ -130,17 +130,51 @@ export default async function AdminShopSourcesPage() {
         </div>
       </div>
 
-      <div className="shop-admin-grid">
-        <section className="panel">
-          <div className="panel-head">
-            <div>
-              <h2>同步状态</h2>
-            </div>
-            <span className={`badge ${supplier?.last_error ? "badge-red" : "badge-green"}`}>
-              {supplier?.last_error ? "异常" : "正常"}
-            </span>
+      <section className="panel">
+        <div className="panel-head">
+          <div>
+            <h2>店铺</h2>
           </div>
-          <dl className="shop-summary shop-summary-tight">
+        </div>
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>店铺</th>
+                <th>在售</th>
+                <th>紧张</th>
+                <th>缺货</th>
+                <th>缺失</th>
+                <th>已映射</th>
+              </tr>
+            </thead>
+            <tbody>
+              {storeResult.rows.map((store) => (
+                <tr key={store.source_store || "-"}>
+                  <td>{store.source_store || "—"}</td>
+                  <td>{store.in_stock}</td>
+                  <td>{store.low_stock}</td>
+                  <td>{store.out_of_stock}</td>
+                  <td>{store.missing}</td>
+                  <td>{store.mapped}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="panel">
+        <div className="panel-head">
+          <div>
+            <h2>同步状态</h2>
+          </div>
+          <span className={`badge ${supplier?.last_error ? "badge-red" : "badge-green"}`}>
+            {supplier?.last_error ? "异常" : "正常"}
+          </span>
+        </div>
+        <div className="panel-body">
+          <dl className="shop-sync-facts">
             <div>
               <dt>数据源</dt>
               <dd className="shop-break">{supplier?.feed_url || "—"}</dd>
@@ -161,44 +195,10 @@ export default async function AdminShopSourcesPage() {
             </div>
           </dl>
           {supplier?.last_error ? (
-            <p className="shop-form-error">{supplier.last_error}</p>
+            <p className="shop-form-error mt-16">{supplier.last_error}</p>
           ) : null}
-        </section>
-
-        <section className="panel">
-          <div className="panel-head">
-            <div>
-              <h2>店铺</h2>
-            </div>
-          </div>
-          <div className="table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th>店铺</th>
-                  <th>在售</th>
-                  <th>紧张</th>
-                  <th>缺货</th>
-                  <th>缺失</th>
-                  <th>已映射</th>
-                </tr>
-              </thead>
-              <tbody>
-                {storeResult.rows.map((store) => (
-                  <tr key={store.source_store || "-"}>
-                    <td>{store.source_store || "—"}</td>
-                    <td>{store.in_stock}</td>
-                    <td>{store.low_stock}</td>
-                    <td>{store.out_of_stock}</td>
-                    <td>{store.missing}</td>
-                    <td>{store.mapped}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      </div>
+        </div>
+      </section>
 
       <section className="panel mt-16">
         <div className="panel-head">
