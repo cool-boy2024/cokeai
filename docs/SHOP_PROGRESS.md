@@ -684,3 +684,47 @@ UI 实测：浏览 → 登录 → 下单（人工）→ 后台确认到账 → �
 - 09:39 CST：9 个容器全部在运行，其中 7 个带健康检查且 `healthy`
   （cloudflared、n8n 无 healthcheck，状态 `Up`）；公网 `/api/health` 200；
   `USDT_ENABLED=false`、`USDT_QUOTE_MINUTES=10` 未变。
+
+## 2026-10-29 10:39 CST taste-skill 安装与站点诊断
+
+### 安装
+
+- 仓库克隆到 `~/.claude/skills-src/taste-skill`，用仓库自带 `install.sh` 软链到
+  `~/.claude/skills/design-taste-frontend`（install name 取自 SKILL.md 的 `name`）。
+- 环境已核对：Node `v22.16.0`、本机 Chrome 均满足要求；`draw.mjs` 可运行。
+- 更新方式 `cd ~/.claude/skills-src/taste-skill && git pull`；卸载用
+  `./install.sh --uninstall`。
+- 诊断产物目录 `.taste-skill/`（约 1.3MB 截图）已加入 `.gitignore`，不入库。
+
+### 诊断结果（只读，未改任何代码）
+
+- 首页 `https://cokeai.cc.cd`：**16 FAIL / 9 WARN**。
+- `/pricing`：**11 FAIL / 5 WARN**。
+- 单轮估算评分：设计 6 / 可用性 7 / 创意 7 / 内容 6（加权 40/30/20/10）≈ **6.5**。
+- 截图与 `report.json` 在 `.taste-skill/before/` 与 `.taste-skill/before-pricing/`。
+- 三个最影响分数的点：
+  1. `name-only-title`：首屏 h1 只有店名与 slogan，没有一句 18px 以上的说明。
+  2. 全站 0 张真实图片：无照片、无视频、无真实界面片段，全是 SVG 与绘制图形。
+  3. 装饰层过厚：36 个静止阴影、22 条细线、19 个 1px 描边盒、12 个 eyebrow 标签、
+     16 种字号、13 处毛玻璃；`/pricing` 把 Geist Mono 用在价格与模型名上。
+- 注意：这套规则比 `landing-page-design` / `redesign-existing-projects` 更严
+  （禁玻璃、禁静止阴影、禁细线、禁 01/02/03 序号），三方同时启用会互相打架。
+
+### 定价口径（未执行，待运营决定）
+
+- 已拒绝的方案：底层跑 DeepSeek、对客户宣称是 GPT 最新模型、按 GPT 价 75% 出售。
+  理由：侵犯 OpenAI 商标；属于对客户的欺诈；且客户可从 `usage`、输出特征、
+  知识截止等直接识别；同时该毛利结构只靠这层误认成立。
+- DeepSeek 官方价（每百万 token，人民币）：`deepseek-flash` 缓存命中
+  ¥0.02/¥0.04、输入未命中 ¥1/¥2、输出 ¥4/¥8（空闲/高峰各一半）；
+  `deepseek-v4-pro` 缓存 ¥0.15/¥0.30、输入 ¥4.5/¥9、输出 ¥13.5/¥27。
+  高峰为北京时间周一至周五 9:00–12:00、14:00–18:00，其余为空闲。
+- 建议的诚实档位（沿用线上现价，约 25% 毛利）：快速 = DeepSeek V4.1 Flash
+  ¥2.50/¥10.00；深度 = DeepSeek V4 Pro ¥11.20/¥33.50。
+- 三个待选方案：(a) 如实标 DeepSeek；(b) 采购官方 GPT Key 后真卖 GPT；
+  (c) 自有档位名 + 文档披露底层模型。运营尚未选择。
+- 视觉是否按 taste-skill 完整重排，同样待定。
+
+### 生产
+
+- 本轮未发布、未改配置、未动数据库；仅新增 `.gitignore` 一条忽略规则。
