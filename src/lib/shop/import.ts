@@ -286,11 +286,22 @@ function categoryFor(title: string): { category: string; productType: string } {
   }
 }
 
-function firstMeaningfulLines(text: string, count: number): string[] {
+const PAGE_CHROME =
+  /^(首页|网站首页|订单查询|投诉|举报|常见问题|开店教学|禁售目录|联系TA|客服|搜索|登录|注册|购物车|关于我们|参考价|自动发货|立即购买)/;
+const PRICE_ONLY = /^￥?\s*\d+(\.\d+)?$/;
+
+function firstMeaningfulLines(text: string, count: number, title: string): string[] {
+  const normalizedTitle = title.replace(/\s+/g, "");
   return text
     .split("\n")
     .map((line) => line.trim())
-    .filter((line) => line.length >= 6 && !/^(首页|登录|注册|购物车|客服|关于我们)$/.test(line))
+    .filter(
+      (line) =>
+        line.length >= 6 &&
+        !PAGE_CHROME.test(line) &&
+        !PRICE_ONLY.test(line) &&
+        line.replace(/\s+/g, "") !== normalizedTitle,
+    )
     .slice(0, count);
 }
 
@@ -312,7 +323,7 @@ function heuristicCopy(offer: OfferRow, sourceText: string | null): DraftCopy {
     name: title,
     subtitle: `${offer.source_store || "货源"} · 人工审核后发货`,
     description: sourceText
-      ? firstMeaningfulLines(sourceText, 4).join("\n").slice(0, 1200) || title
+      ? firstMeaningfulLines(sourceText, 4, title).join("\n").slice(0, 1200) || title
       : `${title}。货源页面暂时无法读取，商品说明以人工审核为准。`,
     includes: [`商品：${title}`, `货源店铺：${offer.source_store || "未标注"}`, "人工发货"],
     usage: [

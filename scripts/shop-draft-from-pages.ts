@@ -144,5 +144,9 @@ async function main() {
   console.log(JSON.stringify({ file, dryRun, total: results.length, summary, results }, null, 2));
 }
 
-await main();
-process.exit(0);
+main()
+  .then(() => process.exit(0))
+  .catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
