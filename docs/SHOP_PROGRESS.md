@@ -728,3 +728,62 @@ UI 实测：浏览 → 登录 → 下单（人工）→ 后台确认到账 → �
 ### 生产
 
 - 本轮未发布、未改配置、未动数据库；仅新增 `.gitignore` 一条忽略规则。
+
+## 2026-10-29 11:55 CST taste-skill 首页重做（product-performs）
+
+### 回滚点
+
+- 打标签 `rollback-pre-taste` 指向 `f33859c`（重做前 main），已推送到 GitHub：
+  `git push git@github.com:cool-boy2024/cokeai.git refs/tags/rollback-pre-taste`。
+- 本次工作在分支 `design/taste-rework`；不满意时 `git reset --hard rollback-pre-taste`
+  即可回到旧首页。生产尚未发布。
+
+### 方向与实现
+
+- `draw.mjs` 掷出三个方向，选 `product-performs`（seed 1722170868）：
+  页面本身就是产品在运行。方案给的 Jost 未采用——站点 95% 是中文，Jost 没有
+  CJK 字形，继续用品牌自托管的 Geist Sans（拉丁/数字）+ PingFang SC（中文）。
+  调色板照方案：炭黑 `#1c1c1c` / 面板 `#262626` / 墨白 `#f1f1ef` /
+  鼠尾草 `#8fa68e`，一个强调色。
+- 新增 `src/app/taste.css`（最后加载）：公共导航改成无边框无阴影平面栏；
+  页脚改成 12 栏瓷片板；首页使用独立深色令牌，内页保持纸色。
+- 首页 `src/app/page.tsx` 重写为七段：Hero（实时用量计费器）→ 接入地址
+  （可改 Base URL，代码跟着变）→ 光纤实拍带 → 接入流程（四段滑块）→
+  充值包（名称列表 + 单一大数字）→ 价目表（模型 + 商品两段列表）→
+  常见问题（`<details name>` 手风琴）→ CTA（鼠尾草色场 + ¥0 挂牌）→ 瓷片页脚。
+- 新增客户端组件：`CostMeter`、`EndpointDemo`、`StageSteps`、`PlanPicker`；
+  删除旧首页专用组件 `HeroOrbit`、`ShopRing`、`HeroBrandStrip`、`TaglineReveal`、
+  `brandMarks.ts`。
+- 实数据：模型与价格走 `listCatalogModels()`（DeepSeek V4.1 Flash ¥2.54/¥10.16、
+  DeepSeek V4 Pro ¥11.18/¥33.54 每百万 Token）；充值包走 `plans` 表（9.9/39/99）；
+  商品走 `listPublicProducts()`。没有写死价格，也没有虚构客户或评价。
+
+### 门禁与评审
+
+- `inspect.mjs` 首页：改前 16 FAIL / 9 WARN（分数约 6.5），改后
+  **0 FAIL / 4 WARN**（1440 / 768 / 390 三档）。
+- 保留的 4 个 WARN 及理由：
+  1. `size-count` 13 种字号：流体 `clamp()` 在三个断点展开所致，不是工具变量乱用。
+  2. `no-footage`：没有与业务诚实的视频素材，不放循环氛围片。
+  3. `font-not-dealt`：方案给的 Jost 无 CJK，中文页无法用；见上。
+  4. `off-centre` 32px / 52px：差值来自计费器面板内右对齐数值（面板本身贴齐
+     32px 页边距），不是页面整体偏移。
+- 交互实测（CDP）：拖动 Token 滑块价格从 ¥1.02 变 ¥3.05；切换模型变 ¥12.86；
+  选“专业包”价格变 99.00；改 Base URL 后 curl 示例同步变化；Python 标签切换；
+  四段滑块切换话术；FAQ 手风琴展开；390px 下菜单可开、Escape 可关。
+- 实拍照片（已在页脚署名）：
+  - `public/media/fiber-light.jpg` — "Propagation of light through the core of an
+    optical fiber"，AZToshkov，CC BY-SA 3.0，Wikimedia Commons。
+  - `public/media/patch-panel.jpg` — "Fujikura optic fiber at Science Museum"，
+    Syced，CC0，Wikimedia Commons。
+- 评审（Awwwards 权重）：design 7.5 · usability 8.5 · creativity 7.5 · content 8.0
+  → **7.85**。仍欠：首屏底部约五分之一留白（方案明确要求底部三分之一留白）；
+  充值包标题到套餐名之间约 200px 空档；配线架照片在缩略尺寸下偏暗。
+
+### 范围与后续
+
+- 本轮只重做首页与公共导航/页脚；`/shop`、商品详情、`/pricing`、`/docs`、
+  登录注册仍是旧的纸色样式。深色令牌只在首页作用域，内页不受影响。
+- 若要整站统一，需要把 `public.css` 里的硬编码浅色（5 处 `#fff` 背景、
+  14 处白色文字、渐变标题）逐页改掉，属于下一轮工作。
+- 生产未发布、未改配置、未动数据库；本地只跑 `next build` + `next start -p 3010`。
