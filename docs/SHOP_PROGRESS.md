@@ -1124,3 +1124,29 @@ UI 实测：浏览 → 登录 → 下单（人工）→ 后台确认到账 → �
   兼容渠道、或改用其他上游。上线前不要开启该 Sub2API 账号调度。
 - 未改 app、支付、订单状态机、数据库结构或 `/v1` 路由；生产 app、Sub2API、
   AIClient2API 均 healthy，公网 `/api/health` 200。
+
+### 2026-10-29 21:40 CST 上下文维护与 Sub2API 调度纠正
+
+- `main=11a55cc`，工作区干净；未新增代码、未重新部署、未重置任务。
+- 生产核查：`cokeai-app-1`、`cokeai-sub2api`、`cokeai-aiclient2api`、
+  `cokeai-sub2api-postgres`、`cokeai-sub2api-redis` 均 healthy；公网
+  `https://cokeai.cc.cd/api/health` 200；SSH 隧道 18080 / 13000 / 1455
+  在监听。
+- **发现并纠正一个运行态错误**：Sub2API 账号 `id=1`
+  （AIClient2API OpenAI Codex，`openai` / `apikey` / `active`）的
+  `schedulable` 在核查时为 `true`，与 20:30 记录的 `false` 不一致。该账号
+  没有 Codex OAuth 凭据，`aiclient2api-data/configs/codex/` 不存在，
+  AIClient2API 仍只返回 `No healthy provider found for openai-codex-oauth`。
+  已在事务中把 `schedulable` 改回 `false`，并插入一条 `scheduler_outbox`
+  `account_changed` 事件（id=12）触发 Sub2API 调度缓存刷新。验证：
+  数据库 `schedulable=f`、outbox watermark=12、Redis `sched:meta:1`
+  为 `"Schedulable":false`。
+- 本次唯一的生产写入是上述单个账号配置字段和一条调度刷新事件；未读取或
+  修改凭据，未动模型、分组、订单、支付、表结构或 `/v1`。回滚方式：仅在
+  OpenAI 上游真正可用后，由运营在 Sub2API 后台重新开启该账号调度；不要
+  在没有可用凭据时开启。
+- 凭据文件权限仍为 `0600`：服务器
+  `/home/deploy/cokeai/.aiclient2api-credentials.txt` 与本机
+  `~/.aiclient2api-credentials.txt`；内容未读取、未进入仓库或聊天。
+- OpenAI 仍未接通，地区限制结论不变；账号保持暂停。其余待办沿用 20:30
+  条目，本次没有新增未保存状态。
