@@ -171,8 +171,9 @@ jobs:
         run: |
           docker compose exec -T n8n n8n import:workflow --separate --input=/workflows
           COUNT=$(docker compose exec -T postgres psql -U cokeai -d n8n -tAc 'SELECT count(*) FROM workflow_entity;' | tr -d '[:space:]')
-          echo "Imported workflows: $COUNT"
-          test "$COUNT" = "6"
+          EXPECTED=$(ls n8n/workflows/*.json | wc -l | tr -d '[:space:]')
+          echo "Imported workflows: $COUNT (expected $EXPECTED)"
+          test "$COUNT" = "$EXPECTED"
       - name: Show container status
         run: docker compose ps
       - name: Dump logs on failure
