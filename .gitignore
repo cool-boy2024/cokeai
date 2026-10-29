@@ -18,6 +18,7 @@ next-env.d.ts
 secrets/
 .local-data/
 n8n_data/
+aiclient2api-data/
 *.sqlite
 *.db
 
