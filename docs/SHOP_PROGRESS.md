@@ -787,3 +787,13 @@ UI 实测：浏览 → 登录 → 下单（人工）→ 后台确认到账 → �
 - 若要整站统一，需要把 `public.css` 里的硬编码浅色（5 处 `#fff` 背景、
   14 处白色文字、渐变标题）逐页改掉，属于下一轮工作。
 - 生产未发布、未改配置、未动数据库；本地只跑 `next build` + `next start -p 3010`。
+
+### 合并与预览
+
+- PR #10 三项 CI 全绿（build 2m15s、e2e 1m13s、compose-smoke 3m03s），
+  squash 合并为 `bf7e6b6`；远端分支已删，本地 main 已同步，工作区干净。
+- 本机预览用生产构建：`PORT=3010 npm run start` → http://localhost:3010。
+- 回滚标签 `rollback-pre-taste` 仍指向 `f33859c`（annotated tag 已推 GitHub）。
+- 待定两件事：① `/shop`、商品详情、`/pricing`、`/docs`、登录注册是否也转深色；
+  ② 是否发布到生产。发布前先备份镜像 `cokeai-app:pre-taste`，回滚只需
+  `docker tag cokeai-app:pre-taste cokeai-app:local && docker compose up -d app`。
