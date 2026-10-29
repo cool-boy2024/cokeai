@@ -969,3 +969,28 @@ UI 实测：浏览 → 登录 → 下单（人工）→ 后台确认到账 → �
   - 合并 PR、发布生产并执行 `shop:publish`（发布前先备份 shop_products 相关表）。
   - Gemini、Grok 找到新货源后替换文案与质保口径。
   - 货源原文引用的图片仍未搬运；Muse 仅有字母标，未使用官方 Logo。
+
+### 2026-10-29 17:20 CST 生产发布 162db8b
+
+- PR #19 squash 合并为 `162db8b`，CI `build` / `e2e` / `compose-smoke` 全绿。
+- 发布前备份：
+  - 镜像 `cokeai-app:local` → `cokeai-app:pre-muse`
+  - `shop_products` + `shop_product_sources` →
+    `/home/deploy/backups/cokeai-shop-pre-muse-20261029-171544.sql`
+- rsync `main` 到 `/home/deploy/cokeai`，`docker compose … build app && up -d app`；
+  app 启动即 healthy，日志 `Database schema is up to date` / `Seed data is ready`。
+- 在 app 容器执行 `node scripts/shop-publish.mjs --confirm-production --publish-new`：
+  updated 6 / created 1 / linked 7。Muse active、in_stock，货源记录停用；
+  Pro 5x 货源切到 wzyp l35pj1（active），旧 catfk 源停用。
+- 首次执行报 `compliance_ack_by is of type uuid but expression is of type text`，
+  已在脚本里补 `$22::uuid`；为不阻塞发布，先把修复后的脚本 `docker cp` 进运行中的
+  容器完成发布，随后用单独 PR 把修复带回 main 并重建镜像。
+- 生产核对：
+  - `/shop` 与 6 个详情页 200；Muse 显示现货、货源原文、1 小时首登；
+    Pro 5x 显示「月度卡密」且没有账号密码/两步验证输入；Claude Max 同理。
+  - 7 个真实商品：Plus / Claude Pro in_stock；Pro 5x / Claude Max low_stock；
+    Gemini availability=paused、Grok out_of_stock，均仍在列表显示「补货中」。
+  - 生产数据库仍有 `usdt-e2e-test`（USDT 链路测试商品，¥7.30）active，
+    且出现在公开列表；本次未删除，待运营决定是否归档。
+- 回滚：`docker tag cokeai-app:pre-muse cokeai-app:local && up -d app`；
+  数据用上面的 pg_dump 恢复两张表。

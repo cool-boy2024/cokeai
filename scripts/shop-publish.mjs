@@ -127,7 +127,7 @@ try {
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'manual',$10,$11,$12,$13,$14,
                  $15::jsonb,$16::jsonb,$17,$18,$19::jsonb,$20,$21,TRUE,
                  CASE WHEN $20 = 'active' THEN now() ELSE NULL END,
-                 CASE WHEN $20 = 'active' THEN $22 ELSE NULL END,
+                 CASE WHEN $20 = 'active' THEN $22::uuid ELSE NULL END,
                  $23,$24,
                  CASE WHEN $20 = 'active' THEN now() ELSE NULL END)
          RETURNING id`,
