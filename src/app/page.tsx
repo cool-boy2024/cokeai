@@ -1,11 +1,20 @@
 import Link from "next/link";
+import {
+  ArrowRight,
+  ArrowUpRight,
+  Check,
+  Code,
+  Storefront,
+  Wallet,
+} from "@phosphor-icons/react/dist/ssr";
 import { SiteFooter } from "@/components/SiteFooter";
 import { SiteHeader } from "@/components/SiteHeader";
 import { Reveal } from "@/components/Reveal";
-import { CostMeter, type MeterModel } from "@/components/home/CostMeter";
-import { EndpointDemo } from "@/components/home/EndpointDemo";
-import { PlanPicker, type PickerPlan } from "@/components/home/PlanPicker";
-import { StageSteps } from "@/components/home/StageSteps";
+import { TaglineReveal } from "@/components/TaglineReveal";
+import { HeroBrandStrip } from "@/components/home/HeroBrandStrip";
+import { HeroOrbit } from "@/components/home/HeroOrbit";
+import { ShopRing } from "@/components/home/ShopRing";
+import { ProductCard } from "@/components/shop/ProductCard";
 import { query } from "@/lib/db";
 import { listCatalogModels } from "@/lib/model-catalog";
 import { formatCny } from "@/lib/money";
@@ -41,7 +50,7 @@ const FAQ = [
   {
     question: "支持哪些模型？",
     answer:
-      "控制台模型列表和价格页会列出当前可用的模型与价格。没有上架的模型不会出现在列表里。",
+      "控制台模型列表和价格页会列出当前可用的模型与价格。",
   },
   {
     question: "小店商品多久发货？",
@@ -60,7 +69,8 @@ const FAQ = [
   },
   {
     question: "余额会过期吗？",
-    answer: "不会。充值额度按实际用量扣费，剩余余额一直有效。",
+    answer:
+      "不会。充值额度按实际用量扣费，剩余余额一直有效。",
   },
 ];
 
@@ -84,222 +94,391 @@ export default async function HomePage() {
     listPublicProducts().catch(() => []),
   ]);
 
-  const meterModels: MeterModel[] = models.slice(0, 3).map((model) => ({
-    id: model.id,
-    name: model.displayName,
-    inputCnyPerMtok: model.inputCnyPerMtok,
-    outputCnyPerMtok: model.outputCnyPerMtok,
-  }));
-
-  const plans: PickerPlan[] = planResult.rows.map((plan) => ({
-    id: plan.id,
-    name: plan.name,
-    tagline: plan.tagline,
-    priceCny: Number(plan.price_micros) / 1_000_000,
-    creditsCny: Number(plan.credits_micros) / 1_000_000,
-    highlight: plan.highlight,
-  }));
-
-  const defaultModelId = models[0]?.id ?? "deepseek-flash";
-  const newProducts = shopProducts.slice(0, 6);
-
+  const showcase = models.slice(0, 8);
+  const newProducts = shopProducts.slice(0, 3);
+  const featuredPlan =
+    planResult.rows.find((plan) => plan.highlight) || planResult.rows[0];
+  const orderedPlans = featuredPlan
+    ? [
+        featuredPlan,
+        ...planResult.rows.filter((plan) => plan.id !== featuredPlan.id),
+      ]
+    : [];
   return (
     <>
       <SiteHeader />
       <main id="main-content" className="public-main home-page">
-        <section className="home-hero">
-          <div className="home-hero-grid">
-            <div className="home-hero-copy">
-              <h1 className="home-title">
-                <span className="home-title-line">
-                  <span>按 Token 计费的</span>
-                </span>
-                <span className="home-title-line">
-                  <span>AI 接口。</span>
-                </span>
-              </h1>
-              <p className="home-lead">
-                兼容 OpenAI SDK 的 API 中转，人民币按量计费。小店另售
-                ChatGPT、Claude、Gemini、Muse 的订阅、代充和成品号。
-              </p>
-              <div className="home-actions">
-                <Link className="action-primary" href="/register">
-                  创建账号
+        <section className="hero home-hero">
+          <div className="hero-atmosphere" aria-hidden="true">
+            <span className="hero-aurora hero-aurora-a" />
+            <span className="hero-aurora hero-aurora-b" />
+            <span className="hero-aurora hero-aurora-c" />
+          </div>
+
+          <HeroOrbit />
+
+          <div className="hero-float hero-float-a" aria-hidden="true">
+            <Wallet size={16} />
+            <div>
+              <strong>USDT · TRC20</strong>
+              <span>链上确认后到账</span>
+            </div>
+          </div>
+          <div className="hero-float hero-float-b" aria-hidden="true">
+            <Storefront size={16} />
+            <div>
+              <strong>
+                {shopProducts.length > 0
+                  ? `${shopProducts.length} 件商品在售`
+                  : "小店上新中"}
+              </strong>
+              <span>人工发货 · 订单可查</span>
+            </div>
+          </div>
+
+          <div className="container hero-center">
+            <div className="hero-eyebrow">
+              <i />
+              AI API · 数字商品
+            </div>
+            <h1 className="hero-title">
+              <span className="hero-line">
+                <span>CokeAI 小店</span>
+              </span>
+              <span className="hero-line hero-line-sub">
+                <span>接上你需要的模型。</span>
+              </span>
+            </h1>
+            <p className="hero-lead">
+              OpenAI 兼容接口，按量计费。
+              <br />
+              注册、充值、创建 Key，就能用。
+            </p>
+            <div className="hero-actions">
+              <Link className="btn btn-primary" href="/register">
+                创建账号 <ArrowRight size={16} />
+              </Link>
+              <Link className="hero-secondary" href="/pricing">
+                查看价格 <ArrowUpRight size={14} />
+              </Link>
+            </div>
+            <div className="hero-proof">
+              <span className="proof-pill">
+                <Check size={14} /> OpenAI SDK 兼容
+              </span>
+              <span className="proof-pill">
+                <Wallet size={14} /> USDT 充值
+              </span>
+              <span className="proof-pill">
+                <Check size={14} /> 余额不过期
+              </span>
+            </div>
+            <HeroBrandStrip />
+            <div className="hero-note">
+              {showcase.length > 0
+                ? `${showcase.length} 个模型已就绪`
+                : "品牌仅作生态示意"}
+            </div>
+          </div>
+        </section>
+
+        <TaglineReveal />
+
+        {shopProducts.length > 0 ? (
+          <section className="section shop-collection">
+            <ShopRing products={shopProducts.slice(0, 8)} />
+            <div className="container shop-collection-center">
+              <Reveal>
+                <div className="hero-eyebrow">
+                  <i />
+                  Shop · 小店
+                </div>
+                <h2 className="shop-collection-title">小店上新</h2>
+                <p className="shop-collection-lead">
+                  订阅、卡密、代充。挑一件今天要用的。
+                </p>
+                <div className="shop-collection-actions">
+                  <Link className="text-link" href="/shop">
+                    全部商品 <ArrowRight size={14} />
+                  </Link>
+                </div>
+                <div className="shop-collection-meta">
+                  {shopProducts.length} 件商品在售 · 人工发货
+                </div>
+              </Reveal>
+            </div>
+            <div className="container shop-collection-mobile">
+              <div className="shop-grid shop-grid-home">
+                {newProducts.map((product, index) => (
+                  <ProductCard
+                    product={product}
+                    featured={newProducts.length >= 3 && index === 0}
+                    key={product.id}
+                  />
+                ))}
+              </div>
+            </div>
+          </section>
+        ) : null}
+
+        <section className="section home-bento">
+          <div className="container">
+            <Reveal>
+              <div className="bento-grid">
+                <article className="bento-card bento-large">
+                  <div>
+                    <div className="kicker">Billing</div>
+                    <h2>
+                      按量计费，
+                      <br />
+                      不买用不完的套餐。
+                    </h2>
+                    <p>
+                      每次调用按 Token 结算，余额不过期。用量、费用和 Key
+                      限额在控制台一次看清。
+                    </p>
+                  </div>
+                  <div className="usage-panel" aria-hidden="true">
+                    <div className="usage-head">
+                      <span>计费结构示意</span>
+                      <span>按 Token 结算</span>
+                    </div>
+                    <div className="usage-row">
+                      <span>输入</span>
+                      <div className="usage-track">
+                        <i style={{ width: "76%" }} />
+                      </div>
+                    </div>
+                    <div className="usage-row">
+                      <span>输出</span>
+                      <div className="usage-track">
+                        <i style={{ width: "48%" }} />
+                      </div>
+                    </div>
+                    <div className="usage-row">
+                      <span>缓存</span>
+                      <div className="usage-track">
+                        <i style={{ width: "24%" }} />
+                      </div>
+                    </div>
+                  </div>
+                </article>
+
+                <Link className="bento-card bento-link" href="/docs">
+                  <div>
+                    <div className="bento-icon">
+                      <Code size={20} />
+                    </div>
+                    <h3>接入教程，单独放在一处</h3>
+                    <p>Base URL、鉴权、流式输出和错误码，在教程里一次看完。</p>
+                  </div>
+                  <span className="bento-arrow">
+                    <ArrowUpRight size={16} />
+                  </span>
                 </Link>
-                <Link className="action-link" href="/pricing">
-                  看价格
+
+                <Link className="bento-card bento-link" href="/shop">
+                  <div>
+                    <div className="kicker">Storefront</div>
+                    <h3>订阅和代充，也在同一家店</h3>
+                    <p>
+                      ChatGPT、Claude、Gemini、Grok、Muse。人工处理，订单进度随时可查。
+                    </p>
+                  </div>
+                  <span className="bento-arrow">
+                    <ArrowUpRight size={16} />
+                  </span>
                 </Link>
               </div>
-              <dl className="home-facts">
+            </Reveal>
+          </div>
+        </section>
+
+        <section className="section steps-section" id="how-it-works">
+          <div className="container">
+            <Reveal>
+              <div className="section-head">
                 <div>
-                  <dt>充值</dt>
-                  <dd>USDT · TRC20</dd>
+                  <div className="kicker">How it works</div>
+                  <h2>三步接上，然后按量付费。</h2>
                 </div>
+                <p>注册免费，充值后创建 Key 就能调用。</p>
+              </div>
+              <ol className="steps-grid">
+                <li className="step-item">
+                  <span className="step-index">01</span>
+                  <h3>注册账号</h3>
+                  <p>邮箱注册后进入控制台，不需要信用卡。</p>
+                </li>
+                <li className="step-item">
+                  <span className="step-index">02</span>
+                  <h3>充值余额</h3>
+                  <p>在控制台选择 USDT TRC20，链上确认后额度到账。</p>
+                </li>
+                <li className="step-item">
+                  <span className="step-index">03</span>
+                  <h3>创建 Key</h3>
+                  <p>生成 API Key，替换 Base URL 就可以调用。</p>
+                </li>
+              </ol>
+            </Reveal>
+          </div>
+        </section>
+
+        <section className="section" id="models">
+          <div className="container">
+            <Reveal>
+              <div className="section-head">
                 <div>
-                  <dt>余额</dt>
-                  <dd>不过期</dd>
+                  <div className="kicker">Models</div>
+                  <h2>模型与价格</h2>
                 </div>
+                <Link className="text-link" href="/pricing">
+                  全部模型 <ArrowRight size={14} />
+                </Link>
+              </div>
+
+              <div className="table-card">
+                <div className="table-scroll">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>模型</th>
+                        <th className="col-platform">平台</th>
+                        <th>输入 / 1M</th>
+                        <th>输出 / 1M</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {showcase.length === 0 ? (
+                        <tr>
+                          <td colSpan={4}>
+                            <div className="table-empty">
+                              <div>
+                                <strong>当前没有可售模型</strong>
+                                <p>模型开放后，价格会直接显示在这里。</p>
+                              </div>
+                              <Link className="text-link" href="/docs">
+                                查看接入文档 <ArrowRight size={14} />
+                              </Link>
+                            </div>
+                          </td>
+                        </tr>
+                      ) : (
+                        showcase.map((model) => (
+                          <tr key={model.id}>
+                            <td>
+                              <span className="mono small">{model.id}</span>
+                            </td>
+                            <td className="small muted col-platform">{model.platform}</td>
+                            <td className="mono small">
+                              {formatCny(model.inputCnyPerMtok * 1_000_000)}
+                            </td>
+                            <td className="mono small">
+                              {formatCny(model.outputCnyPerMtok * 1_000_000)}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <p className="table-footnote">
+                表内价格即结算价，按实际 Token 用量扣费。
+              </p>
+            </Reveal>
+          </div>
+        </section>
+
+        <section className="section" id="packs">
+          <div className="container">
+            <Reveal>
+              <div className="section-head">
                 <div>
-                  <dt>发货</dt>
-                  <dd>人工处理</dd>
+                  <div className="kicker">Credits</div>
+                  <h2>充值包</h2>
                 </div>
+                <p>人民币充值，1 元 = 1 额度，余额不过期。</p>
+              </div>
+              <div className="plan-grid plan-editorial">
+                {orderedPlans.map((plan) => (
+                  <article
+                    key={plan.id}
+                    className={`plan-card${plan.highlight ? " highlight" : ""}`}
+                  >
+                    {plan.highlight ? (
+                      <span className="plan-badge">推荐</span>
+                    ) : null}
+                    <h3 className="plan-name">{plan.name}</h3>
+                    <p className="plan-tagline">{plan.tagline}</p>
+                    <div className="plan-price">
+                      <strong>
+                        {formatCny(Number(plan.price_micros)).replace("¥", "")}
+                      </strong>
+                      <span>元</span>
+                    </div>
+                    <div className="plan-credit">
+                      <span>到账额度</span>
+                      <strong>
+                        {formatCny(Number(plan.credits_micros))}
+                      </strong>
+                    </div>
+                    <div className="plan-actions">
+                      <Link
+                        className={`btn ${
+                          plan.highlight ? "btn-primary" : "btn-dark"
+                        } btn-block`}
+                        href="/dashboard/billing"
+                      >
+                        充值 <ArrowRight size={14} />
+                      </Link>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </Reveal>
+          </div>
+        </section>
+
+        <section className="section faq-section" id="faq">
+          <div className="container">
+            <Reveal>
+              <div className="section-head">
+                <div>
+                  <div className="kicker">FAQ</div>
+                  <h2>常见问题</h2>
+                </div>
+                <Link className="text-link" href="/docs">
+                  查看接入教程 <ArrowRight size={14} />
+                </Link>
+              </div>
+              <dl className="faq-grid">
+                {FAQ.map((item) => (
+                  <div className="faq-item" key={item.question}>
+                    <dt>{item.question}</dt>
+                    <dd>{item.answer}</dd>
+                  </div>
+                ))}
               </dl>
-            </div>
-
-            <Reveal className="home-hero-frag" delay={140}>
-              <CostMeter models={meterModels} />
             </Reveal>
           </div>
         </section>
 
-        <section className="home-endpoint">
-          <Reveal>
-            <EndpointDemo modelId={defaultModelId} />
-          </Reveal>
-        </section>
-
-        <section className="home-media" aria-label="光纤">
-          <Reveal>
-            <figure>
-              <img
-                src="/media/fiber-light.jpg"
-                width={1920}
-                height={1275}
-                alt="绿色激光穿过一段光纤，端面发亮"
-              />
-              <figcaption>
-                光在光纤里走。你的请求走的是同一条路。
-              </figcaption>
-            </figure>
-          </Reveal>
-        </section>
-
-        <section className="home-stages">
-          <Reveal>
-            <StageSteps modelId={defaultModelId} />
-          </Reveal>
-        </section>
-
-        <section className="home-plans" aria-labelledby="plans-title">
-          <Reveal>
-            <div className="home-plans-head">
-              <h2 id="plans-title">充值包</h2>
-              <p>人民币充值，1 元 = 1 额度。余额不过期，按实际用量扣费。</p>
-            </div>
-          </Reveal>
-          <Reveal delay={100}>
-            <PlanPicker plans={plans} />
-          </Reveal>
-        </section>
-
-        <section id="models" className="home-list" aria-labelledby="list-title">
-          <div className="home-list-grid">
-            <Reveal className="home-list-copy">
-              <h2 id="list-title">价目表</h2>
-              <p>
-                模型按 Token 结算，小店商品按件计价。发货时间以商品页标注为准，
-                未上架的模型不会出现在列表里。
-              </p>
-              <Link className="action-link" href="/shop">
-                全部商品
-              </Link>
-              <img
-                className="home-list-photo"
-                src="/media/patch-panel.jpg"
-                width={960}
-                height={720}
-                alt="机房里一排光纤配线架，黄色尾纤从右侧接入"
-                loading="lazy"
-              />
-              <p className="home-list-photo-note">机房里的光纤配线架。</p>
-            </Reveal>
-
-            <Reveal className="home-list-rows" delay={100}>
-              <p className="list-group">模型 · 每百万 Token（输入 / 输出）</p>
-              {models.length === 0 ? (
-                <p className="list-empty">模型价格正在同步，稍后在这里列出。</p>
-              ) : (
-                models.map((model) => (
-                  <Link
-                    key={model.id}
-                    className="list-row"
-                    href="/pricing"
-                  >
-                    <span className="list-name">{model.displayName}</span>
-                    <span className="list-value">
-                      {formatCny(model.inputCnyPerMtok * 1_000_000)} /{" "}
-                      {formatCny(model.outputCnyPerMtok * 1_000_000)}
-                    </span>
+        <section className="cta-section">
+          <div className="container">
+            <Reveal>
+              <div className="cta-card">
+                <div>
+                  <h2>注册免费，充值后就能调用。</h2>
+                  <p>余额不过期 · USDT 充值 · 用量可查</p>
+                </div>
+                <div className="cta-actions">
+                  <Link className="btn btn-primary" href="/register">
+                    创建账号 <ArrowRight size={16} />
                   </Link>
-                ))
-              )}
-
-              <p className="list-group">小店 · 每件</p>
-              {newProducts.length === 0 ? (
-                <p className="list-empty">小店正在上新，稍后在这里列出。</p>
-              ) : (
-                newProducts.map((product) => (
-                  <Link
-                    key={product.id}
-                    className="list-row"
-                    href={`/shop/${product.slug}`}
-                  >
-                    <span className="list-name">{product.name}</span>
-                    <span className="list-value">
-                      {formatCny(product.price_micros)}
-                    </span>
-                  </Link>
-                ))
-              )}
-            </Reveal>
-          </div>
-        </section>
-
-        <section className="home-faq" aria-labelledby="faq-title">
-          <div className="home-faq-grid">
-            <Reveal className="home-faq-head">
-              <h2 id="faq-title">常见问题</h2>
-              <p>
-                计费、充值、发货和退款都在这里。没有写到的，发邮件到
-                support@cokeai.cc.cd。
-              </p>
-            </Reveal>
-
-            <Reveal className="home-faq-list" delay={80}>
-              {FAQ.map((item) => (
-                <details className="faq-tile" name="home-faq" key={item.question}>
-                  <summary>
-                    <span>{item.question}</span>
-                    <i aria-hidden="true" />
-                  </summary>
-                  <p>{item.answer}</p>
-                </details>
-              ))}
-            </Reveal>
-          </div>
-        </section>
-
-        <section className="home-cta" aria-labelledby="cta-title">
-          <div className="home-cta-inner">
-            <Reveal className="home-cta-copy">
-              <h2 id="cta-title">第一单，从注册开始。</h2>
-              <p>
-                注册免费。充值后创建 Key 就能调用，USDT 到账即用，余额不过期。
-              </p>
-            </Reveal>
-            <Reveal className="home-cta-tag" delay={100}>
-              <p className="home-cta-tag-line">
-                <span>注册</span>
-                <strong>¥0</strong>
-              </p>
-              <ul>
-                <li>不需要信用卡</li>
-                <li>余额不过期</li>
-                <li>进度可查</li>
-              </ul>
-              <Link className="action-primary" href="/register">
-                创建账号
-              </Link>
+                </div>
+              </div>
             </Reveal>
           </div>
         </section>
