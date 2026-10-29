@@ -1297,3 +1297,20 @@ UI 实测：浏览 → 登录 → 下单（人工）→ 后台确认到账 → �
 - 未改支付回调、订单状态机、USDT 扫描、数据库结构或 `/v1`；未创建订单。
 - 回滚：`docker tag cokeai-app:pre-codex-sms cokeai-app:local && up -d app`；
   数据恢复上述 SQL；若只需下架，把商品置为 archived / paused。
+
+### 2026-10-30 00:47 CST 上下文维护核查
+
+- `main=2429a56`，工作区干净；PR #37（Codex 商品与首页改动，`b9f1d0d`）、
+  #38（发布记录与 `.dockerignore`，`74310b3`）、#39（合并说明，`2429a56`）
+  均已合并。应用代码仍为 `b9f1d0d`，后两个提交只改文档。
+- 生产 10 个容器均 Up；app、Sub2API、AIClient2API、Postgres、Redis healthy。
+- 生产机回源公网：`/api/health` 200、`/shop` 200、
+  `/shop/codex-sms-single` 200、`/brand/muse-logo.svg` 200。
+- 数据库：14 个 active（6 个 Muse 档位 + 6 个原有非 Muse 商品 +
+  `codex-sms-single` + `usdt-e2e-test`），1 个 archived（旧
+  `muse-ai-310b-account`）。`codex-sms-single` 为 active / in_stock / ¥5.00；
+  六个 Muse 档位均 active。
+- 自 00:35 发布后没有新的生产写入；没有未保存的关键状态。
+- 待办不变：Muse 六档与 Codex 售价的毛利复核；货源教程 mp4 直链 404；
+  `usdt-e2e-test` 待归档；模型按钮是否要完全取消滚动，待运营确认。
+- 现在可以输入 `/compact` 压缩上下文。
