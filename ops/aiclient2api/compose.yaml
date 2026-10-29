@@ -1,0 +1,50 @@
+# =============================================================================
+# AIClient2API overlay (OpenAI Codex OAuth -> OpenAI-compatible API)
+# =============================================================================
+# Start with the root compose file and the Sub2API overlay:
+#
+#   docker compose -f docker-compose.yml \
+#     -f ops/sub2api/compose.yaml \
+#     -f ops/aiclient2api/compose.yaml up -d aiclient2api
+#
+# The service is private to the CokeAI Docker network. Sub2API reaches it as
+# http://aiclient2api:3000/v1. Only the console (13000) and the Codex OAuth
+# callback (1455) are published, both on 127.0.0.1 for SSH tunnels.
+#
+# Runtime data lives in ./aiclient2api-data, which is gitignored:
+#   configs/config.json     provider, REQUIRED_API_KEY, admin password hash
+#   configs/codex/*.json    Codex OAuth credentials
+#   configs/token-store.json
+#
+# IMAGE PINNING
+#   The digest below is the linux/amd64 manifest. Update it deliberately after
+#   reviewing upstream changes, then recreate the container.
+services:
+  aiclient2api:
+    image: justlikemaki/aiclient-2-api@sha256:965e8c76dc1bf2bbee7464d6bf4891098ef4b830b8327051217a84c9b709f5a5
+    container_name: cokeai-aiclient2api
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "127.0.0.1:13000:3000"
+      - "127.0.0.1:1455:1455"
+    volumes:
+      - ./aiclient2api-data/configs:/app/configs
+      - ./aiclient2api-data/plugins:/app/src/plugins-user
+    environment:
+      TZ: "${TZ:-Asia/Shanghai}"
+    networks:
+      - cokeai
+    healthcheck:
+      test: ["CMD", "node", "healthcheck.js"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 5
+    mem_limit: 768m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

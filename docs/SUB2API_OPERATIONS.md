@@ -781,3 +781,75 @@ $COMPOSE logs --tail=100 edge sub2api
 
 Sub2API 是运行时的计费源；CokeAI 本地余额通过充值 Outbox/同步任务更新。
 回滚前必须运行 `rollback-prepare.mjs` 做快照。不要手工只改一边。
+
+---
+
+## 14. AIClient2API OpenAI 上游（Codex OAuth）
+
+`ops/aiclient2api/compose.yaml` 在 CokeAI 私有网络中运行
+[AIClient2API](https://github.com/justlovemaki/AIClient-2-API)，把 OpenAI Codex
+OAuth 账号转成 OpenAI 兼容接口，再由 Sub2API 作为 `openai` 平台上游调用。
+
+```text
+Sub2API :8080
+  └── http://aiclient2api:3000/v1  (OpenAI-compatible)
+        └── openai-codex-oauth -> auth.openai.com / ChatGPT Codex
+```
+
+### 部署
+
+```bash
+COMPOSE="docker compose -f docker-compose.yml \
+  -f ops/sub2api/compose.yaml \
+  -f ops/aiclient2api/compose.yaml"
+$COMPOSE up -d aiclient2api
+$COMPOSE ps aiclient2api
+curl -sS http://127.0.0.1:13000/api/health
+```
+
+镜像按 linux/amd64 digest 固定；升级前先看上游 release，再改 digest 并重建。
+运行数据在 `./aiclient2api-data/`，已 gitignore；不要提交其中的
+`config.json`、`pwd`、`token-store.json` 或 `configs/codex/*.json`。
+
+本机通过 SSH 隧道访问控制台和 OAuth 回调：
+
+```bash
+ssh -i ~/.ssh/cokeai_deploy -N \
+  -L 127.0.0.1:13000:127.0.0.1:13000 \
+  -L 127.0.0.1:1455:127.0.0.1:1455 \
+  deploy@47.83.178.22
+```
+
+打开 `http://127.0.0.1:13000`，在 Provider Pools / Configuration 里选择
+Codex 并完成 OpenAI 登录。OAuth 回调固定为
+`http://localhost:1455/auth/callback`，所以隧道必须保持。
+
+### 接入 Sub2API
+
+在 Sub2API 后台新增账号：
+
+- 平台：`OpenAI`
+- 类型：`API Key`
+- Base URL：`http://aiclient2api:3000/v1`
+- API Key：`aiclient2api-data/configs/config.json` 里的 `REQUIRED_API_KEY`
+- 分组：`cokeai`
+- 模型映射：把 Sub2API 的模型名映射到 AIClient2API 支持的 Codex 模型，
+  例如 `gpt-5.4 -> gpt-5.5`、`gpt-5.6 -> gpt-5.6-sol`
+
+先保持账号 `schedulable=false`，在 Sub2API 账号页点“测试”确认能通过
+`aiclient2api:3000` 返回正常响应，再开启调度。测试或实际请求报
+`No healthy provider found in pool for openai-codex-oauth` 表示 OAuth 凭据
+尚未完成或已过期，不是网络问题。
+
+### 边界
+
+- 这台生产 VPS 在香港。OpenAI 对不支持地区的 OAuth 会返回
+  `unsupported_country_region_territory`；不要改代理、指纹或出口来绕过。
+  2026-10-29 实测：本机网络与生产出口访问 Codex 授权页均返回 HTTP 403，
+  HTML 含 `unsupported_country_region_territory`。因此当前环境无法完成
+  Codex OAuth。需要官方 API Key，或把服务部署在受支持地区并由账号持有人
+  完成授权。
+- 把订阅额度转成公开 API 出售通常违反 OpenAI 条款，也可能触发账号风控。
+  只建议自用/内部验证；不要直接挂到 CokeAI 对外付费渠道。
+- 不要在日志、文档、聊天或截图里输出 `REQUIRED_API_KEY`、控制台密码、
+  Codex `access_token` / `refresh_token`。
