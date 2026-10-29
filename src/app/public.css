@@ -1203,7 +1203,7 @@ body {
 
 .public-main .shop-cover-image {
   padding: 0;
-  background: #0866ff;
+  background: #f2f0ea;
 }
 
 .public-main .shop-cover-image::after {
@@ -1215,6 +1215,7 @@ body {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  object-position: center;
 }
 
 .public-main .shop-cover-grid {
@@ -2516,6 +2517,87 @@ body {
   color: var(--green);
   text-decoration: underline;
   text-underline-offset: 3px;
+}
+
+.shop-notice-figure {
+  margin: 16px 0 0;
+  max-width: 420px;
+}
+
+.shop-notice-figure img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper);
+}
+
+.shop-notice-figure figcaption {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.shop-tutorial-media {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--ink);
+}
+
+.shop-tutorial-media video {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: var(--ink);
+}
+
+.shop-tutorial-caption {
+  max-width: 62ch;
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 22px;
+}
+
+.shop-tutorial-steps {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 24px;
+  margin: 20px 0 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: tutorial-step;
+}
+
+.shop-tutorial-steps li {
+  position: relative;
+  min-width: 0;
+  padding-left: 34px;
+  color: var(--ink-soft);
+  font-size: 15px;
+  line-height: 24px;
+  counter-increment: tutorial-step;
+}
+
+.shop-tutorial-steps li::before {
+  content: counter(tutorial-step, decimal-leading-zero);
+  position: absolute;
+  top: 2px;
+  left: 0;
+  color: var(--green);
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 680px) {
+  .shop-tutorial-steps {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 720px) {

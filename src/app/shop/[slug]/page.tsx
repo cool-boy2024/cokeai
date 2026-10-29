@@ -8,6 +8,8 @@ import { BuyForm } from "@/components/shop/BuyForm";
 import { ProductCover } from "@/components/shop/ProductCover";
 import { ProductIntro } from "@/components/shop/ProductIntro";
 import { ProductNotices } from "@/components/shop/ProductNotices";
+import { ProductTutorial } from "@/components/shop/ProductTutorial";
+import { getShopTutorial } from "@/lib/shop/tutorials";
 import {
   AvailabilityBadge,
   DeliveryBadge,
@@ -51,6 +53,8 @@ export default async function ShopProductPage({
   ]);
   if (!product) notFound();
 
+  const tutorial = getShopTutorial(product.slug);
+
   return (
     <>
       <SiteHeader />
@@ -90,7 +94,9 @@ export default async function ShopProductPage({
 
               <ProductIntro product={product} />
 
-              <ProductNotices product={product} />
+              <ProductNotices product={product} image={tutorial?.image} />
+
+              {tutorial ? <ProductTutorial tutorial={tutorial} /> : null}
 
               <section className="shop-section">
                 <h2>交付流程</h2>
