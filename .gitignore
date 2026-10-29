@@ -30,6 +30,9 @@ tools/supplier-scraper/.cache/
 tools/supplier-scraper/output/
 tools/supplier-scraper/*.jsonl
 
+# Design skill output (taste-skill screenshots and reports)
+.taste-skill/
+
 # Editor and OS
 .DS_Store
 *.log
