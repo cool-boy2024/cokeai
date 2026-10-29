@@ -866,7 +866,8 @@ UI 实测：浏览 → 登录 → 下单（人工）→ 后台确认到账 → �
 
 ### 当前状态
 
-- `main` = `14cc70f`；CI `build` / `e2e` / `compose-smoke` 全绿。
+- `main` = `f99a659`（PR #21 仅文档；应用代码与生产均为 `14cc70f`）；
+  CI `build` / `e2e` / `compose-smoke` 全绿。
 - 生产已运行 `14cc70f`；7 个真实商品 + 1 个测试商品，订单与余额未动；
   `USDT_ENABLED=false` 未变。
 - 本地预览：`PORT=3010 npm run start` → http://127.0.0.1:3010（生产构建）。
