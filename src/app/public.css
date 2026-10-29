@@ -1201,6 +1201,22 @@ body {
   pointer-events: none;
 }
 
+.public-main .shop-cover-image {
+  padding: 0;
+  background: #0866ff;
+}
+
+.public-main .shop-cover-image::after {
+  display: none;
+}
+
+.public-main .shop-cover-image img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 .public-main .shop-cover-grid {
   position: absolute;
   inset: 0;

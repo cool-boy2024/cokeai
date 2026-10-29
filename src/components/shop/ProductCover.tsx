@@ -17,7 +17,13 @@ const COVER_CAPTIONS: Record<string, string> = {
   gemini: "Google",
   grok: "xAI",
   muse: "Muse AI",
+  "muse-supplier": "Muse AI",
   neutral: "CokeAI",
+};
+
+/** Supplier product covers, used only where the supplier image is the source. */
+const COVER_IMAGES: Record<string, string> = {
+  "muse-supplier": "/shop/muse-supplier.jpg",
 };
 
 export function ProductCover({
@@ -30,6 +36,18 @@ export function ProductCover({
   className?: string;
 }) {
   const key = variant || brand || "neutral";
+  const image = COVER_IMAGES[key];
+  if (image) {
+    return (
+      <div
+        className={`shop-cover shop-cover-image ${className}`.trim()}
+        aria-hidden="true"
+      >
+        <img src={image} alt="" loading="lazy" decoding="async" />
+      </div>
+    );
+  }
+
   const label = COVER_LABELS[key] || COVER_LABELS[brand || ""] || "AI";
   const caption =
     COVER_CAPTIONS[key] || COVER_CAPTIONS[brand || ""] || "CokeAI";

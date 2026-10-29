@@ -35,6 +35,112 @@ type SeedProduct = {
   offer: { store: string; titleLike: string };
 };
 
+type MuseVariant = {
+  slug: string;
+  name: string;
+  price: number;
+  warrantyType: "none" | "days";
+  warrantyDays: number;
+  warrantyNote: string;
+  sort: number;
+};
+
+const MUSE_VARIANTS: MuseVariant[] = [
+  {
+    slug: "muse-10b-1h",
+    name: "Muse 10 亿额度成品号（1 小时后无任何质保）",
+    price: 15,
+    warrantyType: "none",
+    warrantyDays: 0,
+    warrantyNote: "1 小时后无任何质保",
+    sort: 70,
+  },
+  {
+    slug: "muse-10b-7d",
+    name: "Muse 10 亿额度成品号（7 天之内死了就换）",
+    price: 20,
+    warrantyType: "days",
+    warrantyDays: 7,
+    warrantyNote: "7 天之内死了就换",
+    sort: 71,
+  },
+  {
+    slug: "muse-10b-30d",
+    name: "Muse 10 亿额度成品号（1 个月之内死了就换）",
+    price: 25,
+    warrantyType: "days",
+    warrantyDays: 30,
+    warrantyNote: "1 个月之内死了就换",
+    sort: 72,
+  },
+  {
+    slug: "muse-310b-1h",
+    name: "Muse 310 亿额度成品号（1 小时后无任何质保）",
+    price: 25,
+    warrantyType: "none",
+    warrantyDays: 0,
+    warrantyNote: "1 小时后无任何质保",
+    sort: 73,
+  },
+  {
+    slug: "muse-310b-7d",
+    name: "Muse 310 亿额度成品号（7 天之内死了就换）",
+    price: 60,
+    warrantyType: "days",
+    warrantyDays: 7,
+    warrantyNote: "7 天之内死了就换",
+    sort: 74,
+  },
+  {
+    slug: "muse-310b-30d",
+    name: "Muse 310 亿额度成品号（1 个月之内死了就换）",
+    price: 88,
+    warrantyType: "days",
+    warrantyDays: 30,
+    warrantyNote: "1 个月之内死了就换",
+    sort: 75,
+  },
+];
+
+function museProduct(variant: MuseVariant): SeedProduct {
+  return {
+    slug: variant.slug,
+    brand: "muse",
+    category: "account",
+    productType: "account",
+    name: variant.name,
+    subtitle: "美国号池 · 成品号 · 邮箱号 + 接码链接交付",
+    description:
+      "Muse 成品账号，邮箱号与接码链接交付。首登、换绑和防封要求按货源原文执行。",
+    cover: "muse-supplier",
+    price: variant.price,
+    etaMin: 30,
+    etaMax: 120,
+    warrantyType: variant.warrantyType,
+    warrantyDays: variant.warrantyDays,
+    warrantyNote: variant.warrantyNote,
+    manualAvailability: "in_stock",
+    includes: [variant.name, "邮箱号 + 接码链接", "登录、换绑与防封教程"],
+    usage: [
+      "首登前确认当前 IP 为美国、日本、新加坡或加拿大，开启全局代理，并使用浏览器无痕模式。",
+      "进入 Muse 官网输入发货邮箱号，页面会提示输入验证码。",
+      "打开接码链接获取验证码并填入登录页。",
+      "上号后检查额度，1 小时内换绑成自己的 Gmail 或 Hotmail，并下掉原邮箱。",
+      "换绑细节按视频教程操作：https://zyanai.cc/user/help/article.9",
+    ],
+    notice:
+      "下单前请务必选择好自己要的质保方案；如果买的是「1 小时后无任何质保」，代表 1 小时后号死了也不质保。\n1. 质保多久根据您自己下单的质保规格。最近封号比较严重，我们只能这么和您说。\n2. 上号后请在 1 小时内换绑成自己的邮箱；因为没有换绑导致临时邮箱失效，我们无法售后。\n3. 不接受吹毛求疵的客户。有可能下单时发现额度不是 310 亿整，这种我们愿意按照你付款比例补一点；当然额度差距太大了的话，我们会给你换。\n4. 本产品登录方式在页面下方，请按步骤操作。\n5. Muse 目前只在以下地区 IP 环境可以使用：美国、日本、新加坡、加拿大。",
+    refund:
+      variant.warrantyType === "none"
+        ? "质保规格：1 小时后无任何质保。购买后 1 小时内可登录，1 小时后账号死亡不质保。\n上号后请在 1 小时内换绑成自己的邮箱；没有换绑导致临时邮箱失效，无法售后。\n换绑成功后务必下掉原邮箱；不下掉被找回，无法售后。"
+        : `质保规格：${variant.warrantyNote}。\n上号后请在 1 小时内换绑成自己的邮箱；没有换绑导致临时邮箱失效，无法售后。\n换绑成功后务必下掉原邮箱；不下掉被找回，无法售后。`,
+    inputFields: [],
+    featured: false,
+    sort: variant.sort,
+    offer: { store: "子砚的AI店铺", titleLike: "%muse成品账号（应对封号迭代升级版%）" },
+  };
+}
+
 export const PRODUCTS: SeedProduct[] = [
   {
     slug: "chatgpt-plus-1m-code",
@@ -317,39 +423,7 @@ export const PRODUCTS: SeedProduct[] = [
     sort: 60,
     offer: { store: "Tokyo", titleLike: "%Grok Super 30美刀%" },
   },
-  {
-    slug: "muse-ai-310b-account",
-    brand: "muse",
-    category: "account",
-    productType: "account",
-    name: "Muse AI 310 亿 token 成品号",
-    subtitle: "成品账号，邮箱与取件地址交付",
-    description:
-      "Muse AI 310 亿 token 成品号，交付邮箱与邮件接收地址，按说明取码登录。",
-    cover: "muse",
-    price: 59,
-    etaMin: 30,
-    etaMax: 120,
-    warrantyType: "first_login",
-    warrantyDays: 0,
-    warrantyNote: "本产品质保首登；登录保障仅持续 1 小时，一旦能够登录账号，保障即失效",
-    manualAvailability: "in_stock",
-    includes: ["Muse AI 310 亿 token 成品号", "邮箱与邮件接收地址", "取码登录说明"],
-    usage: [
-      "在 Muse 中输入你的邮箱地址，然后打开发货的取件地址进行取码登录。",
-      "将邮箱输入以下任一网站获取验证码（请务必输入）：generator.email、luuvan.site、tmpmails.net。",
-      "例如邮箱 abc@aivn：打开 generator.email/abc@aivn，或 luuvan.site/?收件箱=abc@aivn。",
-      "登录时使用干净的 IP 地址；购买后不要更改信息，不要关联 Facebook。",
-    ],
-    notice:
-      "账户存在风控风险，不能接受不要拍。\n1. 请使用干净的 IP 地址登录。\n2. 购买后请勿更改信息，也请勿关联 Facebook。\n3. 如有任何疑问，请在操作账号前先联系订单页客服。\n登录保障仅持续 1 小时（一旦您能够登录账号，保障即失效）。\n账号有问题，务必当天带图联系订单页客服，超时难以处理；账号务必现买现用，别囤号，有问题在 1 小时内反馈。",
-    refund:
-      "本产品质保首登：登录保障仅持续 1 小时，一旦能够登录账号，保障即失效。\n账号有问题，务必当天带图联系订单页客服，超时难以处理。",
-    inputFields: [],
-    featured: false,
-    sort: 70,
-    offer: { store: "AI小店", titleLike: "%Muse AI 310亿token成品号%" },
-  },
+  ...MUSE_VARIANTS.map(museProduct),
 ];
 
 async function main() {
