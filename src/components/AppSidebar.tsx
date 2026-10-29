@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowLeft, LogOut } from "lucide-react";
+import { ArrowLeft, Home, LogOut, ShoppingBag } from "lucide-react";
 import type { SessionUser } from "@/lib/auth";
 import { logoutAction } from "@/app/actions/auth";
 import { Logo } from "./Logo";
@@ -30,6 +30,14 @@ export function AppSidebar({
         <div className="sidebar-group">
           <div className="sidebar-label">Switch</div>
           <nav className="sidebar-nav">
+            <Link className="sidebar-link" href="/">
+              <Home />
+              <span>网站首页</span>
+            </Link>
+            <Link className="sidebar-link" href="/shop">
+              <ShoppingBag />
+              <span>小店前台</span>
+            </Link>
             <Link className="sidebar-link" href="/dashboard">
               <ArrowLeft />
               <span>返回用户控制台</span>

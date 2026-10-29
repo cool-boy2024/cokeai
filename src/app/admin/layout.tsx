@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import Link from "next/link";
+import { ArrowLeft, LayoutDashboard, ShoppingBag } from "lucide-react";
 import { requireAdmin } from "@/lib/auth";
 import { AppSidebar } from "@/components/AppSidebar";
 
@@ -23,6 +25,15 @@ export default async function AdminLayout({
         <header className="app-topbar">
           <span className="app-topbar-title">运营后台</span>
           <div className="app-topbar-meta">
+            <Link className="btn btn-light btn-sm" href="/">
+              <ArrowLeft size={14} /> 返回网站
+            </Link>
+            <Link href="/shop" className="topbar-link">
+              <ShoppingBag size={13} /> 小店前台
+            </Link>
+            <Link href="/dashboard" className="topbar-link">
+              <LayoutDashboard size={13} /> 用户控制台
+            </Link>
             <span className="badge badge-dark">内部</span>
           </div>
         </header>

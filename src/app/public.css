@@ -2327,6 +2327,70 @@ body {
   height: 5px;
 }
 
+.public-main .shop-section .shop-intro-copy {
+  margin-top: 12px;
+}
+
+.public-main .shop-facts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin: 24px 0 0;
+  padding: 16px 20px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+}
+
+.public-main .shop-facts > div {
+  min-width: 0;
+}
+
+.public-main .shop-facts dt {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.public-main .shop-facts dd {
+  margin: 4px 0 0;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.public-main .shop-intro-groups {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+  margin-top: 24px;
+}
+
+.public-main .shop-intro-groups h3 {
+  margin: 0 0 8px;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.public-main .shop-intro-groups .shop-list {
+  gap: 4px;
+}
+
+@media (max-width: 680px) {
+  .public-main .shop-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px 12px;
+    padding: 16px;
+  }
+
+  .public-main .shop-intro-groups {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+}
+
 .public-main .shop-section-pair {
   gap: 32px;
 }
