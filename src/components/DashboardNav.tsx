@@ -43,6 +43,16 @@ const adminItems = [
   { href: "/admin/gateway", label: "网关", icon: Gauge },
 ];
 
+function isActive(href: string, pathname: string): boolean {
+  if (href === "/admin" || href === "/dashboard") return pathname === href;
+  // The shop overview owns its product pages; queue and sources have their
+  // own nav items and must not light up the overview as well.
+  if (href === "/admin/shop") {
+    return pathname === href || pathname.startsWith("/admin/shop/products");
+  }
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
 export function DashboardNav({ admin = false }: { admin?: boolean }) {
   const pathname = usePathname();
   const items = admin ? adminItems : userItems;
@@ -51,10 +61,7 @@ export function DashboardNav({ admin = false }: { admin?: boolean }) {
     <nav className="sidebar-nav" aria-label={admin ? "运营导航" : "控制台导航"}>
       {items.map((item) => {
         const Icon = item.icon;
-        const active =
-          item.href === "/admin" || item.href === "/dashboard"
-            ? pathname === item.href
-            : pathname === item.href || pathname.startsWith(`${item.href}/`);
+        const active = isActive(item.href, pathname);
         return (
           <Link
             key={item.href}
