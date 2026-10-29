@@ -83,6 +83,21 @@ export default async function AdminShopProductEditPage({
           <div>商品已保存。</div>
         </div>
       ) : null}
+      {flags.ai === "1" ? (
+        <div className="notice notice-green">
+          <CheckCircle2 size={16} />
+          <div>
+            AI 已生成草稿，商品仍是「草稿」状态。请逐项核对名称、价格、注意事项与退款说明，
+            确认无误后勾选合规确认并改为「上架」。
+          </div>
+        </div>
+      ) : null}
+      {flags.existing === "1" ? (
+        <div className="notice">
+          <AlertTriangle size={16} />
+          <div>这条货源已经对应一个商品，已跳到现有商品，请直接审核。</div>
+        </div>
+      ) : null}
       {product.pricing_review_required ? (
         <div className="notice notice-red">
           <AlertTriangle size={16} />

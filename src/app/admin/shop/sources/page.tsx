@@ -3,12 +3,21 @@ import Link from "next/link";
 import { RefreshCw } from "lucide-react";
 import {
   adminCreateShopProductFromOfferAction,
+  adminStartShopOfferImportAction,
   adminSyncShopAction,
 } from "@/app/actions/admin-shop";
 import { requireAdmin } from "@/lib/auth";
+import { config } from "@/lib/config";
 import { query } from "@/lib/db";
+import { suggestRetailPrice } from "@/lib/shop/catalog";
 import { formatDateTime } from "@/lib/format";
 import { formatCny } from "@/lib/money";
+import {
+  OFFER_CATEGORIES,
+  OFFER_CATEGORY_LABEL,
+  classifyOffer,
+  type OfferCategory,
+} from "@/lib/shop/offer-classify";
 import { offerAvailabilityLabel } from "@/lib/shop/copy";
 
 export const metadata: Metadata = { title: "小店货源" };
@@ -21,8 +30,33 @@ const OFFER_BADGE_CLASS: Record<string, string> = {
   missing: "badge",
 };
 
-export default async function AdminShopSourcesPage() {
+type SearchParams = Record<string, string | undefined>;
+
+type OfferRow = {
+  id: string;
+  source_title: string;
+  source_store: string;
+  price_micros: string;
+  availability: string;
+  url: string;
+  last_seen_at: string;
+  product_slug: string | null;
+  product_name: string | null;
+  product_id: string | null;
+  product_status: string | null;
+  retail_micros: string | null;
+  import_status: string | null;
+  import_note: string | null;
+  import_error: string | null;
+};
+
+export default async function AdminShopSourcesPage({
+  searchParams,
+}: {
+  searchParams: Promise<SearchParams>;
+}) {
   await requireAdmin();
+  const params = await searchParams;
 
   const [supplierResult, storeResult, offerResult, statsResult] = await Promise.all([
     query<{
@@ -58,28 +92,24 @@ export default async function AdminShopSourcesPage() {
         GROUP BY o.source_store
         ORDER BY COUNT(*) DESC`,
     ),
-    query<{
-      id: string;
-      source_title: string;
-      source_store: string;
-      price_micros: string;
-      availability: string;
-      url: string;
-      last_seen_at: string;
-      product_slug: string | null;
-      product_name: string | null;
-      product_id: string | null;
-      retail_micros: string | null;
-    }>(
+    query<OfferRow>(
       `SELECT o.id, o.source_title, o.source_store, o.price_micros, o.availability,
               o.url, o.last_seen_at,
               p.slug AS product_slug, p.name AS product_name, p.id AS product_id,
-              p.price_micros AS retail_micros
+              p.status AS product_status, p.price_micros AS retail_micros,
+              j.status AS import_status, j.note AS import_note, j.error AS import_error
          FROM shop_offers o
          LEFT JOIN shop_product_sources s ON s.offer_id = o.id AND s.active = TRUE
          LEFT JOIN shop_products p ON p.id = s.product_id
+         LEFT JOIN LATERAL (
+           SELECT status, note, error
+             FROM shop_import_jobs
+            WHERE offer_id = o.id
+            ORDER BY created_at DESC
+            LIMIT 1
+         ) j ON TRUE
         ORDER BY (s.id IS NULL), o.last_seen_at DESC
-        LIMIT 150`,
+        LIMIT 1000`,
     ),
     query<{
       offers: string;
@@ -101,6 +131,64 @@ export default async function AdminShopSourcesPage() {
   const supplier = supplierResult.rows[0];
   const stats = statsResult.rows[0];
 
+  const classified = offerResult.rows.map((offer) => {
+    const meta = classifyOffer(offer.source_title);
+    return { ...offer, ...meta };
+  });
+
+  const categoryCounts = new Map<OfferCategory, number>();
+  const regionCounts = new Map<string, number>();
+  for (const offer of classified) {
+    categoryCounts.set(offer.category, (categoryCounts.get(offer.category) ?? 0) + 1);
+    if (offer.region) {
+      regionCounts.set(offer.region.key, (regionCounts.get(offer.region.key) ?? 0) + 1);
+    }
+  }
+
+  const activeCategory = (params.cat || "all") as OfferCategory | "all";
+  const activeRegion = params.region || "all";
+  const activeStore = params.store || "all";
+  const activeState = params.state || "all";
+  const search = (params.q || "").trim().toLowerCase();
+
+  const visibleOffers = classified.filter((offer) => {
+    if (activeCategory !== "all" && offer.category !== activeCategory) return false;
+    if (activeRegion !== "all" && offer.region?.key !== activeRegion) return false;
+    if (activeStore !== "all" && offer.source_store !== activeStore) return false;
+    if (activeState === "mapped" && !offer.product_id) return false;
+    if (activeState === "unmapped" && offer.product_id) return false;
+    if (search && !offer.source_title.toLowerCase().includes(search)) return false;
+    return true;
+  });
+
+  const margins = visibleOffers
+    .map((offer) => {
+      const cost = Number(offer.price_micros);
+      const listed = offer.retail_micros ? Number(offer.retail_micros) : 0;
+      const retail = listed > 0 ? listed : suggestRetailPrice(cost, config.shopImportTargetMarginBps);
+      return retail > 0 ? ((retail - cost) / retail) * 100 : null;
+    })
+    .filter((value): value is number => value !== null);
+  const averageMargin =
+    margins.length > 0 ? margins.reduce((sum, value) => sum + value, 0) / margins.length : 0;
+
+  const hrefFor = (patch: Record<string, string | undefined>) => {
+    const next = new URLSearchParams();
+    const merged = {
+      cat: activeCategory === "all" ? undefined : activeCategory,
+      region: activeRegion === "all" ? undefined : activeRegion,
+      store: activeStore === "all" ? undefined : activeStore,
+      state: activeState === "all" ? undefined : activeState,
+      q: search || undefined,
+      ...patch,
+    };
+    for (const [key, value] of Object.entries(merged)) {
+      if (value) next.set(key, value);
+    }
+    const qs = next.toString();
+    return qs ? `/admin/shop/sources?${qs}` : "/admin/shop/sources";
+  };
+
   return (
     <>
       <div className="page-head">
@@ -114,6 +202,20 @@ export default async function AdminShopSourcesPage() {
           </button>
         </form>
       </div>
+
+      {params.import ? (
+        <div className={`shop-import-banner is-${params.import}`}>
+          {params.import === "queued"
+            ? "已交给 n8n 生成草稿，通常 1–2 分钟完成，刷新本页查看。"
+            : params.import === "failed"
+              ? "生成失败，请点「打开」核对货源页后手动建草稿。"
+              : params.import === "queue_failed"
+                ? "无法创建上架任务，请稍后重试。"
+                : params.import === "offer_not_found" || params.import === "missing_offer"
+                  ? "找不到这条货源，可能已经下架。"
+                  : "上架任务已结束，请查看商品状态。"}
+        </div>
+      ) : null}
 
       <div className="stat-grid">
         <div className="stat-card">
@@ -135,6 +237,11 @@ export default async function AdminShopSourcesPage() {
           <div className="stat-label">需复核商品</div>
           <div className="stat-value">{Number(stats?.needs_review || 0)}</div>
           <div className="stat-foot">毛利不足或成本暴涨</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-label">平均毛利率</div>
+          <div className="stat-value">{averageMargin.toFixed(1)}%</div>
+          <div className="stat-foot">当前筛选 {margins.length} 条</div>
         </div>
       </div>
 
@@ -211,15 +318,125 @@ export default async function AdminShopSourcesPage() {
       <section className="panel mt-16">
         <div className="panel-head">
           <div>
+            <h2>货源分类</h2>
+            <p>按标题关键词归类，仅用于浏览和筛选，不改动同步数据。</p>
+          </div>
+          <span className="badge">
+            共 {classified.length} 条 · 当前 {visibleOffers.length} 条
+          </span>
+        </div>
+        <div className="panel-body">
+          <div className="offer-filters">
+            <div className="offer-filter-row">
+              <span className="offer-filter-label">类型</span>
+              <Link
+                className={`offer-chip${activeCategory === "all" ? " is-active" : ""}`}
+                href={hrefFor({ cat: undefined })}
+              >
+                全部 <em>{classified.length}</em>
+              </Link>
+              {OFFER_CATEGORIES.map((item) => (
+                <Link
+                  key={item.key}
+                  className={`offer-chip${activeCategory === item.key ? " is-active" : ""}`}
+                  href={hrefFor({ cat: item.key })}
+                  title={item.hint}
+                >
+                  {item.label} <em>{categoryCounts.get(item.key) ?? 0}</em>
+                </Link>
+              ))}
+            </div>
+            <div className="offer-filter-row">
+              <span className="offer-filter-label">地区</span>
+              <Link
+                className={`offer-chip${activeRegion === "all" ? " is-active" : ""}`}
+                href={hrefFor({ region: undefined })}
+              >
+                全部
+              </Link>
+              {[...regionCounts.entries()].map(([key, count]) => (
+                <Link
+                  key={key}
+                  className={`offer-chip${activeRegion === key ? " is-active" : ""}`}
+                  href={hrefFor({ region: key })}
+                >
+                  {classified.find((offer) => offer.region?.key === key)?.region?.label ?? key}{" "}
+                  <em>{count}</em>
+                </Link>
+              ))}
+            </div>
+            <div className="offer-filter-row">
+              <span className="offer-filter-label">店铺</span>
+              <Link
+                className={`offer-chip${activeStore === "all" ? " is-active" : ""}`}
+                href={hrefFor({ store: undefined })}
+              >
+                全部
+              </Link>
+              {storeResult.rows.map((store) => (
+                <Link
+                  key={store.source_store || "-"}
+                  className={`offer-chip${activeStore === store.source_store ? " is-active" : ""}`}
+                  href={hrefFor({ store: store.source_store })}
+                >
+                  {store.source_store || "—"} <em>{store.total}</em>
+                </Link>
+              ))}
+            </div>
+            <div className="offer-filter-row">
+              <span className="offer-filter-label">状态</span>
+              <Link
+                className={`offer-chip${activeState === "all" ? " is-active" : ""}`}
+                href={hrefFor({ state: undefined })}
+              >
+                全部
+              </Link>
+              <Link
+                className={`offer-chip${activeState === "unmapped" ? " is-active" : ""}`}
+                href={hrefFor({ state: "unmapped" })}
+              >
+                未上架 <em>{classified.filter((offer) => !offer.product_id).length}</em>
+              </Link>
+              <Link
+                className={`offer-chip${activeState === "mapped" ? " is-active" : ""}`}
+                href={hrefFor({ state: "mapped" })}
+              >
+                已上架 <em>{classified.filter((offer) => offer.product_id).length}</em>
+              </Link>
+            </div>
+            <form className="offer-filter-search" action="/admin/shop/sources" method="get">
+              {activeCategory !== "all" ? <input type="hidden" name="cat" value={activeCategory} /> : null}
+              {activeRegion !== "all" ? <input type="hidden" name="region" value={activeRegion} /> : null}
+              {activeStore !== "all" ? <input type="hidden" name="store" value={activeStore} /> : null}
+              {activeState !== "all" ? <input type="hidden" name="state" value={activeState} /> : null}
+              <input
+                type="search"
+                name="q"
+                defaultValue={params.q || ""}
+                placeholder="搜索货源标题"
+              />
+              <button className="btn btn-ghost btn-sm" type="submit">
+                搜索
+              </button>
+            </form>
+          </div>
+        </div>
+      </section>
+
+      <section className="panel mt-16">
+        <div className="panel-head">
+          <div>
             <h2>货源列表</h2>
           </div>
-          <span className="badge">当前显示最近 150 条</span>
+          <span className="badge">按分类筛选后显示</span>
         </div>
         <div className="table-scroll">
           <table>
             <thead>
               <tr>
                 <th>原始标题（内部）</th>
+                <th>类型</th>
+                <th>地区</th>
                 <th>店铺</th>
                 <th>成本</th>
                 <th>库存</th>
@@ -230,13 +447,22 @@ export default async function AdminShopSourcesPage() {
               </tr>
             </thead>
             <tbody>
-              {offerResult.rows.map((offer) => {
+              {visibleOffers.map((offer) => {
                 const cost = Number(offer.price_micros);
-                const retail = offer.retail_micros ? Number(offer.retail_micros) : 0;
+                const listed = offer.retail_micros ? Number(offer.retail_micros) : 0;
+                // Unlisted offers still get a quote from the same margin
+                // target used by the AI listing job, so every row shows what
+                // it would earn before the operator clicks 上架.
+                const suggested = listed > 0 ? listed : suggestRetailPrice(cost, config.shopImportTargetMarginBps);
+                const retail = listed > 0 ? listed : suggested;
                 const margin = retail > 0 ? ((retail - cost) / retail) * 100 : null;
                 return (
                   <tr key={offer.id}>
                     <td className="shop-offer-title">{offer.source_title}</td>
+                    <td className="nowrap">
+                      <span className="badge">{OFFER_CATEGORY_LABEL[offer.category]}</span>
+                    </td>
+                    <td className="nowrap muted">{offer.region?.label ?? "—"}</td>
                     <td className="nowrap">{offer.source_store}</td>
                     <td className="nowrap">{formatCny(cost)}</td>
                     <td className="nowrap">
@@ -246,32 +472,56 @@ export default async function AdminShopSourcesPage() {
                     </td>
                     <td className="nowrap">
                       {offer.product_id ? (
-                        <Link href={`/admin/shop/products/${offer.product_id}`}>
-                          {offer.product_name}
-                        </Link>
+                        <>
+                          <Link href={`/admin/shop/products/${offer.product_id}`}>
+                            {offer.product_name}
+                          </Link>
+                          {offer.product_status === "draft" ? (
+                            <span className="badge badge-yellow"> 待审核</span>
+                          ) : null}
+                        </>
                       ) : (
                         <span className="muted">未上架到小店</span>
                       )}
                     </td>
                     <td className="nowrap">
-                      {retail > 0 ? formatCny(retail) : "—"}
-                      {margin !== null ? (
-                        <span className={margin < 15 ? "text-red" : "muted"}>
-                          {" "}
-                          {margin.toFixed(1)}%
-                        </span>
-                      ) : null}
+                      {retail > 0 ? (
+                        <>
+                          {listed > 0 ? null : <span className="muted">建议 </span>}
+                          {formatCny(retail)}
+                          {margin !== null ? (
+                            <span className={margin < 15 ? "text-red" : "muted"}>
+                              {" "}
+                              {margin.toFixed(1)}%
+                            </span>
+                          ) : null}
+                        </>
+                      ) : (
+                        "—"
+                      )}
                     </td>
                     <td className="nowrap muted">{formatDateTime(offer.last_seen_at)}</td>
                     <td className="text-right">
                       <div className="shop-inline-actions">
                         {!offer.product_id ? (
-                          <form action={adminCreateShopProductFromOfferAction}>
-                            <input type="hidden" name="offerId" value={offer.id} />
-                            <button className="btn btn-dark btn-sm" type="submit">
-                              建草稿
-                            </button>
-                          </form>
+                          offer.import_status === "queued" || offer.import_status === "running" ? (
+                            <span className="badge badge-yellow">AI 生成中</span>
+                          ) : (
+                            <>
+                              <form action={adminStartShopOfferImportAction}>
+                                <input type="hidden" name="offerId" value={offer.id} />
+                                <button className="btn btn-dark btn-sm" type="submit">
+                                  AI 上架
+                                </button>
+                              </form>
+                              <form action={adminCreateShopProductFromOfferAction}>
+                                <input type="hidden" name="offerId" value={offer.id} />
+                                <button className="btn btn-ghost btn-sm" type="submit">
+                                  手动建草稿
+                                </button>
+                              </form>
+                            </>
+                          )
                         ) : null}
                         <a
                           className="btn btn-ghost btn-sm"
@@ -288,6 +538,9 @@ export default async function AdminShopSourcesPage() {
               })}
             </tbody>
           </table>
+          {visibleOffers.length === 0 ? (
+            <p className="offer-empty">没有符合条件的货源，清空筛选再看看。</p>
+          ) : null}
         </div>
       </section>
     </>

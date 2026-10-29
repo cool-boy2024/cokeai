@@ -3,7 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/auth";
+import { config } from "@/lib/config";
 import { query } from "@/lib/db";
+import { createImportJob, runImportJob } from "@/lib/shop/import";
 import {
   deliverShopItem,
   markShopItemOutOfStock,
@@ -232,6 +234,66 @@ export async function adminCreateShopProductFromOfferAction(formData: FormData):
 
   revalidatePath("/admin/shop/products");
   redirect(`/admin/shop/products/${productId}?created=1`);
+}
+
+/**
+ * "AI 上架": turn one supplier offer into a draft product.
+ *
+ * The draft is never published here. With SHOP_IMPORT_WEBHOOK_URL set the job
+ * is handed to n8n; otherwise it runs inline. In both cases the admin lands on
+ * the product editor for review and an explicit compliance acknowledgement.
+ */
+export async function adminStartShopOfferImportAction(formData: FormData): Promise<void> {
+  const admin = await requireAdmin();
+  const offerId = text(formData, "offerId");
+  if (!offerId) redirect("/admin/shop/sources?import=missing_offer");
+
+  const offer = await query<{ id: string }>(
+    "SELECT id FROM shop_offers WHERE id = $1 LIMIT 1",
+    [offerId],
+  );
+  if (!offer.rows[0]) redirect("/admin/shop/sources?import=offer_not_found");
+
+  let jobId = "";
+  try {
+    const job = await createImportJob(offerId, admin.id);
+    jobId = job.id;
+  } catch (error) {
+    console.error("[shop] import job enqueue failed", error);
+  }
+  if (!jobId) redirect("/admin/shop/sources?import=queue_failed");
+
+  let handedToN8n = false;
+  if (config.shopImportWebhookUrl) {
+    try {
+      const response = await fetch(config.shopImportWebhookUrl, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ jobId, offerId }),
+        signal: AbortSignal.timeout(5_000),
+      });
+      handedToN8n = response.ok;
+    } catch (error) {
+      console.error("[shop] n8n webhook failed, running inline", error);
+    }
+  }
+
+  revalidatePath("/admin/shop/sources");
+
+  if (handedToN8n) {
+    redirect("/admin/shop/sources?import=queued");
+  }
+
+  const result = await runImportJob(jobId);
+  revalidatePath("/admin/shop/products");
+
+  if (result.status === "draft_ready" && result.productId) {
+    redirect(`/admin/shop/products/${result.productId}?ai=1`);
+  }
+  if (result.status === "skipped" && result.productId) {
+    redirect(`/admin/shop/products/${result.productId}?existing=1`);
+  }
+  redirect(`/admin/shop/sources?import=${result.status}`);
 }
 
 export async function adminSaveShopProductAction(formData: FormData): Promise<void> {

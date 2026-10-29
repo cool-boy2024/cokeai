@@ -3571,6 +3571,123 @@ tbody tr:hover {
   line-height: 1.45;
 }
 
+.shop-import-banner {
+  margin: 0 0 16px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink-soft);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.shop-import-banner.is-queued,
+.shop-import-banner.is-draft_ready {
+  border-color: rgba(31, 111, 92, 0.28);
+  background: rgba(31, 111, 92, 0.08);
+  color: var(--green);
+}
+
+.shop-import-banner.is-failed,
+.shop-import-banner.is-queue_failed,
+.shop-import-banner.is-offer_not_found,
+.shop-import-banner.is-missing_offer {
+  border-color: rgba(176, 60, 48, 0.28);
+  background: rgba(176, 60, 48, 0.08);
+  color: var(--red-deep);
+}
+
+.offer-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.offer-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.offer-filter-label {
+  min-width: 36px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.offer-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink-soft);
+  font-size: 12px;
+  line-height: 1.2;
+  text-decoration: none;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    color 160ms ease;
+}
+
+.offer-chip em {
+  color: var(--muted);
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+}
+
+.offer-chip:hover {
+  border-color: var(--ink-soft);
+  color: var(--ink);
+}
+
+.offer-chip.is-active {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.offer-chip.is-active em {
+  color: rgba(255, 255, 255, 0.66);
+}
+
+.offer-filter-search {
+  display: flex;
+  gap: 8px;
+  max-width: 420px;
+  margin-top: 4px;
+}
+
+.offer-filter-search input {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12.5px;
+}
+
+.offer-filter-search input:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 1px;
+}
+
+.offer-empty {
+  margin: 0;
+  padding: 28px 16px;
+  color: var(--muted);
+  font-size: 12.5px;
+  text-align: center;
+}
+
 .text-red {
   color: var(--red-deep) !important;
 }
