@@ -8,6 +8,7 @@ import { easyPayConfigError } from "@/lib/payments/easypay";
 import { isUsdtConfigured } from "@/lib/payments/usdt";
 import { query } from "@/lib/db";
 import { fixedWindowLimit } from "@/lib/rate-limit";
+import { verifyShopCaptcha } from "@/lib/shop/captcha";
 import { createShopEasyPayCheckout } from "@/lib/shop/payments";
 import { createShopOrder, revealShopDelivery } from "@/lib/shop/orders";
 
@@ -30,6 +31,29 @@ export async function createShopCheckoutAction(
   // USDT and, when configured, the merchant EasyPay gateway.
   if (!["usdt", "alipay"].includes(provider)) {
     return { error: "支付方式无效。" };
+  }
+
+  const captchaOk = await verifyShopCaptcha(
+    String(formData.get("captchaToken") || ""),
+    String(formData.get("captchaCode") || ""),
+  ).catch(() => false);
+  if (!captchaOk) {
+    return { error: "验证码错误或已过期，请刷新后重试。" };
+  }
+
+  const contactEmail = String(formData.get("contactEmail") || "")
+    .trim()
+    .toLowerCase();
+  if (
+    contactEmail.length > 254 ||
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail)
+  ) {
+    return { error: "请填写有效的联系邮箱。" };
+  }
+
+  const qty = Number(formData.get("qty") || 1);
+  if (!Number.isInteger(qty) || qty < 1 || qty > config.shopMaxQty) {
+    return { error: `购买数量需在 1 到 ${config.shopMaxQty} 之间。` };
   }
 
   const limit = await fixedWindowLimit(`shop:order:${user.id}`, 10, 600);
@@ -69,6 +93,8 @@ export async function createShopCheckoutAction(
       userId: user.id,
       productId,
       expectedPriceMicros,
+      qty,
+      contactEmail,
       customerInput,
       note: String(formData.get("note") || ""),
       paymentProvider: provider === "usdt" ? "usdt_trc20" : "alipay_easypay",

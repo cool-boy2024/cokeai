@@ -8,9 +8,11 @@ function assert(condition: unknown, message: string): asserts condition {
 
 async function main() {
   const { query } = await import("../src/lib/db");
+  const { config } = await import("../src/lib/config");
   const { hashPassword } = await import("../src/lib/auth");
   const {
     createShopOrder,
+    decryptCustomerInput,
     deliverShopItem,
     expireShopOrders,
     findShopOrderByNo,
@@ -66,6 +68,48 @@ async function main() {
     priceRejected = error instanceof Error && error.message === "PRICE_CHANGED";
   }
   assert(priceRejected, "tampered price was accepted");
+
+  if (config.shopMaxQty >= 2) {
+    const qtyOrder = await createShopOrder({
+      userId,
+      productId: item.id,
+      expectedPriceMicros: price,
+      qty: 2,
+      contactEmail: "buyer@example.com",
+      customerInput: { chatgpt_email: "user@example.com" },
+      paymentProvider: "manual",
+    });
+    assert(qtyOrder.amountMicros === price * 2, "quantity amount mismatch");
+    const qtyDetail = await findShopOrderByNo(qtyOrder.orderNo, userId);
+    assert(qtyDetail?.qty === 2, "quantity not stored");
+    assert(
+      qtyDetail?.amount_micros === price * 2,
+      "quantity order total not stored",
+    );
+    assert(
+      decryptCustomerInput(qtyDetail?.customer_input_encrypted ?? null)
+        .contactEmail === "buyer@example.com",
+      "contact email not stored",
+    );
+    await query("UPDATE shop_orders SET status = 'cancelled' WHERE id = $1", [
+      qtyOrder.id,
+    ]);
+
+    let overQtyRejected = false;
+    try {
+      await createShopOrder({
+        userId,
+        productId: item.id,
+        expectedPriceMicros: price,
+        qty: config.shopMaxQty + 1,
+        paymentProvider: "manual",
+      });
+    } catch (error) {
+      overQtyRejected =
+        error instanceof Error && error.message.includes("购买数量");
+    }
+    assert(overQtyRejected, "over-limit quantity was accepted");
+  }
 
   const order = await createShopOrder({
     userId,

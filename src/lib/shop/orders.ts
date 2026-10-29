@@ -153,6 +153,8 @@ export async function createShopOrder(input: {
   userId: string;
   productId: string;
   expectedPriceMicros: number;
+  qty?: number;
+  contactEmail?: string;
   customerInput?: Record<string, string>;
   note?: string;
   paymentProvider: "alipay_easypay" | "alipay_manual" | "usdt_trc20" | "manual";
@@ -192,6 +194,16 @@ export async function createShopOrder(input: {
     }
     if (priceMicros <= 0) throw new Error("商品价格异常");
 
+    const qty = Math.trunc(Number(input.qty ?? 1));
+    const qtyMax = Number(product.qty_max);
+    if (!Number.isInteger(qty) || qty < 1 || qty > qtyMax) {
+      throw new Error(`购买数量需在 1 到 ${qtyMax} 之间`);
+    }
+    const totalMicros = priceMicros * qty;
+    if (!Number.isSafeInteger(totalMicros) || totalMicros <= 0) {
+      throw new Error("订单金额异常");
+    }
+
     const openResult = await client.query<{ count: string }>(
       `SELECT COUNT(*)::text AS count
          FROM shop_orders
@@ -207,6 +219,11 @@ export async function createShopOrder(input: {
       ? (product.input_fields as ShopInputField[])
       : [];
     const customerInput = validateCustomerInput(inputFields, input.customerInput);
+    const contactEmail = String(input.contactEmail || "").trim().toLowerCase();
+    if (contactEmail) {
+      if (contactEmail.length > 254) throw new Error("联系邮箱过长");
+      customerInput.contactEmail = contactEmail;
+    }
 
     const sourceResult = await client.query<{
       offer_id: string;
@@ -235,7 +252,7 @@ export async function createShopOrder(input: {
       [
         orderNo,
         input.userId,
-        priceMicros,
+        totalMicros,
         input.paymentProvider,
         expiresAt,
         String(input.note || "").slice(0, 1000),
@@ -253,7 +270,7 @@ export async function createShopOrder(input: {
          (order_id, product_id, product_slug, product_name, brand,
           unit_price_micros, qty, supplier_offer_id, supplier_title_snapshot,
           supplier_cost_micros, procurement_status, customer_input_encrypted)
-       VALUES ($1, $2, $3, $4, $5, $6, 1, $7, $8, $9, 'pending', $10)`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'pending', $11)`,
       [
         orderId,
         product.id,
@@ -261,9 +278,10 @@ export async function createShopOrder(input: {
         product.name,
         product.brand,
         priceMicros,
+        qty,
         source?.offer_id || null,
         source?.source_title || "",
-        toNumber(source?.supplier_cost_micros || 0),
+        toNumber(source?.supplier_cost_micros || 0) * qty,
         Object.keys(customerInput).length > 0
           ? encryptSecret(JSON.stringify(customerInput))
           : null,
@@ -273,10 +291,10 @@ export async function createShopOrder(input: {
     await client.query(
       `INSERT INTO shop_order_events (order_id, actor_type, actor_id, event, note)
        VALUES ($1, 'user', $2, 'created', $3)`,
-      [orderId, input.userId, `支付方式：${input.paymentProvider}`],
+      [orderId, input.userId, `支付方式：${input.paymentProvider}；数量：${qty}`],
     );
 
-    return { id: orderId, orderNo, amountMicros: priceMicros };
+    return { id: orderId, orderNo, amountMicros: totalMicros };
   });
 }
 
