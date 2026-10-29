@@ -1288,7 +1288,7 @@ UI 实测：浏览 → 登录 → 下单（人工）→ 后台确认到账 → �
   - rsync + `docker compose build app && up -d app`，app healthy。
 - 首次构建卡在 `COPY . .`：本地 `tools/supplier-scraper` 约 427MB 进入了
   构建上下文。已在 `.dockerignore` 排除 `tools`，重建约 50 秒完成；
-  该改动尚待随本次记录合并回 `main`。
+  该改动随发布记录 PR #38 合并为 `74310b3`。
 - 生产 publish dry-run 与正式执行均为 updated 12 / created 1 / linked 7 /
   missingOffers 0。商品 active、in_stock、¥5.00，来源 active、拿货价 ¥2.10。
 - 生产验收：`/api/health` 200、`/shop` 200、
