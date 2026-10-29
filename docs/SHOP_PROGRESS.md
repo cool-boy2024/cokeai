@@ -866,8 +866,8 @@ UI 实测：浏览 → 登录 → 下单（人工）→ 后台确认到账 → �
 
 ### 当前状态
 
-- 首页已回滚到浅色旧版；生产在本轮回滚发布后与 `main` 同步
-  （上一版应用代码 `14cc70f`）。CI `build` / `e2e` / `compose-smoke` 全绿。
+- 首页已回滚到浅色旧版，且已发布生产；`main` 与生产应用代码均为
+  `7f30a78`。CI `build` / `e2e` / `compose-smoke` 全绿。
 - 7 个真实商品 + 1 个测试商品，订单与余额未动；`USDT_ENABLED=false` 未变。
 - 本地预览：`PORT=3010 npm run start` → http://127.0.0.1:3010（生产构建）。
 - 待决定：`usdt-e2e-test` 是否归档；Gemini / Grok 新货源。
@@ -1010,3 +1010,26 @@ UI 实测：浏览 → 登录 → 下单（人工）→ 后台确认到账 → �
 - 商品、Muse、货源文案、后台、支付、订单全部保留；首页小店文案补上 Muse。
 - 验证：typecheck / build 通过；`/`、`/shop`、Muse 详情页、`/pricing`、`/docs`
   在 1440 / 390 无横向溢出；导航、页脚恢复浅色。
+- 已合并 PR #23（`7f30a78`）并 rsync + `docker compose build app && up -d app`
+  发布；发布前备份镜像 `cokeai-app:pre-light-rollback`。生产 `/`、`/shop`
+  200，首页恢复浅色。
+
+### 2026-10-29 18:41 CST Muse 后续待办与安全边界
+
+- **Muse 封面 Logo**：运营发来 Meta Muse 蓝色波浪 “M” 截图（约 `#0866FF`），
+  要求替换现有纯字母 M。尚未实现：`ai.meta.com` 与 `vectorseek.com` 被
+  WebFetch 拒绝，vectorseek ZIP 下载不完整（77,809 / 388,636 字节），
+  本机无 potrace / ImageMagick / PIL 可描摹。下一步需取得官方 SVG，或按
+  截图重绘内联 SVG 后改 `ProductCover.tsx` 与 `.shop-cover-muse`。
+- **zyanai 货源**：运营要求 Muse 产品参照 `https://zyanai.cc/`。已用 curl
+  取到首页（HTTP 200，29,677 字节，标题“子砚的AI店铺”），原始 HTML 中
+  未发现 Muse 字样，需要继续查分类页、搜索或前端接口。不得直接整段复制
+  对方受版权保护的营销文案；应以商品事实为准再改写。
+- **Sub2API 密码**：运营要求直接给出密码以便自行修改。密码不在聊天、
+  文档或仓库中出现。可用方式：运营自己在服务器上读取 `.env`，或在服务器
+  侧重置为随机值并写入 `0600` 文件后由运营读取；Sub2API 后台仍只经
+  SSH 隧道 `127.0.0.1:18080` 访问，合规确认由运营本人点击。
+- **子代理**：运营要求“开多个子代理”；此前并行发起的 3 个子代理
+  （zyanai 调研、Muse Logo、Sub2API 密码流程）均被拒绝，未重试。
+- 其余不变：`usdt-e2e-test` 仍 active 且公开；Gemini / Grok 待新货源；
+  货源图片未搬；`wjlwww` write 邀请待接受。
