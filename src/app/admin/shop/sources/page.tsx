@@ -162,6 +162,9 @@ export default async function AdminShopSourcesPage({
   const activeRegion = params.region || "all";
   const activeStore = params.store || "all";
   const activeState = params.state || "all";
+  const activeSort = ["recent", "margin", "profit"].includes(params.sort || "")
+    ? (params.sort as "recent" | "margin" | "profit")
+    : "recent";
   const rawSearch = (params.q || "").trim();
   const search = rawSearch.toLowerCase();
 
@@ -175,18 +178,30 @@ export default async function AdminShopSourcesPage({
     return true;
   });
 
+  const quoteFor = (offer: (typeof visibleOffers)[number]) => {
+    const cost = Number(offer.price_micros);
+    const listed = offer.retail_micros ? Number(offer.retail_micros) : 0;
+    const retail =
+      listed > 0 ? listed : suggestRetailPrice(cost, config.shopImportTargetMarginBps);
+    const margin = retail > 0 ? ((retail - cost) / retail) * 100 : null;
+    return { cost, listed, retail, margin, profit: retail > 0 ? retail - cost : 0 };
+  };
+
   const margins = visibleOffers
-    .map((offer) => {
-      const cost = Number(offer.price_micros);
-      const listed = offer.retail_micros ? Number(offer.retail_micros) : 0;
-      const retail = listed > 0 ? listed : suggestRetailPrice(cost, config.shopImportTargetMarginBps);
-      return retail > 0 ? ((retail - cost) / retail) * 100 : null;
-    })
+    .map((offer) => quoteFor(offer).margin)
     .filter((value): value is number => value !== null);
   const averageMargin =
     margins.length > 0 ? margins.reduce((sum, value) => sum + value, 0) / margins.length : 0;
 
-  const importable = visibleOffers
+  const sortedOffers = [...visibleOffers].sort((a, b) => {
+    if (activeSort === "profit") return quoteFor(b).profit - quoteFor(a).profit;
+    if (activeSort === "margin") {
+      return (quoteFor(b).margin ?? -1) - (quoteFor(a).margin ?? -1);
+    }
+    return 0;
+  });
+
+  const importable = sortedOffers
     .filter(
       (offer) =>
         !offer.product_id &&
@@ -228,6 +243,7 @@ export default async function AdminShopSourcesPage({
       region: activeRegion === "all" ? undefined : activeRegion,
       store: activeStore === "all" ? undefined : activeStore,
       state: activeState === "all" ? undefined : activeState,
+      sort: activeSort === "recent" ? undefined : activeSort,
       q: rawSearch || undefined,
       ...patch,
     };
@@ -423,6 +439,24 @@ export default async function AdminShopSourcesPage({
               ))}
             </div>
             <div className="offer-filter-row">
+              <span className="offer-filter-label">排序</span>
+              {(
+                [
+                  ["recent", "最近出现"],
+                  ["margin", "毛利率"],
+                  ["profit", "毛利额"],
+                ] as const
+              ).map(([key, label]) => (
+                <Link
+                  key={key}
+                  className={`offer-chip${activeSort === key ? " is-active" : ""}`}
+                  href={hrefFor({ sort: key === "recent" ? undefined : key })}
+                >
+                  {label}
+                </Link>
+              ))}
+            </div>
+            <div className="offer-filter-row">
               <span className="offer-filter-label">状态</span>
               <Link
                 className={`offer-chip${activeState === "all" ? " is-active" : ""}`}
@@ -519,15 +553,8 @@ export default async function AdminShopSourcesPage({
               </tr>
             </thead>
             <tbody>
-              {visibleOffers.map((offer) => {
-                const cost = Number(offer.price_micros);
-                const listed = offer.retail_micros ? Number(offer.retail_micros) : 0;
-                // Unlisted offers still get a quote from the same margin
-                // target used by the AI listing job, so every row shows what
-                // it would earn before the operator clicks 上架.
-                const suggested = listed > 0 ? listed : suggestRetailPrice(cost, config.shopImportTargetMarginBps);
-                const retail = listed > 0 ? listed : suggested;
-                const margin = retail > 0 ? ((retail - cost) / retail) * 100 : null;
+              {sortedOffers.map((offer) => {
+                const { cost, listed, retail, margin } = quoteFor(offer);
                 return (
                   <tr key={offer.id}>
                     <td className="shop-offer-title">{offer.source_title}</td>
