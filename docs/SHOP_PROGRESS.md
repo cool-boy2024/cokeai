@@ -1210,3 +1210,32 @@ UI 实测：浏览 → 登录 → 下单（人工）→ 后台确认到账 → �
   + 重建 app，执行 `shop:publish --confirm-production --publish-new`，
   验证六档商品后归档旧的 `muse-ai-310b-account`（¥59，避免与新 310 亿
   1 小时档 ¥25 冲突）。回滚：恢复镜像与两张表备份，旧商品重新设回 active。
+
+### 2026-10-29 23:28 CST Muse 六档生产发布 94e4dbc
+
+- PR #34 squash 合并为 `94e4dbc`，CI `build` / `e2e` / `compose-smoke` 全绿。
+- 发布前备份：
+  - 镜像 `cokeai-app:local` → `cokeai-app:pre-muse-tiers`
+  - `shop_products` + `shop_product_sources` →
+    `/home/deploy/backups/cokeai-shop-pre-muse-tiers-20261029-231930.sql`
+    （`0600 deploy:deploy`）
+- rsync `main` 到 `/home/deploy/cokeai`，排除 `.env*`、`.git`、`node_modules`、
+  `.next`、`.local-data`、`.taste-skill`、`tools`、`aiclient2api-data`；
+  `docker compose -f docker-compose.yml -f ops/sub2api/compose.yaml build app`
+  后 `up -d app`，app 启动即 healthy，迁移幂等、seed 就绪。
+- 在 app 容器执行 `node scripts/shop-publish.mjs --confirm-production --publish-new`：
+  updated 6 / created 6 / linked 6。六个 Muse 商品均 active、in_stock，
+  封面为 `/shop/muse-supplier.jpg`；原有 6 个非 Muse 商品未改价格与状态。
+- 旧的 `muse-ai-310b-account`（¥59、自绘 Logo 封面）已置为
+  `status=archived`、`availability=paused`，相关 `shop_product_sources`
+  全部停用；旧订单与历史快照保留。
+- 生产验收（从生产机回源 `https://cokeai.cc.cd`）：
+  - `/api/health` 200；
+  - `/shop/muse-supplier.jpg` 200 `image/jpeg`，14,331 bytes；
+  - 六个新 Muse 详情页均 200，旧 `muse-ai-310b-account` 404；
+  - `/shop` 200，列表只显示六个新 Muse 档位，价格与质保短标签正确。
+- 本机到 Cloudflare 出口在发布后一度超时/重置，生产机直接访问公网域名正常；
+  因此以上验收以生产机结果为准，未改 Cloudflare Tunnel 配置。
+- 未改支付回调、订单状态机、USDT 扫描、数据库结构或 `/v1`；未创建订单。
+- 回滚：`docker tag cokeai-app:pre-muse-tiers cokeai-app:local && up -d app`；
+  数据恢复上面的 SQL 备份；旧商品恢复 `status=active`、`availability=in_stock`。
