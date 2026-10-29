@@ -1239,3 +1239,20 @@ UI 实测：浏览 → 登录 → 下单（人工）→ 后台确认到账 → �
 - 未改支付回调、订单状态机、USDT 扫描、数据库结构或 `/v1`；未创建订单。
 - 回滚：`docker tag cokeai-app:pre-muse-tiers cokeai-app:local && up -d app`；
   数据恢复上面的 SQL 备份；旧商品恢复 `status=active`、`availability=in_stock`。
+
+### 2026-10-29 23:39 CST 上下文维护核查
+
+- `main=d80fe26`，工作区干净；PR #34（六档商品）与 #35（发布记录）均已合并，
+  没有新的代码、部署或任务变更。
+- 生产 10 个容器均 Up；app、Sub2API、AIClient2API、Postgres、Redis healthy。
+  生产机回源检查：`/api/health` 200、`/shop` 200、
+  `/shop/muse-supplier.jpg` 200 `image/jpeg`。
+- 数据库：13 个 active（6 个 Muse 新档 + 6 个原有非 Muse 商品 +
+  `usdt-e2e-test`），1 个 archived（旧 `muse-ai-310b-account`，paused）；
+  六个 Muse 新档均 `in_stock`，价格与 23:28 发布记录一致。
+- 自 23:28 发布后无新的生产写入；未保存的关键状态为无。
+- 待办不变：Muse 六档售价按货源零售价照抄，代理采购毛利待运营复核；
+  货源教程 mp4 直链 404，目前只有文字教程与教程地址；Codex 接码未上架；
+  `usdt-e2e-test` 仍待归档；本地 18080 隧道在监听，13000 / 1455 未监听，
+  公网站点不受影响。
+- 现在可以输入 `/compact` 压缩上下文。
