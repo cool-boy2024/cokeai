@@ -2657,6 +2657,27 @@ body {
   gap: 16px;
 }
 
+/* The payment form grows taller than the viewport once the payment step opens.
+   Without its own scroll area a sticky sidebar pins the submit button off
+   screen; keep the card at the top but let the buyer scroll inside it. */
+@media (min-width: 981px) {
+  .public-main .shop-detail-aside {
+    max-height: calc(100dvh - 136px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-right: 4px;
+    scrollbar-width: thin;
+  }
+
+  /* Keep the pay action visible while the buyer scrolls the long form. */
+  .public-main form.shop-buy-panel button[type="submit"] {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    box-shadow: 0 -10px 20px rgba(247, 246, 243, 0.92);
+  }
+}
+
 .public-main .shop-buy-panel {
   gap: 16px;
   padding: 24px;
@@ -3454,6 +3475,9 @@ body {
 
   .public-main .shop-detail-aside {
     position: static;
+    max-height: none;
+    overflow: visible;
+    padding-right: 0;
   }
 
   .public-main .shop-detail-cover {

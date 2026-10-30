@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useCallback, useEffect, useRef, useState } from "react";
 import { LockSimple, ShieldCheck } from "@phosphor-icons/react";
 import { createShopCheckoutAction, type ShopCheckoutState } from "@/app/actions/shop";
 import type { PublicShopProduct } from "@/lib/shop/catalog";
@@ -11,47 +11,83 @@ const initial: ShopCheckoutState = {};
 
 type Captcha = { token: string; image: string };
 
+function captchaExpiresAt(token: string | undefined): number {
+  if (!token) return 0;
+  try {
+    const encoded = token
+      .split(".")[0]
+      .replace(/-/g, "+")
+      .replace(/_/g, "/");
+    const padded = encoded.padEnd(encoded.length + ((4 - (encoded.length % 4)) % 4), "=");
+    const expiresAt = Number(atob(padded).split(".").pop());
+    return Number.isFinite(expiresAt) ? expiresAt : 0;
+  } catch {
+    return 0;
+  }
+}
+
 export function BuyForm({
   product,
   loggedIn,
   defaultEmail,
   qtyMax,
   paymentOptions,
+  initialCaptcha,
 }: {
   product: PublicShopProduct;
   loggedIn: boolean;
   defaultEmail: string;
   qtyMax: number;
   paymentOptions: { alipay: boolean; alipayManual: boolean; usdt: boolean; manual: boolean };
+  initialCaptcha?: Captcha | null;
 }) {
   const [state, action, pending] = useActionState(createShopCheckoutAction, initial);
   const [step, setStep] = useState<"idle" | "method">("idle");
   const [qty, setQty] = useState(1);
-  const [captcha, setCaptcha] = useState<Captcha | null>(null);
+  // The first captcha is rendered with the page, so opening the payment step is
+  // instant. Refreshes are only needed when it expires, the code is wrong, or
+  // the buyer asks for a new one.
+  const [captcha, setCaptcha] = useState<Captcha | null>(initialCaptcha ?? null);
   const [captchaVersion, setCaptchaVersion] = useState(0);
+  const [captchaRefreshing, setCaptchaRefreshing] = useState(false);
+  const captchaPending = useRef(false);
   const available = isPurchasable(product.availability);
   const maxQty = Math.max(1, Math.trunc(qtyMax));
   const totalMicros = product.price_micros * qty;
 
+  const refreshCaptcha = useCallback(async () => {
+    if (captchaPending.current) return;
+    captchaPending.current = true;
+    setCaptchaRefreshing(true);
+    try {
+      const response = await fetch("/api/shop/captcha", {
+        cache: "no-store",
+        signal: AbortSignal.timeout(8_000),
+      });
+      if (!response.ok) throw new Error("captcha unavailable");
+      const data = (await response.json()) as Captcha;
+      setCaptcha(data);
+    } catch {
+      setCaptcha(null);
+    } finally {
+      captchaPending.current = false;
+      setCaptchaRefreshing(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (step !== "method") return;
-    let cancelled = false;
-    setCaptcha(null);
-    fetch("/api/shop/captcha", { cache: "no-store" })
-      .then((response) => {
-        if (!response.ok) throw new Error("captcha unavailable");
-        return response.json();
-      })
-      .then((data: Captcha) => {
-        if (!cancelled) setCaptcha(data);
-      })
-      .catch(() => {
-        if (!cancelled) setCaptcha(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [step, captchaVersion]);
+    // A captcha is valid for five minutes; refresh a minute before it expires.
+    const expiresAt = captchaExpiresAt(captcha?.token);
+    if (!captcha || !expiresAt || Date.now() > expiresAt - 60_000) {
+      void refreshCaptcha();
+    }
+  }, [step, captcha, refreshCaptcha]);
+
+  useEffect(() => {
+    if (captchaVersion === 0) return;
+    void refreshCaptcha();
+  }, [captchaVersion, refreshCaptcha]);
 
   useEffect(() => {
     if (state.error?.includes("验证码")) {
@@ -205,12 +241,14 @@ export function BuyForm({
           )}
           <button
             type="button"
+            disabled={captchaRefreshing}
             onClick={() => setCaptchaVersion((value) => value + 1)}
           >
-            换一张
+            {captchaRefreshing ? "刷新中…" : "换一张"}
           </button>
         </div>
         <input
+          key={captcha?.token || "captcha"}
           name="captchaCode"
           type="text"
           required
