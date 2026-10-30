@@ -152,90 +152,50 @@ export default async function HomePage() {
           <div className="container hero-center">
             <div className="hero-eyebrow">
               <i />
-              {PUBLIC_API_SALES_ENABLED ? "AI API · 数字商品" : "数字商品 · 人工审核"}
+              AI API · 数字商品
             </div>
             <h1 className="hero-title">
               <span className="hero-line">
                 <span>CokeAI 小店</span>
               </span>
               <span className="hero-line hero-line-sub">
-                <span>
-                  {PUBLIC_API_SALES_ENABLED
-                    ? "接上你需要的模型。"
-                    : "订阅、账号、接码，都在这里。"}
-                </span>
+                <span>接上你需要的模型。</span>
               </span>
             </h1>
             <p className="hero-lead">
-              {PUBLIC_API_SALES_ENABLED ? (
-                <>
-                  OpenAI 兼容接口，按量计费。
-                  <br />
-                  注册、充值、创建 Key，就能用。
-                </>
-              ) : (
-                <>
-                  人工审核后发货，订单进度在控制台查看。
-                  <br />
-                  商品说明与质保范围以详情页为准。
-                </>
-              )}
+              OpenAI 兼容接口，按量计费。
+              <br />
+              注册、充值、创建 Key，就能用。
             </p>
             <div className="hero-actions">
-              <Link
-                className="btn btn-primary"
-                href={PUBLIC_API_SALES_ENABLED ? "/register" : "/shop"}
-              >
-                {PUBLIC_API_SALES_ENABLED ? "创建账号" : "逛逛小店"}{" "}
-                <ArrowRight size={16} />
+              <Link className="btn btn-primary" href="/register">
+                创建账号 <ArrowRight size={16} />
               </Link>
-              <Link
-                className="hero-secondary"
-                href={PUBLIC_API_SALES_ENABLED ? "/pricing" : "/shop"}
-              >
-                {PUBLIC_API_SALES_ENABLED ? "查看价格" : "查看全部商品"}{" "}
-                <ArrowUpRight size={14} />
+              <Link className="hero-secondary" href="/pricing">
+                查看价格 <ArrowUpRight size={14} />
               </Link>
             </div>
             <div className="hero-proof">
-              {PUBLIC_API_SALES_ENABLED ? (
-                <>
-                  <span className="proof-pill">
-                    <Check size={14} /> OpenAI SDK 兼容
-                  </span>
-                  <span className="proof-pill">
-                    <Wallet size={14} /> USDT 充值
-                  </span>
-                  <span className="proof-pill">
-                    <Check size={14} /> 余额不过期
-                  </span>
-                </>
-              ) : (
-                <>
-                  <span className="proof-pill">
-                    <Check size={14} /> 人工审核后发货
-                  </span>
-                  <span className="proof-pill">
-                    <Check size={14} /> 订单进度可查
-                  </span>
-                  <span className="proof-pill">
-                    <Check size={14} /> 质保按商品标注
-                  </span>
-                </>
-              )}
+              <span className="proof-pill">
+                <Check size={14} /> OpenAI SDK 兼容
+              </span>
+              <span className="proof-pill">
+                <Wallet size={14} /> USDT 充值
+              </span>
+              <span className="proof-pill">
+                <Check size={14} /> 余额不过期
+              </span>
             </div>
             <HeroBrandStrip />
             <div className="hero-note">
-              {PUBLIC_API_SALES_ENABLED
-                ? showcase.length > 0
-                  ? `${showcase.length} 个模型已就绪`
-                  : "品牌仅作生态示意"
-                : "商品与价格以详情页为准"}
+              {showcase.length > 0
+                ? `${showcase.length} 个模型已就绪`
+                : "品牌仅作生态示意"}
             </div>
           </div>
         </section>
 
-        {PUBLIC_API_SALES_ENABLED ? <TaglineReveal /> : null}
+        <TaglineReveal />
 
         {shopProducts.length > 0 ? (
           <section className="section shop-collection">
