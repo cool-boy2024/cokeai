@@ -2,10 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { after } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { config } from "@/lib/config";
 import { query } from "@/lib/db";
-import { createImportJob, runImportJob, runQueuedJobs } from "@/lib/shop/import";
+import { createImportJob, drainQueuedJobs, runImportJob } from "@/lib/shop/import";
 import {
   deliverShopItem,
   markShopItemOutOfStock,
@@ -239,14 +240,20 @@ export async function adminCreateShopProductFromOfferAction(formData: FormData):
 /**
  * "AI 上架": turn one supplier offer into a draft product.
  *
- * The draft is never published here. With SHOP_IMPORT_WEBHOOK_URL set the job
- * is handed to n8n; otherwise it runs inline. In both cases the admin lands on
- * the product editor for review and an explicit compliance acknowledgement.
+ * The draft is never published here. The click only enqueues the job and
+ * redirects; scraping the supplier page (and the optional model call) happens
+ * in an `after()` callback so the button feels instant. When n8n is configured
+ * it gets the job first; if that handoff fails the same callback runs it
+ * locally. The product editor is opened by the status watcher once a draft
+ * exists, where a human still has to acknowledge compliance.
  */
 export async function adminStartShopOfferImportAction(formData: FormData): Promise<void> {
   const admin = await requireAdmin();
   const offerId = text(formData, "offerId");
   if (!offerId) redirect("/admin/shop/sources?import=missing_offer");
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(offerId)) {
+    redirect("/admin/shop/sources?import=offer_not_found");
+  }
 
   const offer = await query<{ id: string }>(
     "SELECT id FROM shop_offers WHERE id = $1 LIMIT 1",
@@ -263,24 +270,22 @@ export async function adminStartShopOfferImportAction(formData: FormData): Promi
   }
   if (!jobId) redirect("/admin/shop/sources?import=queue_failed");
 
-  const handedToN8n = await notifyImportWebhook(jobId, offerId);
+  after(async () => {
+    if (config.shopImportWebhookUrl) {
+      await notifyImportWebhook(jobId, offerId);
+    }
+    // Always attempt locally as well. `runImportJob` claims atomically, so if
+    // n8n won the race this is a no-op rather than a duplicate draft. It also
+    // covers a webhook that returns 200 but whose workflow then rejects.
+    await runImportJob(jobId).catch((error) => {
+      console.error("[shop] background import failed", error);
+    });
+    revalidatePath("/admin/shop/sources");
+    revalidatePath("/admin/shop/products");
+  });
 
   revalidatePath("/admin/shop/sources");
-
-  if (handedToN8n) {
-    redirect("/admin/shop/sources?import=queued");
-  }
-
-  const result = await runImportJob(jobId);
-  revalidatePath("/admin/shop/products");
-
-  if (result.status === "draft_ready" && result.productId) {
-    redirect(`/admin/shop/products/${result.productId}?ai=1`);
-  }
-  if (result.status === "skipped" && result.productId) {
-    redirect(`/admin/shop/products/${result.productId}?existing=1`);
-  }
-  redirect(`/admin/shop/sources?import=${result.status}`);
+  redirect(`/admin/shop/sources?import=queued&job=${encodeURIComponent(jobId)}`);
 }
 
 async function notifyImportWebhook(jobId: string, offerId: string): Promise<boolean> {
@@ -303,8 +308,10 @@ async function notifyImportWebhook(jobId: string, offerId: string): Promise<bool
 }
 
 /**
- * Batch version of "AI 上架": queue up to 20 visible offers, then either hand
- * them to n8n or process the first few inline. Drafts still need review.
+ * Batch version of "AI 上架": queue up to 20 visible offers and return at once.
+ * The same `after()` callback notifies n8n and drains a few jobs locally, so a
+ * batch click no longer blocks on scraping 20 supplier pages. Drafts still
+ * need review before publishing.
  */
 export async function adminBulkShopOfferImportAction(formData: FormData): Promise<void> {
   const admin = await requireAdmin();
@@ -346,33 +353,40 @@ export async function adminBulkShopOfferImportAction(formData: FormData): Promis
     }
   }
 
-  let handedToN8n = false;
-  if (config.shopImportWebhookUrl) {
-    const results = await Promise.all(
-      jobs.map((job) => notifyImportWebhook(job.id, job.offerId)),
-    );
-    handedToN8n = results.some(Boolean);
+  if (jobs.length === 0) {
+    redirect("/admin/shop/sources?import=nothing_queued");
   }
+
+  after(async () => {
+    if (config.shopImportWebhookUrl) {
+      // n8n acknowledges the webhook immediately; failures fall through to the
+      // local drain below because those jobs stay queued.
+      await Promise.all(
+        jobs.map((job) => notifyImportWebhook(job.id, job.offerId)),
+      ).catch(() => {});
+    }
+    await drainQueuedJobs(5).catch((error) => {
+      console.error("[shop] background queue drain failed", error);
+    });
+    revalidatePath("/admin/shop/sources");
+    revalidatePath("/admin/shop/products");
+  });
 
   revalidatePath("/admin/shop/sources");
-
-  if (handedToN8n) {
-    redirect(`/admin/shop/sources?import=batch_queued&queued=${queued}`);
-  }
-
-  const processed = await runQueuedJobs(3);
-  revalidatePath("/admin/shop/products");
-  redirect(
-    `/admin/shop/sources?import=batch_partial&queued=${queued}&processed=${processed.length}`,
-  );
+  redirect(`/admin/shop/sources?import=batch_queued&queued=${queued}`);
 }
 
 export async function adminRunShopImportQueueAction(): Promise<void> {
   await requireAdmin();
-  const results = await runQueuedJobs(3);
+  after(async () => {
+    await drainQueuedJobs(5).catch((error) => {
+      console.error("[shop] background queue drain failed", error);
+    });
+    revalidatePath("/admin/shop/sources");
+    revalidatePath("/admin/shop/products");
+  });
   revalidatePath("/admin/shop/sources");
-  revalidatePath("/admin/shop/products");
-  redirect(`/admin/shop/sources?import=queue_run&processed=${results.length}`);
+  redirect("/admin/shop/sources?import=queue_started");
 }
 
 export async function adminSaveShopProductAction(formData: FormData): Promise<void> {

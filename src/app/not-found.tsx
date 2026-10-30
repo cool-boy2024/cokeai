@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowLeft, ArrowUpRight } from "@phosphor-icons/react/dist/ssr";
 import { SiteFooter } from "@/components/SiteFooter";
 import { SiteHeader } from "@/components/SiteHeader";
+import { PUBLIC_API_SALES_ENABLED } from "@/lib/public-features";
 
 export default function NotFound() {
   return (
@@ -22,8 +23,12 @@ export default function NotFound() {
             <Link className="btn btn-light" href="/shop">
               逛逛小店
             </Link>
-            <Link className="text-link" href="/docs">
-              查看文档 <ArrowUpRight size={14} />
+            <Link
+              className="text-link"
+              href={PUBLIC_API_SALES_ENABLED ? "/docs" : "/#faq"}
+            >
+              {PUBLIC_API_SALES_ENABLED ? "查看文档" : "查看常见问题"}{" "}
+              <ArrowUpRight size={14} />
             </Link>
           </div>
         </div>

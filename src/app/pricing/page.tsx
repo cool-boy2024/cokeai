@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { ArrowRight } from "@phosphor-icons/react/dist/ssr";
 import { SiteFooter } from "@/components/SiteFooter";
 import { SiteHeader } from "@/components/SiteHeader";
@@ -7,6 +8,7 @@ import { Reveal } from "@/components/Reveal";
 import { query } from "@/lib/db";
 import { listCatalogModels } from "@/lib/model-catalog";
 import { formatCny } from "@/lib/money";
+import { PUBLIC_API_SALES_ENABLED } from "@/lib/public-features";
 
 export const metadata: Metadata = {
   title: "价格",
@@ -30,6 +32,8 @@ function priceCell(cnyPerMtok: number): string {
 }
 
 export default async function PricingPage() {
+  if (!PUBLIC_API_SALES_ENABLED) redirect("/shop");
+
   const [models, plans] = await Promise.all([
     listCatalogModels(),
     query<Plan>(

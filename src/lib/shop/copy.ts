@@ -146,7 +146,7 @@ export function warrantyShortLabel(
   const custom = note?.trim();
   if (!custom) return warrantyLabel(type, days);
   const head = custom.split(/[；;，,。]/)[0]?.trim() || "";
-  return head && head.length <= 12 ? head : "按货源说明";
+  return head && head.length <= 12 ? head : "按商品说明";
 }
 
 export function etaLabel(minMinutes: number, maxMinutes: number): string {
