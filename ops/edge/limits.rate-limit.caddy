@@ -1,0 +1,49 @@
+# caddy-ratelimit 限流片段（不是完整 Caddyfile）。
+#
+# 由 ops/edge/Caddyfile 的 `import /etc/caddy/limits.caddy` 引入。启用时把
+# EDGE_LIMITS_FILE 指向本文件（挂载为 /etc/caddy/limits.caddy），或把内容复制
+# 到 limits.caddy。默认的 limits.caddy 只有注释，不启用任何限流。
+#
+# 启用前提（缺一不可）：
+#   1. 使用自定义镜像。官方 caddy 镜像不含 caddy-ratelimit，必须先用
+#      ops/edge/Dockerfile 构建（见 ops/edge/compose.build.yml）。
+#   2. 先把 Cloudflare Tunnel 的 origin 切到 http://edge:8080。Tunnel 仍指向
+#      app:3000 时流量不经过 edge，本片段不会生效；切 Tunnel 是生产变更，
+#      需要单独审批和回滚窗口。
+#   3. 先在本地 / 回源验证：caddy validate 通过；429 只在超过阈值后出现；
+#      /healthz、首页、/shop、/login、/v1 和 SSE 流式请求都正常。
+#
+# 上线后要观察 SSE /v1 的突发：流式请求本身是长连接，但客户端重连风暴和并发
+# 扇出会放大事件数。若正常用户被 429，先提高 per_ip_sustained 的 events（或
+# 放宽 window），不要直接关掉整个限流。
+#
+# {client_ip} 依赖 Caddyfile 全局的 trusted_proxies + client_ip_headers
+# （CF-Connecting-IP），cloudflared 位于私有网段时才可信。
+
+rate_limit {
+	zone per_ip_burst {
+		key {client_ip}
+		events 240
+		window 10s
+		ipv6_prefix 64
+	}
+
+	zone per_ip_sustained {
+		key {client_ip}
+		events 1200
+		window 1m
+		ipv6_prefix 64
+	}
+
+	# 注意：/shop/* 覆盖 /shop/ 及子路径，不包含精确的 /shop 本身；
+	# /shop 与 /dashboard/shop 首页仍由上面两个通用 zone 约束。
+	zone checkout {
+		match {
+			path /shop/* /dashboard/shop/* /api/shop/*
+		}
+		key {client_ip}
+		events 60
+		window 1m
+		ipv6_prefix 64
+	}
+}

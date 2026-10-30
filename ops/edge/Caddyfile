@@ -37,6 +37,10 @@
 }
 
 :8080 {
+	# Opt-in edge rate limiting. The mounted limits.caddy contains only comments
+	# by default, so the stock caddy image starts unchanged. See ops/edge/README.md.
+	import /etc/caddy/limits.caddy
+
 	log {
 		output stdout
 		format json

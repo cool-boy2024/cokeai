@@ -1,0 +1,13 @@
+# 边缘限流未启用（默认）。
+#
+# 本文件由 docker-compose.yml 挂载到容器的 /etc/caddy/limits.caddy，并在
+# ops/edge/Caddyfile 中通过 `import /etc/caddy/limits.caddy` 引入。
+# 这里只有注释，因此官方 caddy:2-alpine 镜像可以正常启动，行为与启用前一致。
+#
+# 启用条件和步骤见 ops/edge/README.md，简单说分三步：
+#   1. 用 ops/edge/Dockerfile 构建带 caddy-ratelimit 的自定义镜像；
+#   2. 在本地 / 回源验证配置和 429 行为；
+#   3. 最后才把 Cloudflare Tunnel 的 origin 切到 http://edge:8080。
+#
+# 启用时把 EDGE_LIMITS_FILE 指向 ops/edge/limits.rate-limit.caddy，或把该文件
+# 的内容复制到这里。Tunnel 未指向 edge:8080 之前，启用限流片段没有任何效果。

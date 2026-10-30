@@ -1,0 +1,50 @@
+import { unauthorized, verifyInternalSecret } from "@/lib/internal";
+import {
+  formatSecurityAlert,
+  getSecuritySnapshot,
+  issueAttackAlertIfDue,
+  securityRecommendations,
+} from "@/lib/security";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const maxDuration = 30;
+
+/**
+ * Polled by n8n every 5 minutes. `mark=1` claims the alert cooldown so one
+ * attack burst produces one message instead of one per poll.
+ */
+export async function GET(request: Request): Promise<Response> {
+  if (!verifyInternalSecret(request)) return unauthorized();
+
+  const snapshot = await getSecuritySnapshot(200);
+  const mark = new URL(request.url).searchParams.get("mark") === "1";
+  const shouldAlert = mark ? await issueAttackAlertIfDue(snapshot) : false;
+
+  return Response.json(
+    {
+      ok: true,
+      available: snapshot.available,
+      attack: snapshot.attack,
+      should_alert: shouldAlert,
+      window_minutes: snapshot.windowMinutes,
+      window_count: snapshot.windowCount,
+      threshold: snapshot.threshold,
+      today_total: snapshot.todayTotal,
+      today_unique_ips: snapshot.todayUniqueIps,
+      top_ips: snapshot.topIps,
+      by_type: snapshot.byType,
+      last_event_at: snapshot.lastEventAt,
+      alert_cooldown_seconds: snapshot.alertCooldownSeconds,
+      alert_channel_configured: snapshot.alertChannelConfigured,
+      strict_mode: snapshot.strictMode,
+      strict_seconds_remaining: snapshot.strictSecondsRemaining,
+      defense_mode: snapshot.defenseMode,
+      defense_seconds_remaining: snapshot.defenseSecondsRemaining,
+      recommendations: securityRecommendations(snapshot),
+      alert_text: shouldAlert ? formatSecurityAlert(snapshot) : null,
+      generated_at: new Date(snapshot.generatedAt).toISOString(),
+    },
+    { headers: { "Cache-Control": "no-store" } },
+  );
+}

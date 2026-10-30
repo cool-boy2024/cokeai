@@ -1,6 +1,7 @@
 import { config } from "@/lib/config";
 import { listCatalogModels } from "@/lib/model-catalog";
 import { fixedWindowLimit } from "@/lib/rate-limit";
+import { recordSecurityEventOnce } from "@/lib/security";
 import { getGatewayModel, getUpstreamKey, upstreamChatUrl } from "@/lib/upstream";
 
 export const runtime = "nodejs";
@@ -83,6 +84,16 @@ export async function POST(request: Request): Promise<Response> {
   const ip = clientIp(request);
   const minute = await fixedWindowLimit(`cc:support:min:${ip}`, 6, 60);
   if (!minute.allowed) {
+    await recordSecurityEventOnce(
+      {
+        type: "support",
+        ip,
+        path: "/api/support/chat",
+        method: "POST",
+        detail: "support minute limit 6/60s",
+      },
+      120,
+    );
     return json(
       { reply: "提问有点频繁，请稍后再试。紧急问题可以发邮件到售后邮箱。", limited: true },
       429,
@@ -90,6 +101,16 @@ export async function POST(request: Request): Promise<Response> {
   }
   const hourly = await fixedWindowLimit(`cc:support:hour:${ip}`, 40, 3600);
   if (!hourly.allowed) {
+    await recordSecurityEventOnce(
+      {
+        type: "support",
+        ip,
+        path: "/api/support/chat",
+        method: "POST",
+        detail: "support hourly limit 40/h",
+      },
+      300,
+    );
     return json(
       { reply: `今天的自动客服次数已用完。请发邮件到 ${SUPPORT_EMAIL}，我们会人工回复。`, limited: true },
       429,

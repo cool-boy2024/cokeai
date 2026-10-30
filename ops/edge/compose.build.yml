@@ -1,0 +1,25 @@
+# Opt-in overlay that builds Caddy with github.com/mholt/caddy-ratelimit.
+#
+# This overlay is NOT part of the default stack. The base docker-compose.yml
+# still uses CADDY_IMAGE (default caddy:2-alpine); only commands that include
+# this file build and use the custom image.
+#
+# Use it only during the enablement flow in ops/edge/README.md:
+#
+#   docker compose -f docker-compose.yml -f ops/edge/compose.build.yml build edge
+#   EDGE_LIMITS_FILE=./ops/edge/limits.rate-limit.caddy \
+#     docker compose -f docker-compose.yml -f ops/edge/compose.build.yml up -d edge
+#
+# Rollback: stop passing this overlay and keep CADDY_IMAGE=caddy:2-alpine.
+services:
+  edge:
+    build:
+      # The project directory is the repo root (the first compose file lives
+      # there), so `.` is the repository root for this overlay.
+      context: .
+      dockerfile: ops/edge/Dockerfile
+      args:
+        # Override when proxy.golang.org is unreachable, e.g.
+        #   GOPROXY=https://goproxy.cn,direct docker compose ... build edge
+        GOPROXY: ${GOPROXY:-https://proxy.golang.org,direct}
+    image: cokeai-caddy:ratelimit

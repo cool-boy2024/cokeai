@@ -2,12 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { requireUser } from "@/lib/auth";
+import { getClientIp, requireUser } from "@/lib/auth";
 import { config } from "@/lib/config";
 import { easyPayConfigError } from "@/lib/payments/easypay";
 import { isUsdtConfigured } from "@/lib/payments/usdt";
 import { query } from "@/lib/db";
 import { fixedWindowLimit } from "@/lib/rate-limit";
+import { recordSecurityEventOnce } from "@/lib/security";
 import { verifyShopCaptcha } from "@/lib/shop/captcha";
 import { createShopEasyPayCheckout } from "@/lib/shop/payments";
 import { createShopOrder, revealShopDelivery } from "@/lib/shop/orders";
@@ -58,6 +59,17 @@ export async function createShopCheckoutAction(
 
   const limit = await fixedWindowLimit(`shop:order:${user.id}`, 10, 600);
   if (!limit.allowed) {
+    const ip = await getClientIp();
+    await recordSecurityEventOnce(
+      {
+        type: "shop",
+        ip,
+        path: "/shop/checkout",
+        method: "POST",
+        detail: `order limit 10/10m user=${user.id}`,
+      },
+      120,
+    );
     return { error: "下单过于频繁，请稍后再试。" };
   }
   if (provider === "usdt" && !(await isUsdtConfigured())) {

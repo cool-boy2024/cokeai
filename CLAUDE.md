@@ -161,6 +161,7 @@ npm run build
 ## 文档
 
 - `docs/HANDOFF.md`：**接手先读**。当前线上状态、待办、红线、发布与回滚、已知坑
+- `docs/SECURITY.md`：安全防护分层、告警通道、攻击处置手册、边缘限流启用与回滚
 - `docs/PRESENTATION.md`：16 页项目全景；`docs/presentation/` 有 PPTX 与 HTML 演示版
 - `CONTRIBUTING.md`：两人协作、分支、PR、审核规则
 - `docs/SUB2API_OPERATIONS.md`：生产部署、合规、备份、回滚

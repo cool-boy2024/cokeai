@@ -141,6 +141,15 @@ curl -s -o /dev/null -w "health %{http_code}\n" http://127.0.0.1:3000/api/health
 - **Next.js 16** 与训练数据不同，写代码前先读 `node_modules/next/dist/docs/`。
 - **本地开发**：Postgres/Redis 端口只在 `.local-data/compose.local.yml` 里临时暴露；本地是空库，不要导入生产数据。曾经占用 3011 端口跑 dev。
 
+## 安全（2026-10-30）
+
+- 当前真正生效的只有应用层防护：`src/proxy.ts` 的扫描拦截，登录/注册/小店/API/Server Action 按 IP 限流；事件写 Redis，管理员页 `/admin/security`；n8n 每 5 分钟通过 `ALERT_WEBHOOK_URL` 推送告警。
+- **Cloudflare Tunnel 仍指向 `app:3000`**，边缘 Caddy 限流不在公网链路上；CrowdSec、Anubis、WAF 均未启用。`ops/edge/` 的限流预案默认关闭，启用前必须单独审批并验证回滚。
+- 告警阈值默认 60 次 / 15 分钟（`SECURITY_ATTACK_THRESHOLD`），冷却 30 分钟（`SECURITY_ALERT_COOLDOWN_MINUTES`）。管理员页可“测试告警”“把当前摘要发到告警通道”，也可临时收紧限流（`sec:strict`，默认 60 分钟自动恢复）。
+- **一键应急防护**在 `/admin/security` 右上角：点击后应用层限速立即减半（`sec:defense` + `sec:strict`，24 小时自动恢复），并向告警通道发送边缘切换三步命令；不会自动改 Tunnel 或重建容器。关闭同理，恢复限流并提示把 Tunnel 改回 `app:3000`。
+- **待伙伴完成**：告警渠道对接飞书或企业微信。当前 payload 是通用 `{text, content}`，飞书/企微机器人需要在 `src/lib/security.ts` 的 `postAlertWebhook` 中改 body；步骤见 `docs/SECURITY.md` 第 5.1 节。webhook URL 只放服务器 `.env`，不进仓库。
+- 处置顺序固定：先确认告警 → 看 `/admin/security` → 判断类型 → 采取动作 → 通知/记录 → 恢复。完整手册、各类型建议与红线见 `docs/SECURITY.md`。
+
 ## 给伙伴 AI 的工作方式建议
 
 - 开始任务前按顺序读：`CLAUDE.md` → 本文 → `docs/SHOP_PROGRESS.md` → 相关源码。本文是快照，冲突时以代码和线上实测为准。
@@ -154,6 +163,7 @@ curl -s -o /dev/null -w "health %{http_code}\n" http://127.0.0.1:3000/api/health
 ## 相关文档
 
 - `docs/PRESENTATION.md`：16 页项目全景；`docs/presentation/` 里有同名 PPTX 和 HTML 演示版
+- `docs/SECURITY.md`：安全防护分层、攻击处置、告警配置、边缘限流启用与回滚
 - `CLAUDE.md`：技术栈、命令、禁区、验证要求
 - `CONTRIBUTING.md`：两人协作、分支、PR、审核规则
 - `docs/SUB2API_OPERATIONS.md`：生产部署、合规、备份、回滚
