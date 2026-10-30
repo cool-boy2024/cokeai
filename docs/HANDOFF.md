@@ -1,0 +1,160 @@
+# 交接说明
+
+最后核对：2026-10-30 11:00 CST（服务器 + 仓库实测）。之后线上可能已经变化，动手前请按本文的“验证”一节重新核对。
+
+这份文档写给接手的伙伴，以及帮伙伴读项目的 AI。目标是让你在不碰生产的前提下，先搞清楚现在是什么状态、哪些不能动、下一步该做什么。
+
+## 先给伙伴的 5 条建议
+
+1. **先只读，不要急着发布。** 仓库、后台、生产都处于可用状态；最危险的操作是未经核对就发商品、开支付、改订单逻辑。
+2. **读到任何密钥、密码、助记词，都不要转述给任何人。** 服务器 `.env`、`.admin-reset.txt`、`.aiclient2api-credentials.txt` 都是 0600，里面有生产凭据；本仓库和聊天里也不应该有。
+3. **商品文案可以抄货源，但不能暴露货源。** 店名、域名、外链、客服联系方式、“货源”字样都必须换成 CokeAI 自己的说法。
+4. **支付、订单状态机、USDT 扫描、数据库结构，没有明确要求和回滚方案就不要改。** 现在只有 USDT 通道是代码就绪但关闭的状态。
+5. **每个结论都要用命令验证。** 页面 200 不等于功能正常；后台按钮能点不等于任务成功。CI 的 `build` / `e2e` / `compose-smoke` 三项必须全绿。
+
+## 项目一句话
+
+CokeAI（https://cokeai.cc.cd）现在对外是一家**数字商品小店**：Muse 成品号、Codex 单次接码、ChatGPT/Claude 卡密与代充。原有的 AI API 中转业务**暂时不在公开页面销售**，但后端、`/v1` 网关和后台模型管理仍在，随时可以用一个开关恢复展示。
+
+## 当前线上状态（2026-10-30 11:00 CST）
+
+| 项 | 状态 |
+|---|---|
+| 生产应用代码 | `9d40457`（2026-10-30 发布） |
+| 生产目录 | `/home/deploy/cokeai`，SSH：`ssh -i ~/.ssh/cokeai_deploy deploy@47.83.178.22` |
+| 容器 | app、postgres、redis、sub2api、sub2api-postgres、sub2api-redis、edge、cloudflared、n8n、aiclient2api；app 启动后 healthy |
+| 公开 API 销售 | 关闭（`src/lib/public-features.ts` 的 `PUBLIC_API_SALES_ENABLED=false`） |
+| `/pricing`、`/docs` | 307 跳 `/shop`；导航、页脚、sitemap、metadata 已是小店口径 |
+| 首页 | 保留 HeroOrbit 品牌环绕、TaglineReveal 逐词点亮、ShopRing 环形商品舞台；文案是“订阅、账号、接码”。**这是运营明确要求保留的门面，不要重排** |
+| USDT 支付 | 代码就绪，生产 `USDT_ENABLED=false`，顾客看不到二维码/倒计时 |
+| 易支付备用通道 | `SHOP_EASYPAY_ENABLED=false`，未配置服务商凭据 |
+| AI 上架 | 后台货源页可单条/批量“AI 上架”，任务入队后后台执行，完成后自动打开审核页；n8n 每 2 分钟兜底。`SHOP_IMPORT_AI_*` 未配置，当前走规则提取 |
+| 商品 | active 14 个、archived 1 个（旧 Muse 商品）、草稿约 50 个 |
+| 订单 | 只有 2 笔过期测试单，无真实成交 |
+| 回滚镜像 | `cokeai-app:pre-hero-copy`；更早的 `pre-publicpause`、`pre-muse-tiers` 等仍在 |
+
+active 的 14 个商品：
+
+- 订阅：`chatgpt-plus-1m-code` ¥169（现货）、`chatgpt-pro-5x-1m` ¥849（现货）、`claude-pro-1m-code` ¥199（缺货）、`claude-max-5x-1m` ¥1099（库存紧张）、`gemini-pro-1y` ¥49（暂停，无货源）、`grok-super-1m` ¥269（缺货）
+- Muse 六档：`muse-10b-1h` ¥15、`muse-10b-7d` ¥20、`muse-10b-30d` ¥25、`muse-310b-1h` ¥25、`muse-310b-7d` ¥60、`muse-310b-30d` ¥88
+- 接码：`codex-sms-single` ¥5（现货）
+- 测试：`usdt-e2e-test` ¥7（**应归档，不要在真实顾客面前保留**）
+
+## 待办（按优先级）
+
+1. **审核 50 个 AI 草稿**：`/admin/shop/products` 里状态为 `draft` 的商品都是草稿，不公开。审核时至少确认：商品名、售价、拿货成本/毛利、发货时效、质保、注意事项、退款口径。发布前必须勾选合规确认；这一步只能由运营在后台点，AI 不代点。
+2. **归档 `usdt-e2e-test`**：它是支付联调用的测试商品，现在仍 active/in_stock，会出现在公开小店。确认没有未完成测试后设为 archived/paused。
+3. **清理测试订单/存款**：`CK20261027ACEC06A1`（个人支付宝 ¥0.01，已过期）和 `CK202610288F42480C`（USDT ¥169，已过期）都是测试数据；USDT 存款表有 1 笔过期记录。删除前先确认没有对账价值，倾向“标注/归档”而不是直接删。
+4. **复核 Muse/Codex 毛利**：六档 Muse 售价是按货源公开零售价照抄的，Codex ¥5 对拿货 ¥2.10；如果实际拿货价不同，毛利要重算。
+5. **USDT 上线前**：确认运营钱包能直接看到派生地址、助记词已离线备份，再开 `USDT_ENABLED=true`；然后走一笔真实小额订单，验证“下单 → 转账 → 扫描确认 → 采购 → 交付”。
+6. **恢复 API 销售（何时由运营决定）**：只改 `PUBLIC_API_SALES_ENABLED=true`，页面、导航、sitemap、metadata 会一起恢复；模型目录本身一直没删。模型要能真正调用，还需要 Sub2API 侧有可用上游（当前只有 DeepSeek 真实 Key）。
+7. **伙伴权限**：GitHub 已向 `wjlwww` 发 write 邀请，若还未接受，先接受再开分支；CODEOWNERS 已包含两人。
+
+## 绝对不能碰
+
+- 不读取、不打印、不提交：`.env`、`.admin-reset.txt`、`.aiclient2api-credentials.txt`、SSH 私钥、Cloudflare Tunnel token、Sub2API 管理员密码、USDT 助记词/私钥/xprv、供货商账号、易支付 PID/KEY。
+- **不要再运行 `docker compose config`**：它会打印生产环境变量，曾经把密钥刷到终端里。
+- 不替管理员接受 Sub2API 合规确认；Sub2API 后台只走 SSH 隧道 `127.0.0.1:18080`。
+- 不绕过 OpenAI 等上游的地区限制、不做指纹/出口伪装。
+- 不绕过供货商的反爬/滑块验证，不自动替供货商下单。
+- 未经明确要求，不改支付回调、订单状态机、USDT 扫描、数据库结构、定价公式；不擅自开关支付渠道。
+- 不在公开页面写虚假评价、客户 Logo、增长数据或无法兑现的承诺。
+- 不改生产服务器或 Cloudflare Tunnel 配置；不提交 `.next/`、截图、`.local-data/`、`.taste-skill/`。
+
+## 供货商信息脱敏（重点）
+
+规则：**商品规则可以原文抄，身份不能露。** 具体做法有三层，改文案时不要绕过：
+
+1. 生成时：`src/lib/shop/import.ts` 先清洗货源原文再交给模型/规则提取。
+2. 读写时：`src/lib/shop/sanitize.ts` 替换店名、货源域名、外部链接、微信/QQ/Telegram/邮箱、“货源/供货商/上游供应商”。公开目录 `src/lib/shop/catalog.ts` 在读取时再兜底一次；后台看到的是原始数据。
+3. 存量：`npx tsx scripts/shop-scrub-copy.ts` 默认 dry-run，`--apply` 事务写入。改完抽查任意商品页，确认没有外部域名和“货源”字样。
+
+允许保留的官方站点：openai.com、chatgpt.com、claude.ai、anthropic.com、google.com、gemini.google.com、grok.com、x.ai、apple.com、microsoft.com、muse.ai，以及 cokeai.cc.cd 自己。其他域名一律替换。
+
+## 发布流程（当前实际做法）
+
+`main` 只接受 PR，CI 必须过 `build`、`e2e`、`compose-smoke`，用 Squash and merge，然后本地 `git switch main && git pull --ff-only`。
+
+生产发布：
+
+```bash
+# 0. 建议先备份镜像
+ssh -i ~/.ssh/cokeai_deploy deploy@47.83.178.22 \
+  'cd /home/deploy/cokeai && docker tag $(docker compose images -q app) cokeai-app:pre-<变更名>'
+
+# 1. 同步代码（保留服务器 .env 和备份文件）
+rsync -az --delete \
+  --exclude '.git' --exclude '.next' --exclude 'node_modules' \
+  --exclude '.env' --exclude '.env.*' --exclude '.local-data' \
+  --exclude '.taste-skill' --exclude '*.log' \
+  -e "ssh -i ~/.ssh/cokeai_deploy" ./ deploy@47.83.178.22:/home/deploy/cokeai/
+
+# 2. 构建并重启
+ssh -i ~/.ssh/cokeai_deploy deploy@47.83.178.22 \
+  'cd /home/deploy/cokeai && docker compose build app && docker compose up -d app'
+
+# 3. 等待 healthy，回源验证
+ssh -i ~/.ssh/cokeai_deploy deploy@47.83.178.22 \
+  'curl -s -o /dev/null -w "%{http_code} %{time_total}s\n" -H "Host: cokeai.cc.cd" http://127.0.0.1:3000/'
+```
+
+回滚：
+
+```bash
+ssh -i ~/.ssh/cokeai_deploy deploy@47.83.178.22 \
+  'cd /home/deploy/cokeai && docker tag cokeai-app:pre-<变更名> cokeai-app:local && docker compose up -d app'
+```
+
+数据库备份在 `/home/deploy/backups/`（0600）。涉及商品/订单的发布，先做 `shop_products`、`shop_product_sources` 的 SQL 备份。
+
+## 验证清单
+
+```bash
+npm run typecheck
+npm run build
+npm run test:shop        # 改了小店逻辑才需要
+```
+
+生产回源（服务器上执行，绕开本地网络问题）：
+
+```bash
+curl -s -o /dev/null -w "home %{http_code}\n" -H "Host: cokeai.cc.cd" http://127.0.0.1:3000/
+curl -s -o /dev/null -w "shop %{http_code}\n" -H "Host: cokeai.cc.cd" http://127.0.0.1:3000/shop
+curl -s -o /dev/null -w "health %{http_code}\n" http://127.0.0.1:3000/api/health
+```
+
+- `/pricing`、`/docs` 应为 307（API 销售关闭期间）。
+- 首页不应出现“按量计费 / 创建 Key / 模型与价格 / 充值包 / 接入教程”。
+- 商品页不应出现外部域名、`货源`、供货商店名。
+- 界面改动要在 1440 和 390 两个宽度检查无横向滚动；小店保持两步购买（先“购买”，再出现支付方式）。
+- 本机直连 Cloudflare 经常很慢甚至超时，是本地到边缘的网络问题，不代表生产故障；以服务器回源为准。
+
+## 已知坑与边界
+
+- **Cloudflare Tunnel 源站仍指向 `app:3000`，不是 `edge:8080`。** 所以公网 `/v1` 目前走的是 Next.js 旧网关，Sub2API 不在公网链路上。切换需要改 Cloudflare 面板并评估 Key/计费兼容性，未做，不要顺手改。
+- **中国大陆访问慢**：瓶颈在大陆 → Cloudflare 边缘（偶发 `colo=GRU`）。应用侧只有几十毫秒。国内 CDN 需备案，不可用。
+- **Sub2API 账号 `id=1` 曾被改成可调度**：它接的是 AIClient2API，而 Codex OAuth 因 OpenAI 地区限制从未接通，所以必须保持 `schedulable=false`。发现被改回 true，要恢复并刷新调度缓存（写 `scheduler_outbox` 的 `account_changed`）。
+- **OpenAI OAuth 走不通**：生产出口是香港，`auth.openai.com` 直接 403 `unsupported_country_region_territory`。不做地区绕过；合规路径只有官方 API Key 或书面授权的 OAuth。
+- **AI 上架是异步的**：点按钮后立即跳转，后台 `after()` 抓取并生成；`ImportJobWatcher` 轮询状态并在草稿就绪后自动打开商品页。queued 超过 30 分钟会被回收，失败会带原因跳回。不要把它当成同步按钮来测。
+- **n8n 工作流**：`shop-offer-autolist` 每 2 分钟调 `/api/internal/shop/import-jobs/run`（secret 保护）。改 webhook 时保持 `responseMode: onReceived`。
+- **wzyp / zyanai 是 Vue SPA**：纯 HTTP 抓不到商品页，需要浏览器抓取（`scripts/shop-draft-from-pages.ts`）或人工复制。不要绕过它们的滑块验证。
+- **Next.js 16** 与训练数据不同，写代码前先读 `node_modules/next/dist/docs/`。
+- **本地开发**：Postgres/Redis 端口只在 `.local-data/compose.local.yml` 里临时暴露；本地是空库，不要导入生产数据。曾经占用 3011 端口跑 dev。
+
+## 给伙伴 AI 的工作方式建议
+
+- 开始任务前按顺序读：`CLAUDE.md` → 本文 → `docs/SHOP_PROGRESS.md` → 相关源码。本文是快照，冲突时以代码和线上实测为准。
+- 先只读排查，再提方案；涉及生产、支付、数据库的改动先说明影响范围和回滚方式，等伙伴明确同意再动手。
+- 不要合并自己开的 PR（除非伙伴明确授权）；不要 force push `main`。
+- 不要声称“已修复/已上线”而没有命令输出为证；失败就如实贴错误。
+- 不要把聊天里出现的任何凭据写进文件、提交或日志。
+- 改文案时保持“可抄规则、不露货源”；改 UI 时先确认是不是运营要求保留的门面（Hero、Tagline、ShopRing）。
+- 对不确定的业务口径（质保、退款、发货时效），以商品数据库字段和运营确认为准，不要自行编造。
+
+## 相关文档
+
+- `CLAUDE.md`：技术栈、命令、禁区、验证要求
+- `CONTRIBUTING.md`：两人协作、分支、PR、审核规则
+- `docs/SUB2API_OPERATIONS.md`：生产部署、合规、备份、回滚
+- `docs/SHOP_PROGRESS.md`：小店进度与历史决策
+- `docs/GO_LIVE_CHECKLIST.md`：上线检查

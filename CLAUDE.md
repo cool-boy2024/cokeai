@@ -160,6 +160,7 @@ npm run build
 
 ## 文档
 
+- `docs/HANDOFF.md`：**接手先读**。当前线上状态、待办、红线、发布与回滚、已知坑
 - `CONTRIBUTING.md`：两人协作、分支、PR、审核规则
 - `docs/SUB2API_OPERATIONS.md`：生产部署、合规、备份、回滚
 - `docs/SHOP_PROGRESS.md`：小店当前进度与待办
