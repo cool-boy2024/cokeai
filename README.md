@@ -100,5 +100,6 @@ docker compose -f docker-compose.yml -f ops/sub2api/compose.yaml \
 | `ops/sub2api/` | Sub2API + 独立 PostgreSQL/Redis compose overlay |
 | `docs/SUB2API_OPERATIONS.md` | 生产运维、合规、备份、回滚 |
 | `docs/HANDOFF.md` | 交接说明：线上状态、待办、红线、发布与回滚 |
+| `docs/PRESENTATION.md` | 16 页项目全景（配套 `docs/presentation/` 的 PPTX 与 HTML） |
 | `n8n/workflows/` | 5 个自动化工作流 |
 | `scripts/` | 迁移、验证、冒烟、回滚、开发辅助 |

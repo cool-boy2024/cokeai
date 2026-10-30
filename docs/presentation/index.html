@@ -1,0 +1,843 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CokeAI 项目介绍 · 交接版</title>
+<style>
+  :root {
+    --paper: #f7f6f3;
+    --paper-2: #efece6;
+    --ink: #161615;
+    --muted: #6b6a66;
+    --green: #1f6f5c;
+    --green-soft: #e3efe9;
+    --amber: #a8641c;
+    --amber-soft: #f5e8d6;
+    --red: #a33a2f;
+    --red-soft: #f6e3df;
+    --line: #d9d5cc;
+    --sans: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
+    --mono: "SFMono-Regular", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: #121211;
+    color: var(--ink);
+    font-family: var(--sans);
+    overflow: hidden;
+  }
+  .stage {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .deck {
+    width: 1280px;
+    height: 720px;
+    transform-origin: center center;
+    position: relative;
+  }
+  .slide {
+    position: absolute;
+    inset: 0;
+    background: var(--paper);
+    padding: 64px 80px 72px;
+    display: none;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .slide.is-active { display: flex; }
+  .slide::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image: radial-gradient(rgba(22,22,21,.045) 1px, transparent 1px);
+    background-size: 22px 22px;
+    opacity: .5;
+  }
+  .slide > * { position: relative; z-index: 1; }
+
+  .kicker {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    color: var(--green);
+    font-weight: 600;
+  }
+  .kicker::before {
+    content: "";
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--green);
+  }
+  .slide h1 {
+    font-size: 64px;
+    line-height: 1.08;
+    margin: 18px 0 20px;
+    letter-spacing: -.02em;
+    font-weight: 700;
+    max-width: 980px;
+  }
+  .slide h2 {
+    font-size: 40px;
+    line-height: 1.18;
+    margin: 14px 0 22px;
+    letter-spacing: -.015em;
+    font-weight: 650;
+  }
+  .slide h3 {
+    font-size: 20px;
+    margin: 0 0 8px;
+    font-weight: 650;
+  }
+  .lead {
+    font-size: 21px;
+    line-height: 1.7;
+    color: #3d3c39;
+    max-width: 860px;
+    margin: 0;
+  }
+  .muted { color: var(--muted); }
+  .small { font-size: 14px; line-height: 1.6; }
+  .mono { font-family: var(--mono); font-size: .92em; }
+
+  .foot {
+    margin-top: auto;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    font-size: 13px;
+    color: var(--muted);
+    padding-top: 18px;
+    border-top: 1px solid var(--line);
+  }
+  .page-no { font-family: var(--mono); letter-spacing: .08em; }
+
+  /* cover */
+  .cover { justify-content: space-between; }
+  .cover .brand {
+    display: flex; align-items: center; gap: 12px;
+    font-size: 15px; font-weight: 600;
+  }
+  .logo-mark {
+    width: 30px; height: 30px; border-radius: 9px;
+    background: var(--ink); color: var(--paper);
+    display: grid; place-items: center;
+    font-weight: 700;
+  }
+  .cover h1 { font-size: 76px; margin: 0 0 18px; }
+  .cover .lead { font-size: 23px; }
+  .cover-meta {
+    display: flex; gap: 36px; font-size: 14px; color: var(--muted);
+    border-top: 1px solid var(--line); padding-top: 18px;
+  }
+  .cover-meta strong { display: block; color: var(--ink); font-size: 15px; margin-bottom: 2px; }
+
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .card {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 22px 22px;
+  }
+  .card.soft { background: var(--paper-2); border-color: transparent; }
+  .card.green { background: var(--green-soft); border-color: transparent; }
+  .card.amber { background: var(--amber-soft); border-color: transparent; }
+  .card.red { background: var(--red-soft); border-color: transparent; }
+  .stat {
+    font-size: 46px;
+    font-weight: 700;
+    letter-spacing: -.02em;
+    line-height: 1;
+    margin: 8px 0 6px;
+  }
+  .stat small { font-size: 15px; font-weight: 500; color: var(--muted); margin-left: 4px; }
+
+  ul.clean { list-style: none; padding: 0; margin: 0; }
+  ul.clean li {
+    position: relative;
+    padding-left: 20px;
+    margin: 0 0 10px;
+    font-size: 17px;
+    line-height: 1.6;
+  }
+  ul.clean li::before {
+    content: "";
+    position: absolute; left: 2px; top: .62em;
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--green);
+  }
+  ul.clean li.warn::before { background: var(--amber); }
+  ul.clean li.risk::before { background: var(--red); }
+
+  /* flow */
+  .flow { display: flex; align-items: stretch; gap: 12px; margin-top: 8px; }
+  .flow .step {
+    flex: 1;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 16px 14px;
+    position: relative;
+  }
+  .flow .step b { display: block; font-size: 15px; margin-bottom: 6px; }
+  .flow .step span { font-size: 13px; color: var(--muted); line-height: 1.55; display: block; }
+  .flow .step i {
+    font-style: normal;
+    position: absolute; top: 12px; right: 12px;
+    font-family: var(--mono); font-size: 11px; color: var(--muted);
+  }
+  .flow .arrow {
+    align-self: center; color: var(--muted); font-size: 18px; flex: 0 0 auto;
+  }
+
+  /* architecture */
+  .arch { display: grid; grid-template-rows: auto auto auto; gap: 14px; margin-top: 6px; }
+  .arch-row { display: flex; align-items: center; gap: 12px; }
+  .arch-label {
+    width: 76px; flex: 0 0 76px;
+    font-size: 12px; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--muted);
+  }
+  .node {
+    flex: 1;
+    background: #fff; border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 12px 16px;
+    font-size: 14px; line-height: 1.45;
+  }
+  .node b { display: block; font-size: 15px; }
+  .node span { color: var(--muted); font-size: 12.5px; }
+  .node.green { background: var(--green-soft); border-color: transparent; }
+  .node.dark { background: var(--ink); color: var(--paper); border-color: transparent; }
+  .node.dark span { color: #c9c7c1; }
+  .node.dashed { border-style: dashed; background: transparent; }
+  .downgit { text-align: center; color: var(--muted); font-size: 16px; line-height: 1; }
+
+  /* table */
+  table.deck-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 15px;
+    background: #fff;
+    border-radius: 14px;
+    overflow: hidden;
+    border: 1px solid var(--line);
+  }
+  table.deck-table th, table.deck-table td {
+    text-align: left;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--line);
+    vertical-align: top;
+  }
+  table.deck-table th {
+    background: var(--paper-2);
+    font-size: 12.5px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 600;
+  }
+  table.deck-table tr:last-child td { border-bottom: 0; }
+  .badge {
+    display: inline-block;
+    padding: 3px 9px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    background: var(--paper-2);
+    color: #4a4945;
+  }
+  .badge.green { background: var(--green-soft); color: var(--green); }
+  .badge.amber { background: var(--amber-soft); color: var(--amber); }
+  .badge.red { background: var(--red-soft); color: var(--red); }
+  .badge.dark { background: var(--ink); color: var(--paper); }
+
+  /* code block */
+  pre.code {
+    background: #1b1b19;
+    color: #e8e5de;
+    border-radius: 14px;
+    padding: 18px 20px;
+    font-family: var(--mono);
+    font-size: 13.5px;
+    line-height: 1.7;
+    margin: 0;
+    overflow: auto;
+    white-space: pre;
+  }
+  pre.code .c { color: #8f8b82; }
+  pre.code .g { color: #8fd0b8; }
+
+  .note {
+    margin-top: 14px;
+    font-size: 13.5px;
+    color: var(--muted);
+    line-height: 1.6;
+  }
+  .tight h2 { margin: 10px 0 16px; }
+  .tight .card { padding: 16px 18px; }
+  .tight h3 { font-size: 17px; margin-bottom: 6px; }
+  .tight ul.clean li { margin-bottom: 6px; font-size: 14px; line-height: 1.5; }
+  .pill-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .pill-row .badge { font-size: 12.5px; }
+
+  /* footer nav */
+  .nav {
+    position: fixed;
+    right: 18px; top: 14px;
+    display: flex; align-items: center; gap: 10px;
+    z-index: 10;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 12px;
+  }
+  .nav button {
+    background: rgba(22,22,21,.06);
+    color: var(--ink);
+    border: 1px solid rgba(22,22,21,.14);
+    border-radius: 8px;
+    width: 32px; height: 30px;
+    cursor: pointer;
+    font-size: 14px;
+  }
+  .nav button:hover { background: rgba(22,22,21,.14); }
+  .progress {
+    position: fixed; left: 0; top: 0; height: 3px;
+    background: var(--green);
+    z-index: 11;
+    transition: width .25s ease;
+  }
+
+  @media print {
+    html, body { overflow: visible; background: #fff; }
+    .stage { position: static; display: block; }
+    .deck { width: auto; height: auto; transform: none !important; }
+    .slide {
+      position: relative;
+      display: flex !important;
+      width: 1280px; height: 720px;
+      page-break-after: always;
+      break-after: page;
+    }
+    .nav, .progress { display: none; }
+    @page { size: 13.333in 7.5in; margin: 0; }
+  }
+</style>
+</head>
+<body>
+<div class="progress" id="progress"></div>
+<main class="stage">
+  <div class="deck" id="deck">
+
+    <!-- 1 -->
+    <section class="slide cover is-active" aria-label="封面">
+      <div class="brand"><span class="logo-mark">C</span> CokeAI</div>
+      <div>
+        <div class="kicker">Project handover · 2026-10-30</div>
+        <h1>一家数字商品小店，<br />和它背后的整套系统</h1>
+        <p class="lead">这份介绍带你看懂：我们卖什么、怎么运转、代码在哪、<br />哪些不能碰，以及接手后先做什么。</p>
+      </div>
+      <div class="cover-meta">
+        <div><strong>站点</strong>https://cokeai.cc.cd</div>
+        <div><strong>生产代码</strong><span class="mono">9d40457</span></div>
+        <div><strong>在售商品</strong>14 个</div>
+        <div><strong>配套文档</strong>docs/HANDOFF.md</div>
+      </div>
+    </section>
+
+    <!-- 2 -->
+    <section class="slide" aria-label="一分钟看懂">
+      <div class="kicker">01 · 一分钟看懂</div>
+      <h2>我们现在是一家“数字商品小店”</h2>
+      <p class="lead">顾客在站内挑商品、下单、付款；我们向上游拿货，人工核验后交付。API 中转业务暂停公开销售，但系统仍然在。</p>
+      <div class="grid-3" style="margin-top:28px">
+        <div class="card green">
+          <div class="small muted">在售商品</div>
+          <div class="stat">14<small>个</small></div>
+          <div class="small">6 档 Muse、4 个订阅、Codex 接码、1 个测试商品、Gemini（暂停）</div>
+        </div>
+        <div class="card amber">
+          <div class="small muted">待审草稿</div>
+          <div class="stat">~50<small>个</small></div>
+          <div class="small">AI 从货源生成的草稿，不公开，必须人工审核并勾选合规后才能发布</div>
+        </div>
+        <div class="card soft">
+          <div class="small muted">真实成交</div>
+          <div class="stat">0<small>笔</small></div>
+          <div class="small">目前只有 2 笔过期测试单；支付通道 USDT 代码就绪但未开启</div>
+        </div>
+      </div>
+      <div class="foot">
+        <span>对外只露出小店；API 页面用 <span class="mono">PUBLIC_API_SALES_ENABLED=false</span> 收起</span>
+        <span class="page-no">02 / 16</span>
+      </div>
+    </section>
+
+    <!-- 3 -->
+    <section class="slide" aria-label="商业模式">
+      <div class="kicker">02 · 商业模式</div>
+      <h2>一件代发：不压货，赚差价</h2>
+      <div class="flow">
+        <div class="step"><i>01</i><b>上游货源</b><span>聚合源（aibijia 公开 feed）+ 供应商店铺，分钟级同步价格与库存</span></div>
+        <span class="arrow">→</span>
+        <div class="step"><i>02</i><b>挑货与定价</b><span>后台按类型/地区/店铺筛选，看拿货价、售价与毛利率，决定上不下架</span></div>
+        <span class="arrow">→</span>
+        <div class="step"><i>03</i><b>顾客下单</b><span>商品页 → 两步购买 → 填邮箱/数量/验证码 → 付款</span></div>
+        <span class="arrow">→</span>
+        <div class="step"><i>04</i><b>人工采购</b><span>运营拿采购包去上游付款，拿到卡密/账号/充值结果</span></div>
+        <span class="arrow">→</span>
+        <div class="step"><i>05</i><b>交付与售后</b><span>订单页交付内容，质保口径以商品字段为准</span></div>
+      </div>
+      <div class="grid-2" style="margin-top:26px">
+        <div class="card">
+          <h3>收入公式</h3>
+          <p class="lead" style="font-size:17px">毛利 = 售价 − 拿货价 − 支付/链上成本。<br />没有统一加价率：订阅、Muse、接码各自按货源价与市场价定。</p>
+        </div>
+        <div class="card soft">
+          <h3>这套模式的硬边界</h3>
+          <p class="lead" style="font-size:17px">最后一步“去上游付款拿货”仍是人工。上游是带滑块验证的 SPA、没有授权 API，我们不绕过验证、不自动下单。</p>
+        </div>
+      </div>
+      <div class="foot"><span>自动化做到“同步 + 生草稿 + 采购包”，不做到“替我们下单”</span><span class="page-no">03 / 16</span></div>
+    </section>
+
+    <!-- 4 -->
+    <section class="slide" aria-label="顾客旅程">
+      <div class="kicker">03 · 顾客旅程</div>
+      <h2>顾客从进站到拿到货，只经过 5 个页面</h2>
+      <div class="grid-2">
+        <div>
+          <ul class="clean">
+            <li><b>首页</b>：品牌环绕 + 逐词点亮的 slogan + 环形商品舞台，点进小店</li>
+            <li><b>小店列表</b>：按品牌筛选，现货/补货中/缺货/暂停一目了然</li>
+            <li><b>商品详情</b>：价格、发货时效、质保、商品介绍、重点注意事项、站内教程视频</li>
+            <li><b>两步购买</b>：先点“购买”，才出现支付方式；填联系邮箱、数量 1–5、人机验证</li>
+            <li><b>订单页</b>：进度、交付内容、售后说明；登录后在控制台也能看</li>
+          </ul>
+        </div>
+        <div class="card green">
+          <h3>设计上刻意坚持的几件事</h3>
+          <ul class="clean" style="margin-top:6px">
+            <li>不一次性抛出支付方式，先让顾客确认商品信息</li>
+            <li>发货时效、质保、退款口径全部来自商品字段，不写统一承诺</li>
+            <li>教程留在站内播放，不把顾客送去外部页面</li>
+            <li>重要提醒用“重点注意事项”，不藏在折叠区</li>
+          </ul>
+        </div>
+      </div>
+      <div class="foot"><span>小店是当前唯一面向顾客的销售入口</span><span class="page-no">04 / 16</span></div>
+    </section>
+
+    <!-- 5 -->
+    <section class="slide" aria-label="系统架构">
+      <div class="kicker">04 · 系统架构</div>
+      <h2>一条请求怎么走到应用</h2>
+      <div class="arch">
+        <div class="arch-row">
+          <div class="arch-label">入口</div>
+          <div class="node dark"><b>Cloudflare（cokeai.cc.cd）</b><span>TLS、边缘；大陆访问较慢是这条链路的问题</span></div>
+          <div class="node dashed"><b>Cloudflare Tunnel</b><span>出站隧道，无需开放入站端口</span></div>
+        </div>
+        <div class="downgit">↓</div>
+        <div class="arch-row">
+          <div class="arch-label">应用</div>
+          <div class="node green"><b>Next.js 16 · app:3000</b><span>页面、Server Actions、支付回调、后台、旧 /v1 通道</span></div>
+          <div class="node"><b>edge · Caddy :8080</b><span>设计中的统一入口：/v1* 转 Sub2API，其余转 app</span></div>
+        </div>
+        <div class="downgit">↓</div>
+        <div class="arch-row">
+          <div class="arch-label">数据与外部</div>
+          <div class="node"><b>PostgreSQL 16</b><span>用户、商品、订单、货源、支付事件</span></div>
+          <div class="node"><b>Redis</b><span>会话、限流、验证码、调度缓存</span></div>
+          <div class="node"><b>Sub2API</b><span>Key/余额/模型路由的唯一权威</span></div>
+          <div class="node"><b>n8n</b><span>定时同步、AI 上架兜底</span></div>
+        </div>
+      </div>
+      <div class="note">注意：生产 Tunnel 现在指向 <span class="mono">app:3000</span>，不是 <span class="mono">edge:8080</span>。所以公网 /v1 走的是 Next 旧网关，Sub2API 暂不在公网链路；切换要改 Cloudflare 面板并评估兼容性，别顺手改。</div>
+      <div class="foot"><span>10 个容器：app / postgres / redis / sub2api(+pg+redis) / edge / cloudflared / n8n / aiclient2api</span><span class="page-no">05 / 16</span></div>
+    </section>
+
+    <!-- 6 -->
+    <section class="slide tight" aria-label="代码地图">
+      <div class="kicker">05 · 代码地图</div>
+      <h2>四个地方看懂整个项目</h2>
+      <div class="grid-2">
+        <div class="card">
+          <h3>页面与路由 <span class="mono small muted">src/app</span></h3>
+          <ul class="clean small" style="font-size:15px">
+            <li><span class="mono">page.tsx</span> 首页；<span class="mono">shop/*</span> 小店、详情、结算、订单</li>
+            <li><span class="mono">dashboard/*</span> 用户控制台；<span class="mono">admin/*</span> 运营后台</li>
+            <li><span class="mono">pricing</span>、<span class="mono">docs</span> API 页，当前 307 到 /shop</li>
+            <li><span class="mono">api/*</span> 健康检查、验证码、回调、客服</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>小店逻辑 <span class="mono small muted">src/lib/shop</span></h3>
+          <ul class="clean small" style="font-size:15px">
+            <li><span class="mono">sync</span> 拉货源；<span class="mono">catalog</span> 公开目录与兜底脱敏</li>
+            <li><span class="mono">import</span> AI 上架任务；<span class="mono">offer-classify</span> 类型识别</li>
+            <li><span class="mono">orders</span>、<span class="mono">payments</span>、<span class="mono">usdt</span> 订单与支付</li>
+            <li><span class="mono">sanitize</span> 货源身份脱敏；<span class="mono">copy</span> 文案口径</li>
+          </ul>
+        </div>
+        <div class="card soft">
+          <h3>数据与脚本 <span class="mono small muted">db · scripts</span></h3>
+          <ul class="clean small" style="font-size:15px">
+            <li><span class="mono">db/schema.sql</span> 表结构与幂等迁移</li>
+            <li><span class="mono">shop:sync</span>、<span class="mono">shop:publish</span>、<span class="mono">shop:content</span></li>
+            <li><span class="mono">shop-scrub-copy</span> 存量文案脱敏（默认 dry-run）</li>
+            <li><span class="mono">test:shop*</span> 小店逻辑测试</li>
+          </ul>
+        </div>
+        <div class="card soft">
+          <h3>部署与自动化 <span class="mono small muted">ops · n8n · Dockerfile</span></h3>
+          <ul class="clean small" style="font-size:15px">
+            <li><span class="mono">docker-compose.yml</span> 服务编排；<span class="mono">Dockerfile</span> 镜像</li>
+            <li><span class="mono">ops/edge</span> Caddy；<span class="mono">ops/sub2api</span> 网关编排</li>
+            <li><span class="mono">n8n/workflows</span> 同步与上架兜底</li>
+            <li><span class="mono">docs/HANDOFF.md</span> 交接细节</li>
+          </ul>
+        </div>
+      </div>
+      <div class="foot"><span>先读 CLAUDE.md → docs/HANDOFF.md → 相关源码</span><span class="page-no">06 / 16</span></div>
+    </section>
+
+    <!-- 7 -->
+    <section class="slide" aria-label="商品与货源">
+      <div class="kicker">06 · 商品与货源</div>
+      <h2>一条货源，怎么变成一件在售商品</h2>
+      <div class="grid-2">
+        <div>
+          <ul class="clean">
+            <li><b>货源</b>：公开聚合 feed 每小时同步，记录店铺、标题、价格、库存、原链接</li>
+            <li><b>去重</b>：同一链接可能有多个标题/价格，用“链接 + 标题”的哈希做唯一键</li>
+            <li><b>归类</b>：自动识别账号 / 卡密 / 代充 / 接码，决定交付方式与表单字段</li>
+            <li><b>建草稿</b>：从货源生成商品草稿，文案可抄规则，但货源身份必须脱敏</li>
+            <li><b>审核发布</b>：运营改价、核对毛利、勾选合规，才变 active</li>
+          </ul>
+        </div>
+        <div>
+          <table class="deck-table">
+            <thead><tr><th>状态</th><th>是否公开</th><th>含义</th></tr></thead>
+            <tbody>
+              <tr><td><span class="badge amber">draft</span></td><td>否</td><td>AI/人工草稿，待审核</td></tr>
+              <tr><td><span class="badge green">active</span></td><td>是</td><td>已合规确认，按库存状态展示</td></tr>
+              <tr><td><span class="badge">archived</span></td><td>否</td><td>下架，历史订单保留</td></tr>
+              <tr><td><span class="badge">in_stock</span></td><td>是</td><td>可售；另有 low_stock / out_of_stock / paused</td></tr>
+            </tbody>
+          </table>
+          <div class="note">商品页的质保、发货、退款全部读数据库字段，不写死在模板里。</div>
+        </div>
+      </div>
+      <div class="foot"><span>货源只是进货渠道，顾客看到的永远是 CokeAI 的商品页</span><span class="page-no">07 / 16</span></div>
+    </section>
+
+    <!-- 8 -->
+    <section class="slide" aria-label="AI 上架流水线">
+      <div class="kicker">07 · AI 上架流水线</div>
+      <h2>点一下按钮，后台把草稿做完</h2>
+      <div class="flow">
+        <div class="step"><i>01</i><b>点击“AI 上架”</b><span>单条或批量，最多 20 条；立刻跳转，不阻塞页面</span></div>
+        <span class="arrow">→</span>
+        <div class="step"><i>02</i><b>入队</b><span>写任务表，通知 n8n；同一货源不会重复排队</span></div>
+        <span class="arrow">→</span>
+        <div class="step"><i>03</i><b>后台抓取</b><span>只抓公网地址、限 512KB、逐跳校验；清洗货源身份</span></div>
+        <span class="arrow">→</span>
+        <div class="step"><i>04</i><b>生成草稿</b><span>有 AI 配置用模型，没有就用规则提取；注意事项逐行摘录原文</span></div>
+        <span class="arrow">→</span>
+        <div class="step"><i>05</i><b>自动打开审核</b><span>前台轮询任务状态，完成后跳到商品编辑页</span></div>
+      </div>
+      <div class="grid-3" style="margin-top:24px">
+        <div class="card"><h3>为什么这样做</h3><p class="small" style="margin:0">同步抓取会让按钮卡几秒；改成“入队 + 后台执行”后，点击约 0.4 秒跳转。</p></div>
+        <div class="card"><h3>失败怎么办</h3><p class="small" style="margin:0">失败会带原因跳回；排队超 30 分钟自动回收；生成期间仍可手动建草稿。</p></div>
+        <div class="card"><h3>最后一道闸</h3><p class="small" style="margin:0">草稿永远不公开；发布必须运营勾选合规确认，AI 不代点。</p></div>
+      </div>
+      <div class="foot"><span>n8n 每 2 分钟兜底跑队列；webhook 用 onReceived 模式</span><span class="page-no">08 / 16</span></div>
+    </section>
+
+    <!-- 9 -->
+    <section class="slide" aria-label="后台地图">
+      <div class="kicker">08 · 运营后台</div>
+      <h2>后台分两块：小店运营，和原 API 业务</h2>
+      <div class="grid-2">
+        <div class="card green">
+          <h3>小店 · <span class="mono small">/admin/shop</span></h3>
+          <ul class="clean small" style="font-size:15px">
+            <li><b>概览</b>：订单、商品、同步状态</li>
+            <li><b>货源</b>：筛选、毛利率、单条/批量 AI 上架</li>
+            <li><b>采购队列</b>：付款后要去上游拿哪些货</li>
+            <li><b>商品</b>：草稿审核、改价、合规确认、上下架</li>
+            <li><b>订单</b>：状态流转、交付、备注</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>原 API 业务 · 保留未删</h3>
+          <ul class="clean small" style="font-size:15px">
+            <li><b>用户 / 订单 / 充值包 / 价格</b>：控制台与后台都还在</li>
+            <li><b>模型 / 网关</b>：模型目录与 Sub2API 账户管理</li>
+            <li><b>支付审核</b>：个人收款记录（现已停用）</li>
+            <li><b>公告</b>：站内公告栏</li>
+          </ul>
+          <div class="note">对外隐藏只是展示层开关；数据、接口、后台都没删。</div>
+        </div>
+      </div>
+      <div class="foot"><span>后台地址：登录后 /admin；Sub2API 后台只能经 SSH 隧道 127.0.0.1:18080</span><span class="page-no">09 / 16</span></div>
+    </section>
+
+    <!-- 10 -->
+    <section class="slide" aria-label="支付与订单">
+      <div class="kicker">09 · 支付与订单</div>
+      <h2>支付通道现在是“就绪但关闭”</h2>
+      <table class="deck-table">
+        <thead><tr><th>通道</th><th>状态</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td>USDT TRC20</td><td><span class="badge amber">USDT_ENABLED=false</span></td><td>二维码、10 分钟时限、链上扫描、自动取消都已实现；开启前要确认钱包与助记词备份</td></tr>
+          <tr><td>易支付（备用）</td><td><span class="badge">SHOP_EASYPAY_ENABLED=false</span></td><td>代码与风控上限保留，等持牌服务商凭据与结算条款</td></tr>
+          <tr><td>个人支付宝</td><td><span class="badge red">已停用</span></td><td>历史数据保留，不再展示、不再收款</td></tr>
+        </tbody>
+      </table>
+      <div class="grid-2" style="margin-top:24px">
+        <div class="card">
+          <h3>订单状态</h3>
+          <p class="lead" style="font-size:16px">待支付 → 已支付 → 处理中 → 已交付；未开始处理可申请退款，已交付不支持。金额、支付事件、交付内容都在订单里留痕。</p>
+        </div>
+        <div class="card amber">
+          <h3>当前数据要注意</h3>
+          <p class="lead" style="font-size:16px">2 笔过期测试单（支付宝 ¥0.01、USDT ¥169）、1 笔过期 USDT 存款；测试商品 <span class="mono">usdt-e2e-test</span> 还挂着，应归档。</p>
+        </div>
+      </div>
+      <div class="foot"><span>不改回调、订单状态机、USDT 扫描，除非有明确需求和回滚方案</span><span class="page-no">10 / 16</span></div>
+    </section>
+
+    <!-- 11 -->
+    <section class="slide" aria-label="安全与合规">
+      <div class="kicker">10 · 安全与合规</div>
+      <h2>四条线，任何一条都不要越</h2>
+      <div class="grid-2">
+        <div class="card red">
+          <h3>1. 凭据只在服务器</h3>
+          <p class="small" style="margin:0">不读取/不打印/不提交 .env、SSH 私钥、Tunnel token、后台密码、助记词、供货商与易支付凭据。<b>不要再运行 <span class="mono">docker compose config</span></b>，它会打印生产变量。</p>
+        </div>
+        <div class="card amber">
+          <h3>2. 可抄规则，不露货源</h3>
+          <p class="small" style="margin:0">店名、货源域名、外链、微信/QQ/邮箱、“货源”字样全部替换。三层兜底：生成时清洗 → 读取时兜底 → 存量 scrub 脚本。</p>
+        </div>
+        <div class="card">
+          <h3>3. 不绕过平台限制</h3>
+          <p class="small" style="margin:0">不做 OpenAI 地区绕过、不做指纹/出口伪装；不绕上游反爬/滑块，不自动下单；不替管理员接受 Sub2API 合规确认。</p>
+        </div>
+        <div class="card">
+          <h3>4. 不说过头话</h3>
+          <p class="small" style="margin:0">不写虚假评价、客户 Logo、增长数据；发货时效、质保、退款只用商品字段里能兑现的口径。</p>
+        </div>
+      </div>
+      <div class="foot"><span>读到任何密钥：不转述、不落盘、不提交</span><span class="page-no">11 / 16</span></div>
+    </section>
+
+    <!-- 12 -->
+    <section class="slide" aria-label="发布与回滚">
+      <div class="kicker">11 · 发布与回滚</div>
+      <h2>分支 → PR → CI → 合并 → rsync → 重建</h2>
+      <div class="grid-2">
+        <div>
+          <pre class="code"><span class="c"># 1. 开分支、提 PR；CI 必须三项全绿</span>
+build / e2e / compose-smoke
+
+<span class="c"># 2. 备份当前镜像</span>
+ssh -i ~/.ssh/cokeai_deploy deploy@47.83.178.22 \
+  'cd /home/deploy/cokeai &amp;&amp; docker tag \
+   $(docker compose images -q app) cokeai-app:pre-xxx'
+
+<span class="c"># 3. 同步代码（保留服务器 .env）</span>
+rsync -az --delete --exclude '.env*' ... \
+  ./ deploy@47.83.178.22:/home/deploy/cokeai/
+
+<span class="c"># 4. 构建、重启、回源验证</span>
+docker compose build app &amp;&amp; docker compose up -d app
+curl -H "Host: cokeai.cc.cd" http://127.0.0.1:3000/api/health</pre>
+        </div>
+        <div>
+          <div class="card green">
+            <h3>回滚只有一行</h3>
+            <pre class="code" style="margin-top:8px">docker tag cokeai-app:pre-xxx cokeai-app:local
+docker compose up -d app</pre>
+          </div>
+          <div class="card soft" style="margin-top:16px">
+            <h3>发布前后都要验证</h3>
+            <ul class="clean small" style="font-size:15px">
+              <li><span class="mono">typecheck</span> + <span class="mono">build</span>；改小店逻辑再加 <span class="mono">test:shop</span></li>
+              <li>1440 / 390 无横向滚动；两步购买仍在</li>
+              <li>生产回源 200，首页不应出现 API 销售文案</li>
+              <li>商品页无外部域名与“货源”字样</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div class="foot"><span>main 只接受 PR；不要 force push；不要合并自己开的 PR（除非伙伴授权）</span><span class="page-no">12 / 16</span></div>
+    </section>
+
+    <!-- 13 -->
+    <section class="slide" aria-label="当前状态">
+      <div class="kicker">12 · 当前状态快照 · 2026-10-30</div>
+      <h2>一眼看清线上现在是什么样</h2>
+      <div class="grid-3" style="margin-top:6px">
+        <div class="card"><div class="small muted">应用</div><div class="stat" style="font-size:30px"><span class="mono">9d40457</span></div><div class="small">app healthy；首页门面保留，文案已换小店</div></div>
+        <div class="card"><div class="small muted">商品</div><div class="stat" style="font-size:30px">14 <small>active</small></div><div class="small">1 archived、约 50 草稿</div></div>
+        <div class="card"><div class="small muted">订单</div><div class="stat" style="font-size:30px">2 <small>过期测试</small></div><div class="small">无真实成交；1 笔过期 USDT 存款</div></div>
+        <div class="card"><div class="small muted">公开 API</div><div class="stat" style="font-size:30px">关闭</div><div class="small">/pricing /docs → /shop；后端仍在</div></div>
+        <div class="card"><div class="small muted">支付</div><div class="stat" style="font-size:30px">USDT 关</div><div class="small">易支付关；个人支付宝停用</div></div>
+        <div class="card"><div class="small muted">AI 上架</div><div class="stat" style="font-size:30px">规则提取</div><div class="small">SHOP_IMPORT_AI_* 未配置；n8n 每 2 分钟兜底</div></div>
+      </div>
+      <div class="note">快照会过期：动手前以生产回源、数据库查询和 git log 为准。</div>
+      <div class="foot"><span>回滚镜像：cokeai-app:pre-hero-copy</span><span class="page-no">13 / 16</span></div>
+    </section>
+
+    <!-- 14 -->
+    <section class="slide" aria-label="待办">
+      <div class="kicker">13 · 待办优先级</div>
+      <h2>接手后按这个顺序做</h2>
+      <table class="deck-table">
+        <thead><tr><th style="width:92px">优先级</th><th>事项</th><th>为什么现在做</th></tr></thead>
+        <tbody>
+          <tr><td><span class="badge red">P0</span></td><td>审核约 50 个 AI 草稿，逐条核对价格、毛利、质保、注意事项</td><td>草稿不公开，但堆着就等于没有新品</td></tr>
+          <tr><td><span class="badge red">P0</span></td><td>归档 <span class="mono">usdt-e2e-test</span>；清理/标注 2 笔过期测试单与 1 笔存款</td><td>测试数据不该出现在真实顾客面前</td></tr>
+          <tr><td><span class="badge amber">P1</span></td><td>复核 Muse 六档与 Codex 的拿货价/毛利</td><td>售价按货源零售价照抄，可能没有利润</td></tr>
+          <tr><td><span class="badge amber">P1</span></td><td>确认钱包可见、助记词离线备份后，再开 USDT 并走真实小额单</td><td>支付是成交前的最后一道门</td></tr>
+          <tr><td><span class="badge">P2</span></td><td>由运营决定何时恢复 API 销售（改一个 flag）</td><td>展示层随时可恢复，但上游要能真正调用</td></tr>
+          <tr><td><span class="badge">P2</span></td><td>接受 GitHub 邀请、配好 CODEOWNERS 双人审核</td><td>保证后续改动有人复核</td></tr>
+        </tbody>
+      </table>
+      <div class="foot"><span>不确定的业务口径先问运营，不要自行编造承诺</span><span class="page-no">14 / 16</span></div>
+    </section>
+
+    <!-- 15 -->
+    <section class="slide" aria-label="接手建议">
+      <div class="kicker">14 · 怎么接手</div>
+      <h2>给伙伴和你的 AI 的开工路线</h2>
+      <div class="grid-2">
+        <div class="card green">
+          <h3>第一周</h3>
+          <ul class="clean small" style="font-size:15px">
+            <li>读 <span class="mono">CLAUDE.md</span> → <span class="mono">docs/HANDOFF.md</span> → 本文</li>
+            <li>本地起服务，把首页、小店、详情、后台走一遍</li>
+            <li>用只读权限看生产：回源 curl、数据库计数、日志</li>
+            <li>挑 3 个草稿做审核演练，不发布</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>给 AI 的硬要求</h3>
+          <ul class="clean small" style="font-size:15px">
+            <li>先只读排查，再提方案；生产改动先说回滚</li>
+            <li>结论必须有命令输出为证；失败如实贴错误</li>
+            <li>不把聊天里的任何凭据写进文件或提交</li>
+            <li>改 UI 前确认是不是运营要求保留的门面</li>
+          </ul>
+        </div>
+      </div>
+      <div class="note">遇到冲突：代码与线上实测 > HANDOFF 快照 > 历史文档；历史文档只用来理解“为什么”。</div>
+      <div class="foot"><span>交接不是交钥匙，是把判断标准交给你</span><span class="page-no">15 / 16</span></div>
+    </section>
+
+    <!-- 16 -->
+    <section class="slide" aria-label="速查与术语">
+      <div class="kicker">15 · 速查</div>
+      <h2>名词与常用命令</h2>
+      <div class="grid-2">
+        <div>
+          <table class="deck-table">
+            <thead><tr><th>名词</th><th>含义</th></tr></thead>
+            <tbody>
+              <tr><td>货源 / offer</td><td>上游店铺的一条可采购商品记录</td></tr>
+              <tr><td>草稿 / draft</td><td>由货源生成、等待审核的商品，不公开</td></tr>
+              <tr><td>采购队列</td><td>顾客付款后，需要去上游买的清单</td></tr>
+              <tr><td>Sub2API</td><td>API 网关与余额权威，管理端只走 SSH 隧道</td></tr>
+              <tr><td>PUBLIC_API_SALES_ENABLED</td><td>是否公开销售 API 的总开关</td></tr>
+              <tr><td>USDT_ENABLED</td><td>是否向顾客展示 USDT 支付</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div>
+          <pre class="code">npm run dev          <span class="c"># 本地开发</span>
+npm run typecheck    <span class="c"># 类型检查</span>
+npm run build        <span class="c"># 生产构建</span>
+npm run shop:sync    <span class="c"># 同步货源</span>
+npm run shop:content <span class="c"># 导出商品文案</span>
+npm run shop:publish <span class="c"># 发布商品（支持 dry-run）</span>
+npm run test:shop    <span class="c"># 小店逻辑测试</span>
+
+<span class="c"># 脱敏存量文案（默认只看不改）</span>
+npx tsx scripts/shop-scrub-copy.ts
+npx tsx scripts/shop-scrub-copy.ts --apply</pre>
+          <div class="note">生产 SSH：<span class="mono">ssh -i ~/.ssh/cokeai_deploy deploy@47.83.178.22</span></div>
+        </div>
+      </div>
+      <div class="foot"><span>完整说明见 docs/HANDOFF.md</span><span class="page-no">16 / 16</span></div>
+    </section>
+
+  </div>
+</main>
+
+<nav class="nav" aria-label="幻灯片导航">
+  <button id="prev" title="上一页（←）" aria-label="上一页">‹</button>
+  <span id="counter">1 / 16</span>
+  <button id="next" title="下一页（→）" aria-label="下一页">›</button>
+</nav>
+
+<script>
+  (function () {
+    const slides = Array.from(document.querySelectorAll('.slide'));
+    const counter = document.getElementById('counter');
+    const progress = document.getElementById('progress');
+    let index = 0;
+
+    function fit() {
+      const scale = Math.min(window.innerWidth / 1280, window.innerHeight / 720) * 0.98;
+      document.getElementById('deck').style.transform = 'scale(' + scale + ')';
+    }
+
+    function show(next) {
+      index = Math.max(0, Math.min(slides.length - 1, next));
+      slides.forEach((slide, i) => slide.classList.toggle('is-active', i === index));
+      counter.textContent = (index + 1) + ' / ' + slides.length;
+      progress.style.width = ((index + 1) / slides.length * 100) + '%';
+      if (history.replaceState) history.replaceState(null, '', '#' + (index + 1));
+    }
+
+    function fromHash() {
+      const n = parseInt((location.hash || '').replace('#', ''), 10);
+      return Number.isFinite(n) ? n - 1 : 0;
+    }
+
+    document.getElementById('prev').addEventListener('click', () => show(index - 1));
+    document.getElementById('next').addEventListener('click', () => show(index + 1));
+    window.addEventListener('resize', fit);
+    window.addEventListener('hashchange', () => show(fromHash()));
+    window.addEventListener('keydown', (event) => {
+      if (['ArrowRight', 'ArrowDown', 'PageDown', ' '].includes(event.key)) {
+        event.preventDefault(); show(index + 1);
+      } else if (['ArrowLeft', 'ArrowUp', 'PageUp'].includes(event.key)) {
+        event.preventDefault(); show(index - 1);
+      } else if (event.key === 'Home') {
+        show(0);
+      } else if (event.key === 'End') {
+        show(slides.length - 1);
+      }
+    });
+
+    fit();
+    show(fromHash());
+  })();
+</script>
+</body>
+</html>

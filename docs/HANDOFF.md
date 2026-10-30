@@ -153,6 +153,7 @@ curl -s -o /dev/null -w "health %{http_code}\n" http://127.0.0.1:3000/api/health
 
 ## 相关文档
 
+- `docs/PRESENTATION.md`：16 页项目全景；`docs/presentation/` 里有同名 PPTX 和 HTML 演示版
 - `CLAUDE.md`：技术栈、命令、禁区、验证要求
 - `CONTRIBUTING.md`：两人协作、分支、PR、审核规则
 - `docs/SUB2API_OPERATIONS.md`：生产部署、合规、备份、回滚
