@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import { SiteFooter } from "@/components/SiteFooter";
 import { SiteHeader } from "@/components/SiteHeader";
 import { CopyButton } from "@/components/CopyButton";
 import { config } from "@/lib/config";
 import { listCatalogModels } from "@/lib/model-catalog";
+import { PUBLIC_API_SALES_ENABLED } from "@/lib/public-features";
 
 export const metadata: Metadata = {
   title: "接入教程",
@@ -25,6 +27,8 @@ function CodeBlock({ title, code }: { title: string; code: string }) {
 }
 
 export default async function DocsPage() {
+  if (!PUBLIC_API_SALES_ENABLED) redirect("/shop");
+
   const baseUrl = `${config.appUrl}/v1`;
   const models = await listCatalogModels();
   const sample = models[0]?.id || "gpt-4.1-mini";

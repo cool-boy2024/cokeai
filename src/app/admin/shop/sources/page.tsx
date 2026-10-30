@@ -8,6 +8,8 @@ import {
   adminStartShopOfferImportAction,
   adminSyncShopAction,
 } from "@/app/actions/admin-shop";
+import { ImportJobWatcher } from "@/components/admin-shop/ImportJobWatcher";
+import { SubmitButton } from "@/components/SubmitButton";
 import { requireAdmin } from "@/lib/auth";
 import { config } from "@/lib/config";
 import { query } from "@/lib/db";
@@ -210,22 +212,35 @@ export default async function AdminShopSourcesPage({
     )
     .slice(0, 20);
   const importPending = Number(stats?.import_pending || 0);
+  const trackedJob =
+    params.job &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(params.job)
+      ? params.job
+      : null;
 
   const importNotice = (() => {
     if (!params.import) return null;
     switch (params.import) {
       case "queued":
-        return "已交给 n8n 生成草稿，通常 1–2 分钟完成，刷新本页查看。";
+        return "已开始生成草稿，本页会自动刷新；完成后直接打开商品审核页。";
       case "batch_queued":
-        return `已排队 ${params.queued || 0} 条，交给 n8n 生成草稿，稍后刷新查看。`;
+        return `已排队 ${params.queued || 0} 条，后台生成中；本页会自动刷新。`;
       case "batch_partial":
         return `已排队 ${params.queued || 0} 条，本次生成 ${params.processed || 0} 条草稿；其余点「处理队列」继续。`;
+      case "queue_started":
+        return "已开始处理排队任务，本页会自动刷新。";
       case "queue_run":
         return `本次处理了 ${params.processed || 0} 条排队任务。`;
       case "batch_unconfirmed":
         return "批量生成前请勾选确认。";
+      case "nothing_queued":
+        return "这次没有需要生成草稿的货源，可能已被其他人处理。";
+      case "timeout":
+        return "后台仍在处理，可稍后刷新本页查看结果。";
       case "failed":
-        return "生成失败，请点「打开」核对货源页后手动建草稿。";
+        return params.reason
+          ? `生成失败：${params.reason}`
+          : "生成失败，请点「打开」核对货源页后手动建草稿。";
       case "queue_failed":
         return "无法创建上架任务，请稍后重试。";
       case "offer_not_found":
@@ -262,15 +277,16 @@ export default async function AdminShopSourcesPage({
           <p>aibijia 公开数据，每小时同步一次。只同步目录、价格、库存和链接。</p>
         </div>
         <form action={adminSyncShopAction}>
-          <button className="btn btn-dark btn-sm" type="submit">
+          <SubmitButton className="btn btn-dark btn-sm" pendingText="同步中…">
             <RefreshCw size={14} /> 立即同步
-          </button>
+          </SubmitButton>
         </form>
       </div>
 
       {importNotice ? (
         <div className={`shop-import-banner is-${params.import}`}>{importNotice}</div>
       ) : null}
+      <ImportJobWatcher jobId={trackedJob} pending={importPending} />
 
       <div className="stat-grid">
         <div className="stat-card">
@@ -511,19 +527,19 @@ export default async function AdminShopSourcesPage({
               <input type="checkbox" name="confirm" />
               我确认按当前筛选批量生成草稿（本次 {importable.length} 条，单次最多 20 条）
             </label>
-            <button
+            <SubmitButton
               className="btn btn-dark btn-sm"
-              type="submit"
+              pendingText="排队中…"
               disabled={importable.length === 0}
             >
               批量 AI 上架
-            </button>
+            </SubmitButton>
           </form>
           {importPending > 0 ? (
             <form action={adminRunShopImportQueueAction}>
-              <button className="btn btn-ghost btn-sm" type="submit">
-                处理队列（3 条）
-              </button>
+              <SubmitButton className="btn btn-ghost btn-sm" pendingText="处理中…">
+                处理队列
+              </SubmitButton>
             </form>
           ) : null}
         </div>
@@ -603,24 +619,36 @@ export default async function AdminShopSourcesPage({
                     <td className="text-right">
                       <div className="shop-inline-actions">
                         {!offer.product_id ? (
-                          offer.import_status === "queued" || offer.import_status === "running" ? (
-                            <span className="badge badge-yellow">AI 生成中</span>
-                          ) : (
-                            <>
+                          <>
+                            {offer.import_status === "queued" ||
+                            offer.import_status === "running" ? (
+                              <span
+                                className="badge badge-yellow"
+                                title={offer.import_error || undefined}
+                              >
+                                AI 生成中
+                              </span>
+                            ) : (
                               <form action={adminStartShopOfferImportAction}>
                                 <input type="hidden" name="offerId" value={offer.id} />
-                                <button className="btn btn-dark btn-sm" type="submit">
+                                <SubmitButton
+                                  className="btn btn-dark btn-sm"
+                                  pendingText="排队中…"
+                                >
                                   AI 上架
-                                </button>
+                                </SubmitButton>
                               </form>
-                              <form action={adminCreateShopProductFromOfferAction}>
-                                <input type="hidden" name="offerId" value={offer.id} />
-                                <button className="btn btn-ghost btn-sm" type="submit">
-                                  手动建草稿
-                                </button>
-                              </form>
-                            </>
-                          )
+                            )}
+                            <form action={adminCreateShopProductFromOfferAction}>
+                              <input type="hidden" name="offerId" value={offer.id} />
+                              <SubmitButton
+                                className="btn btn-ghost btn-sm"
+                                pendingText="创建中…"
+                              >
+                                手动建草稿
+                              </SubmitButton>
+                            </form>
+                          </>
                         ) : null}
                         <a
                           className="btn btn-ghost btn-sm"

@@ -16,7 +16,7 @@ const MUSE_TUTORIAL: ShopTutorial = {
   title: "Muse 登录与换绑",
   video: "/media/muse-tutorial.mp4",
   poster: "/media/muse-tutorial-poster.jpg",
-  caption: "按货源教程整理的操作演示，约 1 分钟。实际页面以 Muse 官网为准。",
+  caption: "按商品流程整理的操作演示，约 1 分钟。实际页面以 Muse 官网为准。",
   steps: [
     "打开 Muse 官网，输入发货给您的临时邮箱。",
     "打开邮箱里的接码链接，把验证码填回登录页。",

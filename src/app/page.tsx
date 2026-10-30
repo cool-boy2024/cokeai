@@ -18,6 +18,7 @@ import { ProductCard } from "@/components/shop/ProductCard";
 import { query } from "@/lib/db";
 import { listCatalogModels } from "@/lib/model-catalog";
 import { formatCny } from "@/lib/money";
+import { PUBLIC_API_SALES_ENABLED } from "@/lib/public-features";
 import { listPublicProducts } from "@/lib/shop/catalog";
 
 export const dynamic = "force-dynamic";
@@ -31,7 +32,7 @@ type LandingPlan = {
   highlight: boolean;
 };
 
-const FAQ = [
+const API_FAQ = [
   {
     question: "CokeAI 的接口和 OpenAI 有什么不同？",
     answer:
@@ -49,8 +50,24 @@ const FAQ = [
   },
   {
     question: "支持哪些模型？",
+    answer: "控制台模型列表和价格页会列出当前可用的模型与价格。",
+  },
+  {
+    question: "API Key 安全吗？",
     answer:
-      "控制台模型列表和价格页会列出当前可用的模型与价格。",
+      "Key 只在创建时完整显示一次，可以随时在控制台撤销。不要写进前端代码或公开仓库。",
+  },
+  {
+    question: "余额会过期吗？",
+    answer: "不会。充值额度按实际用量扣费，剩余余额一直有效。",
+  },
+];
+
+const SHOP_FAQ = [
+  {
+    question: "怎么购买？",
+    answer:
+      "在商品页点「购买」，再选择结算页显示的支付方式，按页面金额付款即可。",
   },
   {
     question: "小店商品多久发货？",
@@ -63,16 +80,12 @@ const FAQ = [
       "未开始处理的订单可以申请退款；已交付、已兑换或已到账的订单不支持。USDT 退款需要人工核对地址。",
   },
   {
-    question: "API Key 安全吗？",
-    answer:
-      "Key 只在创建时完整显示一次，可以随时在控制台撤销。不要写进前端代码或公开仓库。",
-  },
-  {
-    question: "余额会过期吗？",
-    answer:
-      "不会。充值额度按实际用量扣费，剩余余额一直有效。",
+    question: "订单在哪里查看？",
+    answer: "登录后进入控制台，在订单页查看处理进度和交付内容。",
   },
 ];
+
+const FAQ = PUBLIC_API_SALES_ENABLED ? [...API_FAQ.slice(0, 4), ...SHOP_FAQ] : SHOP_FAQ;
 
 const FAQ_SCHEMA = {
   "@context": "https://schema.org",
@@ -139,50 +152,90 @@ export default async function HomePage() {
           <div className="container hero-center">
             <div className="hero-eyebrow">
               <i />
-              AI API · 数字商品
+              {PUBLIC_API_SALES_ENABLED ? "AI API · 数字商品" : "数字商品 · 人工审核"}
             </div>
             <h1 className="hero-title">
               <span className="hero-line">
                 <span>CokeAI 小店</span>
               </span>
               <span className="hero-line hero-line-sub">
-                <span>接上你需要的模型。</span>
+                <span>
+                  {PUBLIC_API_SALES_ENABLED
+                    ? "接上你需要的模型。"
+                    : "订阅、账号、接码，都在这里。"}
+                </span>
               </span>
             </h1>
             <p className="hero-lead">
-              OpenAI 兼容接口，按量计费。
-              <br />
-              注册、充值、创建 Key，就能用。
+              {PUBLIC_API_SALES_ENABLED ? (
+                <>
+                  OpenAI 兼容接口，按量计费。
+                  <br />
+                  注册、充值、创建 Key，就能用。
+                </>
+              ) : (
+                <>
+                  人工审核后发货，订单进度在控制台查看。
+                  <br />
+                  商品说明与质保范围以详情页为准。
+                </>
+              )}
             </p>
             <div className="hero-actions">
-              <Link className="btn btn-primary" href="/register">
-                创建账号 <ArrowRight size={16} />
+              <Link
+                className="btn btn-primary"
+                href={PUBLIC_API_SALES_ENABLED ? "/register" : "/shop"}
+              >
+                {PUBLIC_API_SALES_ENABLED ? "创建账号" : "逛逛小店"}{" "}
+                <ArrowRight size={16} />
               </Link>
-              <Link className="hero-secondary" href="/pricing">
-                查看价格 <ArrowUpRight size={14} />
+              <Link
+                className="hero-secondary"
+                href={PUBLIC_API_SALES_ENABLED ? "/pricing" : "/shop"}
+              >
+                {PUBLIC_API_SALES_ENABLED ? "查看价格" : "查看全部商品"}{" "}
+                <ArrowUpRight size={14} />
               </Link>
             </div>
             <div className="hero-proof">
-              <span className="proof-pill">
-                <Check size={14} /> OpenAI SDK 兼容
-              </span>
-              <span className="proof-pill">
-                <Wallet size={14} /> USDT 充值
-              </span>
-              <span className="proof-pill">
-                <Check size={14} /> 余额不过期
-              </span>
+              {PUBLIC_API_SALES_ENABLED ? (
+                <>
+                  <span className="proof-pill">
+                    <Check size={14} /> OpenAI SDK 兼容
+                  </span>
+                  <span className="proof-pill">
+                    <Wallet size={14} /> USDT 充值
+                  </span>
+                  <span className="proof-pill">
+                    <Check size={14} /> 余额不过期
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className="proof-pill">
+                    <Check size={14} /> 人工审核后发货
+                  </span>
+                  <span className="proof-pill">
+                    <Check size={14} /> 订单进度可查
+                  </span>
+                  <span className="proof-pill">
+                    <Check size={14} /> 质保按商品标注
+                  </span>
+                </>
+              )}
             </div>
             <HeroBrandStrip />
             <div className="hero-note">
-              {showcase.length > 0
-                ? `${showcase.length} 个模型已就绪`
-                : "品牌仅作生态示意"}
+              {PUBLIC_API_SALES_ENABLED
+                ? showcase.length > 0
+                  ? `${showcase.length} 个模型已就绪`
+                  : "品牌仅作生态示意"
+                : "商品与价格以详情页为准"}
             </div>
           </div>
         </section>
 
-        <TaglineReveal />
+        {PUBLIC_API_SALES_ENABLED ? <TaglineReveal /> : null}
 
         {shopProducts.length > 0 ? (
           <section className="section shop-collection">
@@ -221,6 +274,8 @@ export default async function HomePage() {
           </section>
         ) : null}
 
+        {PUBLIC_API_SALES_ENABLED ? (
+        <>
         <section className="section home-bento">
           <div className="container">
             <Reveal>
@@ -324,7 +379,11 @@ export default async function HomePage() {
             </Reveal>
           </div>
         </section>
+        </>
+        ) : null}
 
+        {PUBLIC_API_SALES_ENABLED ? (
+        <>
         <section className="section" id="models">
           <div className="container">
             <Reveal>
@@ -440,6 +499,8 @@ export default async function HomePage() {
             </Reveal>
           </div>
         </section>
+        </>
+        ) : null}
 
         <section className="section faq-section" id="faq">
           <div className="container">
@@ -449,9 +510,15 @@ export default async function HomePage() {
                   <div className="kicker">FAQ</div>
                   <h2>常见问题</h2>
                 </div>
-                <Link className="text-link" href="/docs">
-                  查看接入教程 <ArrowRight size={14} />
-                </Link>
+                {PUBLIC_API_SALES_ENABLED ? (
+                  <Link className="text-link" href="/docs">
+                    查看接入教程 <ArrowRight size={14} />
+                  </Link>
+                ) : (
+                  <Link className="text-link" href="/shop">
+                    查看全部商品 <ArrowRight size={14} />
+                  </Link>
+                )}
               </div>
               <dl className="faq-grid">
                 {FAQ.map((item) => (
@@ -470,12 +537,24 @@ export default async function HomePage() {
             <Reveal>
               <div className="cta-card">
                 <div>
-                  <h2>注册免费，充值后就能调用。</h2>
-                  <p>余额不过期 · USDT 充值 · 用量可查</p>
+                  <h2>
+                    {PUBLIC_API_SALES_ENABLED
+                      ? "注册免费，充值后就能调用。"
+                      : "挑一件今天要用的。"}
+                  </h2>
+                  <p>
+                    {PUBLIC_API_SALES_ENABLED
+                      ? "余额不过期 · USDT 充值 · 用量可查"
+                      : "人工审核后发货 · 订单进度可查 · 质保按商品标注"}
+                  </p>
                 </div>
                 <div className="cta-actions">
-                  <Link className="btn btn-primary" href="/register">
-                    创建账号 <ArrowRight size={16} />
+                  <Link
+                    className="btn btn-primary"
+                    href={PUBLIC_API_SALES_ENABLED ? "/register" : "/shop"}
+                  >
+                    {PUBLIC_API_SALES_ENABLED ? "创建账号" : "逛逛小店"}{" "}
+                    <ArrowRight size={16} />
                   </Link>
                 </div>
               </div>

@@ -1,5 +1,10 @@
 import { query } from "@/lib/db";
 import { parseInputFields, parseStringList, type ShopInputField } from "./copy";
+import {
+  sanitizeSupplierCopy,
+  sanitizeSupplierLines,
+  type SupplierIdentity,
+} from "./sanitize";
 
 export const SHOP_BRANDS = [
   { key: "all", label: "全部" },
@@ -60,6 +65,72 @@ function hydrate(row: RawProduct): PublicShopProduct {
   };
 }
 
+type SourceIdentityRow = {
+  product_id: string;
+  source_store: string | null;
+  url: string | null;
+};
+
+/**
+ * Public catalog reads are the last line of defence: even copy written before
+ * the supplier scrubber existed (or by a manual SQL edit) must not expose the
+ * source shop. Admin reads stay raw.
+ */
+async function loadProductIdentities(
+  productIds: string[],
+): Promise<Map<string, SupplierIdentity[]>> {
+  const grouped = new Map<string, SupplierIdentity[]>();
+  if (productIds.length === 0) return grouped;
+
+  const rows = await query<SourceIdentityRow>(
+    `SELECT s.product_id, o.source_store, o.url
+       FROM shop_product_sources s
+       JOIN shop_offers o ON o.id = s.offer_id
+      WHERE s.product_id = ANY($1::uuid[])`,
+    [productIds],
+  );
+  for (const row of rows.rows) {
+    const list = grouped.get(row.product_id) || [];
+    list.push({ store: row.source_store, url: row.url });
+    grouped.set(row.product_id, list);
+  }
+  return grouped;
+}
+
+function sanitizePublicProduct(
+  product: PublicShopProduct,
+  identities: SupplierIdentity[],
+): PublicShopProduct {
+  const clean = (text: string): string => {
+    let out = sanitizeSupplierCopy(text);
+    for (const identity of identities) out = sanitizeSupplierCopy(out, identity);
+    return out;
+  };
+  const cleanLines = (lines: string[]): string[] => {
+    let out = sanitizeSupplierLines(lines);
+    for (const identity of identities) out = sanitizeSupplierLines(out, identity);
+    return out;
+  };
+
+  return {
+    ...product,
+    name: clean(product.name),
+    subtitle: clean(product.subtitle),
+    description: clean(product.description),
+    warranty_note: clean(product.warranty_note),
+    includes: cleanLines(product.includes),
+    usage_notes: cleanLines(product.usage_notes),
+    customer_notice: clean(product.customer_notice),
+    refund_policy: clean(product.refund_policy),
+    input_fields: product.input_fields.map((field) => ({
+      ...field,
+      label: clean(field.label),
+      placeholder: field.placeholder ? clean(field.placeholder) : field.placeholder,
+      help: field.help ? clean(field.help) : field.help,
+    })),
+  };
+}
+
 const PUBLIC_COLUMNS = `
   id, slug, brand, category, product_type, name, subtitle, description,
   cover_variant, price_micros, delivery_method, eta_min_minutes, eta_max_minutes,
@@ -94,7 +165,11 @@ export async function listPublicProducts(filter?: {
       ORDER BY featured DESC, sort_order ASC, created_at ASC`,
     values,
   );
-  return rows.rows.map(hydrate);
+  const products = rows.rows.map(hydrate);
+  const identities = await loadProductIdentities(products.map((product) => product.id));
+  return products.map((product) =>
+    sanitizePublicProduct(product, identities.get(product.id) || []),
+  );
 }
 
 export async function getPublicProduct(slug: string): Promise<PublicShopProduct | null> {
@@ -105,7 +180,11 @@ export async function getPublicProduct(slug: string): Promise<PublicShopProduct 
       LIMIT 1`,
     [slug],
   );
-  return rows.rows[0] ? hydrate(rows.rows[0]) : null;
+  const row = rows.rows[0];
+  if (!row) return null;
+  const product = hydrate(row);
+  const identities = await loadProductIdentities([product.id]);
+  return sanitizePublicProduct(product, identities.get(product.id) || []);
 }
 
 export type AdminShopProduct = PublicShopProduct & {

@@ -1,6 +1,9 @@
 import { ImageResponse } from "next/og";
+import { PUBLIC_API_SALES_ENABLED } from "@/lib/public-features";
 
-export const alt = "CokeAI, AI APIs and digital goods priced in RMB";
+export const alt = PUBLIC_API_SALES_ENABLED
+  ? "CokeAI, AI APIs and digital goods priced in RMB"
+  : "CokeAI digital goods shop, manually reviewed and tracked by order";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -71,7 +74,9 @@ export default function OpenGraphImage() {
                 color: "#1f6f5c",
               }}
             >
-              AI API · DIGITAL GOODS
+              {PUBLIC_API_SALES_ENABLED
+                ? "AI API · DIGITAL GOODS"
+                : "DIGITAL GOODS · HUMAN REVIEW"}
             </div>
             <div
               style={{
@@ -83,8 +88,17 @@ export default function OpenGraphImage() {
                 lineHeight: 1.05,
               }}
             >
-              <span>One endpoint.</span>
-              <span style={{ color: "#666666" }}>Every model you need.</span>
+              {PUBLIC_API_SALES_ENABLED ? (
+                <>
+                  <span>One endpoint.</span>
+                  <span style={{ color: "#666666" }}>Every model you need.</span>
+                </>
+              ) : (
+                <>
+                  <span>Accounts, codes,</span>
+                  <span style={{ color: "#666666" }}>subscriptions.</span>
+                </>
+              )}
             </div>
             <div
               style={{
@@ -93,7 +107,9 @@ export default function OpenGraphImage() {
                 color: "#6b6862",
               }}
             >
-              OpenAI compatible · Pay as you go · Priced in RMB
+              {PUBLIC_API_SALES_ENABLED
+                ? "OpenAI compatible · Pay as you go · Priced in RMB"
+                : "Manual review · Order tracking · Priced in RMB"}
             </div>
           </div>
 
@@ -119,7 +135,9 @@ export default function OpenGraphImage() {
                   background: "#1f6f5c",
                 }}
               />
-              Balance never expires
+              {PUBLIC_API_SALES_ENABLED
+                ? "Balance never expires"
+                : "Order progress in your dashboard"}
             </span>
           </div>
         </div>

@@ -11,14 +11,20 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { X } from "@phosphor-icons/react";
+import { PUBLIC_API_SALES_ENABLED } from "@/lib/public-features";
 import { Logo } from "./Logo";
 
-const LINKS = [
-  { href: "/shop", label: "小店", index: "01" },
-  { href: "/#models", label: "模型", index: "02" },
-  { href: "/pricing", label: "价格", index: "03" },
-  { href: "/docs", label: "教程", index: "04" },
-];
+const LINKS = PUBLIC_API_SALES_ENABLED
+  ? [
+      { href: "/shop", label: "小店", index: "01" },
+      { href: "/#models", label: "模型", index: "02" },
+      { href: "/pricing", label: "价格", index: "03" },
+      { href: "/docs", label: "教程", index: "04" },
+    ]
+  : [
+      { href: "/shop", label: "小店", index: "01" },
+      { href: "/#faq", label: "常见问题", index: "02" },
+    ];
 
 function isActive(pathname: string, href: string) {
   if (href === "/shop") return pathname.startsWith("/shop");

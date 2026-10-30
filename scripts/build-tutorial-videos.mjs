@@ -34,7 +34,7 @@ const TUTORIALS = [
     slides: [
       {
         title: "Muse 账号登录与换绑",
-        body: "按货源教程整理的 1 分钟操作演示。",
+        body: "1 分钟操作演示，实际页面以 Muse 官网为准。",
         narration: "Muse 账号登录与换绑，一分钟看完。",
       },
       {

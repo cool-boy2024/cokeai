@@ -7,7 +7,6 @@ export type BrandMark = {
 // products and models the shop works with; they do not imply endorsement.
 export const BRAND_MARKS: BrandMark[] = [
   { name: "OpenAI", file: "/brands/openai.svg" },
-  { name: "DeepSeek", file: "/brands/deepseek.svg" },
   { name: "Claude", file: "/brands/claude.svg" },
   { name: "Gemini", file: "/brands/gemini.svg" },
   { name: "Grok", file: "/brands/grok.svg" },
@@ -19,11 +18,6 @@ export const BRAND_MARKS: BrandMark[] = [
   { name: "Llama", file: "/brands/meta.svg" },
 ];
 
-export const MOBILE_MARKS = [
-  BRAND_MARKS[0],
-  BRAND_MARKS[2],
-  BRAND_MARKS[3],
-  BRAND_MARKS[1],
-  BRAND_MARKS[4],
-  BRAND_MARKS.find((mark) => mark.name === "Muse")!,
-];
+export const MOBILE_MARKS: BrandMark[] = ["OpenAI", "Claude", "Gemini", "Grok", "Muse"]
+  .map((name) => BRAND_MARKS.find((mark) => mark.name === name))
+  .filter((mark): mark is BrandMark => Boolean(mark));
