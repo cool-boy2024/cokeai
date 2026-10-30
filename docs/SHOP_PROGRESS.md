@@ -1377,3 +1377,27 @@ UI 实测：浏览 → 登录 → 下单（人工）→ 后台确认到账 → �
   为模型写文案（注意事项仍从原文摘录，不交给模型）。
 - 已知边界：wzyp.cn 为 SPA，纯 HTTP 抓取失败时草稿会 `copy_ready=false`；
   此类页面需要浏览器抓取后用 `scripts/shop-draft-from-pages.ts` 生成。
+
+### 2026-10-30 08:40 CST 发布：上架秒响应、文案脱敏与暂停公开 API 销售
+
+- PR #43 squash 合并为 `d3ba1ee`，CI `build` / `e2e` / `compose-smoke`
+  全绿；`e2e` 首轮因模型目录过滤 DeepSeek 失败，已改为只移除公开页面与
+  品牌标识，`/v1/models` 和后台目录保持原样，不影响已有 API 客户端。
+- 备份：`/home/deploy/backups/shop-pre-publicpause-20261030-083225.sql`
+  （`0600`）；镜像 `cokeai-app:pre-publicpause`。
+- 货源页「AI 上架 / 批量 / 处理队列」改为入队后立即返回，抓取与生成在
+  `after()` 后台执行；新增 `/api/admin/shop/import-jobs/status` 轻量轮询，
+  任务完成后自动进入商品审核页。本地实测点击到跳转约 427ms，12 秒内
+  自动打开草稿；排队超过 30 分钟的任务会自动释放。
+- 文案脱敏：供应商店名、域名、外部链接、微信/QQ/邮箱和「货源」措辞
+  统一替换；公开商品读取层再兜底一次。`scripts/shop-scrub-copy.ts`
+  可清洗存量数据（默认 dry-run，`--apply` 才写库）。
+- 公开 API 销售暂停：`PUBLIC_API_SALES_ENABLED=false`。首页不再显示模型
+  价格、充值包、API 三步接入、API 卡片与 API CTA；导航/页脚移除模型、
+  价格、教程；`/pricing`、`/docs` 307 到 `/shop`；sitemap 不再收录。
+  站点 metadata 与 OG 图改为小店口径。商品教程视频保留。
+- 生产验证：`/` 200 且无模型/充值包/教程/DeepSeek/货源字样；`/pricing`
+  与 `/docs` 307；Codex、Muse 商品页无外部链接；mp4 与 OG 图 200。
+- 回滚：`docker tag cokeai-app:pre-publicpause cokeai-app:local && docker
+  compose up -d app`；恢复公开 API 展示只需把 `PUBLIC_API_SALES_ENABLED`
+  改回 `true`。
