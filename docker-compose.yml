@@ -91,6 +91,9 @@ services:
       TZ: Asia/Shanghai
     volumes:
       - ./ops/edge/Caddyfile:/etc/caddy/Caddyfile:ro
+      # Comments-only by default; set EDGE_LIMITS_FILE to the rate-limit snippet
+      # only after the opt-in image and tunnel prerequisites are verified.
+      - ${EDGE_LIMITS_FILE:-./ops/edge/limits.caddy}:/etc/caddy/limits.caddy:ro
     ports:
       - "127.0.0.1:${EDGE_HOST_PORT:-8080}:8080"
     depends_on:

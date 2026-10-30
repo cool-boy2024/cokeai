@@ -13,6 +13,7 @@ import {
   Megaphone,
   PackageSearch,
   ReceiptText,
+  ShieldCheck,
   ShoppingBag,
   SlidersHorizontal,
   UserRound,
@@ -41,6 +42,7 @@ const adminItems = [
   { href: "/admin/plans", label: "充值包", icon: CreditCard },
   { href: "/admin/pricing", label: "定价", icon: SlidersHorizontal },
   { href: "/admin/gateway", label: "网关", icon: Gauge },
+  { href: "/admin/security", label: "安全", icon: ShieldCheck },
 ];
 
 function isActive(href: string, pathname: string): boolean {

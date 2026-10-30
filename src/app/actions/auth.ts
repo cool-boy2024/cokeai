@@ -13,6 +13,7 @@ import {
 import { query } from "@/lib/db";
 import { generateReferralCode } from "@/lib/crypto";
 import { fixedWindowLimit } from "@/lib/rate-limit";
+import { recordSecurityEventOnce } from "@/lib/security";
 import {
   ensureGatewayIdentity,
   getGatewayIdentity,
@@ -40,15 +41,54 @@ function safeNext(value: string | undefined): string {
 
 async function authRateLimit(action: string, email: string): Promise<string | null> {
   const ip = await getClientIp();
-  const ipLimit = await fixedWindowLimit(`rl:auth:${action}:ip:${ip}`, 30, 600);
-  if (!ipLimit.allowed) return "尝试次数过多，请 10 分钟后再试。";
+  const ipCap = action === "register" ? 10 : 20;
+  const emailCap = action === "register" ? 5 : 10;
+  const ipLimit = await fixedWindowLimit(`rl:auth:${action}:ip:${ip}`, ipCap, 600);
+  if (!ipLimit.allowed) {
+    await recordSecurityEventOnce(
+      {
+        type: "auth",
+        ip,
+        path: `/${action}`,
+        method: "POST",
+        detail: `${action} ip limit ${ipCap}/10m`,
+      },
+      60,
+    );
+    return "尝试次数过多，请 10 分钟后再试。";
+  }
   const emailLimit = await fixedWindowLimit(
     `rl:auth:${action}:email:${email}`,
-    12,
+    emailCap,
     600,
   );
   if (!emailLimit.allowed) return "该邮箱尝试次数过多，请稍后再试。";
   return null;
+}
+
+/**
+ * A single wrong password is normal. A burst from one IP, or a global burst
+ * across many IPs, looks like credential stuffing and should reach the admin.
+ */
+async function noteAuthFailure(action: string): Promise<void> {
+  const ip = await getClientIp();
+  const [ipFailures, globalFailures] = await Promise.all([
+    fixedWindowLimit(`rl:auth:fail:ip:${ip}`, 8, 600),
+    fixedWindowLimit("rl:auth:fail:all", 60, 600),
+  ]);
+  if (ipFailures.allowed && globalFailures.allowed) return;
+  await recordSecurityEventOnce(
+    {
+      type: "auth",
+      ip,
+      path: `/${action}`,
+      method: "POST",
+      detail: `${action} failures ip=${ipFailures.allowed ? "below" : "over"} global=${
+        globalFailures.allowed ? "below" : "over"
+      }`,
+    },
+    600,
+  );
 }
 
 export async function loginAction(
@@ -77,6 +117,7 @@ export async function loginAction(
 
   const user = result.rows[0];
   if (!user || !(await verifyPassword(parsed.data.password, user.password_hash))) {
+    await noteAuthFailure("login");
     return { error: "邮箱或密码不正确" };
   }
   if (user.status !== "active") {

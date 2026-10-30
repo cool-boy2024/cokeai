@@ -1,0 +1,677 @@
+import { ensureConnected, getRedis } from "@/lib/rate-limit";
+
+/**
+ * Lightweight attack telemetry and alerting.
+ *
+ * Everything here is best-effort: Redis may be unavailable and the guard must
+ * never take the shop down. Events are capped in a Redis sorted set, so the
+ * admin page can show recent activity without a database migration.
+ */
+
+export type SecurityEventType =
+  | "probe"
+  | "rate_limit"
+  | "server_action"
+  | "auth"
+  | "shop"
+  | "support"
+  | "test";
+
+export type SecurityEvent = {
+  at: number;
+  type: SecurityEventType;
+  ip: string;
+  path: string;
+  method: string;
+  detail?: string;
+  ua?: string;
+};
+
+export type SecurityIpCount = { ip: string; count: number };
+
+export type DefenseMode = "normal" | "emergency";
+
+export type SecuritySnapshot = {
+  available: boolean;
+  generatedAt: number;
+  windowMinutes: number;
+  windowCount: number;
+  threshold: number;
+  attack: boolean;
+  todayTotal: number;
+  todayUniqueIps: number;
+  byType: Record<string, number>;
+  topIps: SecurityIpCount[];
+  recent: SecurityEvent[];
+  lastEventAt: number | null;
+  alertCooldownSeconds: number;
+  alertChannelConfigured: boolean;
+  strictMode: boolean;
+  strictSecondsRemaining: number;
+  defenseMode: DefenseMode;
+  defenseSince: number | null;
+  defenseSecondsRemaining: number;
+};
+
+const EVENTS_KEY = "sec:events";
+const STRICT_KEY = "sec:strict";
+const DEFENSE_KEY = "sec:defense";
+const DEFENSE_HOURS = 24;
+const MAX_EVENTS = 2_000;
+const COUNTER_TTL_SECONDS = 2 * 24 * 60 * 60;
+const WINDOW_MINUTES = 15;
+
+function positiveInt(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const value = Number.parseInt(raw, 10);
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+export const securityPolicy = {
+  guardEnabled: (process.env.SECURITY_GUARD_ENABLED || "true").toLowerCase() !== "false",
+  attackThreshold: positiveInt("SECURITY_ATTACK_THRESHOLD", 60),
+  alertCooldownMinutes: positiveInt("SECURITY_ALERT_COOLDOWN_MINUTES", 30),
+  eventRetentionDays: positiveInt("SECURITY_EVENT_RETENTION_DAYS", 7),
+} as const;
+
+export const SECURITY_EVENT_LABELS: Record<SecurityEventType, string> = {
+  probe: "扫描探测",
+  rate_limit: "触发限流",
+  server_action: "Server Action 频控",
+  auth: "登录注册异常",
+  shop: "下单频控",
+  support: "客服接口频控",
+  test: "测试事件",
+};
+
+const SUSPICIOUS_PATH_PATTERNS = [
+  /^\/\.(?:env|git|svn|hg|aws|ssh|ds_store)/i,
+  /^\/(?:wp-admin|wp-login|wp-content|xmlrpc|phpmyadmin|pma|adminer|server-status|server-info|actuator|solr|console|manager\/html|vendor\/phpunit)/i,
+  /(?:^|\/)(?:\.\.|%2e%2e|%252e)(?:\/|$)/i,
+  /\.(?:php|asp|aspx|jsp|cgi)$/i,
+];
+
+export function isSuspiciousPath(pathname: string): boolean {
+  return SUSPICIOUS_PATH_PATTERNS.some((pattern) => pattern.test(pathname));
+}
+
+// One extra Redis read every 15 seconds per process, not per request.
+let strictCache = { value: false, expiresAt: 0 };
+
+export async function isStrictMode(): Promise<boolean> {
+  if (Date.now() < strictCache.expiresAt) return strictCache.value;
+  const client = getRedis();
+  if (!client) return strictCache.value;
+  try {
+    await ensureConnected(client);
+    const value = await client.get(STRICT_KEY);
+    strictCache = { value: value === "1", expiresAt: Date.now() + 15_000 };
+    return strictCache.value;
+  } catch {
+    return strictCache.value;
+  }
+}
+
+export async function setStrictMode(
+  enabled: boolean,
+  minutes = 60,
+): Promise<boolean> {
+  const client = getRedis();
+  if (!client) return false;
+  try {
+    await ensureConnected(client);
+    if (enabled) {
+      await client.set(STRICT_KEY, "1", "EX", Math.max(60, minutes * 60));
+    } else {
+      await client.del(STRICT_KEY);
+    }
+    strictCache = { value: enabled, expiresAt: Date.now() + 15_000 };
+    return true;
+  } catch (error) {
+    console.warn(
+      "[security] strict mode failed",
+      error instanceof Error ? error.message : error,
+    );
+    return false;
+  }
+}
+
+/**
+ * Emergency defense is the admin-facing "one button" switch for a real attack.
+ *
+ * It tightens application limits immediately and marks the deployment as being
+ * in emergency mode so every operator sees the same state. It deliberately
+ * does NOT touch Cloudflare Tunnel or rebuild containers: those are production
+ * changes that need a human on the server and a rollback window.
+ */
+export async function activateEmergencyDefense(
+  hours = DEFENSE_HOURS,
+): Promise<boolean> {
+  const client = getRedis();
+  if (!client) return false;
+  const ttlHours = Math.max(1, Math.round(hours));
+  try {
+    await ensureConnected(client);
+    // Strict mode is what actually halves the limits in proxy.ts.
+    if (!(await setStrictMode(true, ttlHours * 60))) return false;
+    await client.set(
+      DEFENSE_KEY,
+      JSON.stringify({ mode: "emergency", since: Date.now() }),
+      "EX",
+      ttlHours * 60 * 60,
+    );
+    return true;
+  } catch (error) {
+    console.warn(
+      "[security] emergency defense failed",
+      error instanceof Error ? error.message : error,
+    );
+    return false;
+  }
+}
+
+export async function deactivateEmergencyDefense(): Promise<boolean> {
+  const client = getRedis();
+  if (!client) return false;
+  try {
+    await ensureConnected(client);
+    await client.del(DEFENSE_KEY);
+    await setStrictMode(false);
+    return true;
+  } catch (error) {
+    console.warn(
+      "[security] emergency defense rollback failed",
+      error instanceof Error ? error.message : error,
+    );
+    return false;
+  }
+}
+
+function clip(value: string | undefined, max: number): string | undefined {
+  if (!value) return undefined;
+  const trimmed = value.trim();
+  return trimmed ? trimmed.slice(0, max) : undefined;
+}
+
+export function clientIpFromHeaders(headers: Headers): string {
+  const cloudflare = headers.get("cf-connecting-ip");
+  if (cloudflare?.trim()) return cloudflare.trim().slice(0, 64);
+  const forwarded = headers.get("x-forwarded-for");
+  if (forwarded) {
+    const first = forwarded.split(",")[0]?.trim();
+    if (first) return first.slice(0, 64);
+  }
+  return (headers.get("x-real-ip") || "local").trim().slice(0, 64);
+}
+
+function dayKey(at = Date.now()): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(at));
+}
+
+function normalizeEvent(
+  input: Omit<SecurityEvent, "at"> & { at?: number },
+): SecurityEvent {
+  const type =
+    input.type && input.type in SECURITY_EVENT_LABELS
+      ? input.type
+      : ("probe" as SecurityEventType);
+  return {
+    at: input.at ?? Date.now(),
+    type,
+    ip: clip(input.ip, 64) || "unknown",
+    path: clip(input.path, 300) || "/",
+    method: clip(input.method, 12) || "GET",
+    detail: clip(input.detail, 200),
+    ua: clip(input.ua, 200),
+  };
+}
+
+/**
+ * Persist one event. Called only when a guard actually blocks something, so
+ * the common path costs no extra Redis writes.
+ */
+export async function recordSecurityEvent(
+  input: Omit<SecurityEvent, "at"> & { at?: number },
+): Promise<void> {
+  const event = normalizeEvent(input);
+  const client = getRedis();
+  if (!client) return;
+
+  const day = dayKey(event.at);
+  try {
+    await ensureConnected(client);
+    await client
+      .multi()
+      .zadd(EVENTS_KEY, event.at, JSON.stringify(event))
+      .zremrangebyrank(EVENTS_KEY, 0, -(MAX_EVENTS + 1))
+      .expire(EVENTS_KEY, securityPolicy.eventRetentionDays * 24 * 60 * 60)
+      .incr(`sec:count:all:${day}`)
+      .expire(`sec:count:all:${day}`, COUNTER_TTL_SECONDS)
+      .hincrby(`sec:type:${day}`, event.type, 1)
+      .expire(`sec:type:${day}`, COUNTER_TTL_SECONDS)
+      // HyperLogLog keeps unique-IP counting at a fixed ~12KB per day.
+      .pfadd(`sec:ips:${day}`, event.ip)
+      .expire(`sec:ips:${day}`, COUNTER_TTL_SECONDS)
+      .zincrby(`sec:ipcount:${day}`, 1, event.ip)
+      .zremrangebyrank(`sec:ipcount:${day}`, 0, -5_001)
+      .expire(`sec:ipcount:${day}`, COUNTER_TTL_SECONDS)
+      .exec();
+  } catch (error) {
+    console.warn(
+      "[security] event not recorded",
+      error instanceof Error ? error.message : error,
+    );
+  }
+}
+
+/**
+ * Collapses a noisy source (one IP hammering many paths) into at most one
+ * event per window. The first path is kept as context.
+ */
+export async function recordSecurityEventOnce(
+  input: Omit<SecurityEvent, "at"> & { at?: number },
+  dedupeSeconds = 60,
+): Promise<void> {
+  const event = normalizeEvent(input);
+  const client = getRedis();
+  if (!client) return;
+  const dedupeKey = `sec:dedupe:${event.type}:${event.ip}`;
+  try {
+    await ensureConnected(client);
+    const first = await client.set(
+      dedupeKey,
+      "1",
+      "EX",
+      Math.max(5, dedupeSeconds),
+      "NX",
+    );
+    if (first === "OK") await recordSecurityEvent(event);
+  } catch (error) {
+    console.warn(
+      "[security] dedupe failed",
+      error instanceof Error ? error.message : error,
+    );
+  }
+}
+
+function parseEvents(raw: unknown): SecurityEvent[] {
+  if (!Array.isArray(raw)) return [];
+  const events: SecurityEvent[] = [];
+  for (const item of raw) {
+    if (typeof item !== "string") continue;
+    try {
+      const parsed = JSON.parse(item) as Partial<SecurityEvent>;
+      if (!parsed || typeof parsed.at !== "number") continue;
+      events.push(normalizeEvent(parsed as SecurityEvent));
+    } catch {
+      // Ignore malformed entries rather than failing the admin view.
+    }
+  }
+  return events;
+}
+
+function commandResult(results: unknown, index: number): unknown {
+  if (!Array.isArray(results)) return null;
+  const entry = results[index];
+  if (!Array.isArray(entry)) return null;
+  return entry[1];
+}
+
+export async function getSecuritySnapshot(
+  recentLimit = 100,
+): Promise<SecuritySnapshot> {
+  const now = Date.now();
+  const day = dayKey(now);
+  const since = now - 24 * 60 * 60 * 1000;
+  const windowStart = now - WINDOW_MINUTES * 60 * 1000;
+  const base: SecuritySnapshot = {
+    available: false,
+    generatedAt: now,
+    windowMinutes: WINDOW_MINUTES,
+    windowCount: 0,
+    threshold: securityPolicy.attackThreshold,
+    attack: false,
+    todayTotal: 0,
+    todayUniqueIps: 0,
+    byType: {},
+    topIps: [],
+    recent: [],
+    lastEventAt: null,
+    alertCooldownSeconds: 0,
+    alertChannelConfigured: Boolean(process.env.ALERT_WEBHOOK_URL),
+    strictMode: false,
+    strictSecondsRemaining: 0,
+    defenseMode: "normal",
+    defenseSince: null,
+    defenseSecondsRemaining: 0,
+  };
+
+  const client = getRedis();
+  if (!client) return base;
+
+  try {
+    await ensureConnected(client);
+    const results = await client
+      .multi()
+      .zcount(EVENTS_KEY, windowStart, "+inf")
+      .get(`sec:count:all:${day}`)
+      .pfcount(`sec:ips:${day}`)
+      .zrevrange(`sec:ipcount:${day}`, 0, 9, "WITHSCORES")
+      .hgetall(`sec:type:${day}`)
+      .zrevrangebyscore(
+        EVENTS_KEY,
+        "+inf",
+        since,
+        "LIMIT",
+        0,
+        Math.min(Math.max(recentLimit, 1), 500),
+      )
+      .ttl("sec:alert:cooldown")
+      .ttl(STRICT_KEY)
+      .get(DEFENSE_KEY)
+      .ttl(DEFENSE_KEY)
+      .exec();
+
+    const windowCount = Number(commandResult(results, 0) || 0);
+    const todayTotal = Number(commandResult(results, 1) || 0);
+    const todayUniqueIps = Number(commandResult(results, 2) || 0);
+    const ipFlat = Array.isArray(commandResult(results, 3))
+      ? (commandResult(results, 3) as string[])
+      : [];
+    const typeHash = (commandResult(results, 4) || {}) as Record<string, string>;
+    const recent = parseEvents(commandResult(results, 5));
+    const cooldown = Number(commandResult(results, 6) || 0);
+    const strictTtl = Number(commandResult(results, 7) || 0);
+    const defenseRaw = commandResult(results, 8);
+    const defenseTtl = Number(commandResult(results, 9) || 0);
+
+    let defenseSince: number | null = null;
+    let defenseMode: DefenseMode = "normal";
+    if (typeof defenseRaw === "string" && defenseRaw) {
+      try {
+        const parsed = JSON.parse(defenseRaw) as {
+          mode?: string;
+          since?: number;
+        };
+        if (parsed.mode === "emergency") {
+          defenseMode = "emergency";
+          defenseSince =
+            typeof parsed.since === "number" ? parsed.since : null;
+        }
+      } catch {
+        // Older builds stored "1"; fall through to the TTL check below.
+      }
+    }
+    if (defenseMode === "normal" && Number.isFinite(defenseTtl) && defenseTtl > 0) {
+      defenseMode = "emergency";
+    }
+
+    const topIps: SecurityIpCount[] = [];
+    for (let index = 0; index + 1 < ipFlat.length; index += 2) {
+      const ip = ipFlat[index];
+      const count = Number(ipFlat[index + 1]);
+      if (ip && Number.isFinite(count)) topIps.push({ ip, count });
+    }
+
+    const byType: Record<string, number> = {};
+    for (const [type, count] of Object.entries(typeHash)) {
+      const value = Number(count);
+      if (Number.isFinite(value)) byType[type] = value;
+    }
+
+    return {
+      ...base,
+      available: true,
+      windowCount,
+      attack: windowCount >= securityPolicy.attackThreshold,
+      todayTotal,
+      todayUniqueIps,
+      byType,
+      topIps,
+      recent,
+      lastEventAt: recent[0]?.at ?? null,
+      alertCooldownSeconds: Number.isFinite(cooldown) && cooldown > 0 ? cooldown : 0,
+      strictMode: Number.isFinite(strictTtl) && strictTtl > 0,
+      strictSecondsRemaining:
+        Number.isFinite(strictTtl) && strictTtl > 0 ? strictTtl : 0,
+      defenseMode,
+      defenseSince,
+      defenseSecondsRemaining:
+        defenseMode === "emergency" && Number.isFinite(defenseTtl) && defenseTtl > 0
+          ? defenseTtl
+          : 0,
+    };
+  } catch (error) {
+    console.warn(
+      "[security] snapshot failed",
+      error instanceof Error ? error.message : error,
+    );
+    return base;
+  }
+}
+
+/**
+ * Returns true at most once per cooldown window while an attack is ongoing.
+ * The caller (n8n) is responsible for actually delivering the webhook, so a
+ * busy app never blocks on an external notification endpoint.
+ */
+export async function issueAttackAlertIfDue(
+  snapshot: SecuritySnapshot,
+): Promise<boolean> {
+  if (!snapshot.attack) return false;
+  const client = getRedis();
+  if (!client) return false;
+  try {
+    await ensureConnected(client);
+    const acquired = await client.set(
+      "sec:alert:cooldown",
+      "1",
+      "EX",
+      securityPolicy.alertCooldownMinutes * 60,
+      "NX",
+    );
+    return acquired === "OK";
+  } catch {
+    return false;
+  }
+}
+
+export function securityRecommendations(snapshot: SecuritySnapshot): string[] {
+  const top = Object.entries(snapshot.byType).sort((a, b) => b[1] - a[1])[0]?.[0] || "";
+
+  if (!snapshot.attack) {
+    return [
+      "当前未达到攻击阈值。保持 ALERT_WEBHOOK_URL 可用，每周看一次最近事件即可。",
+      "收到告警后先在 /admin/security 判断类型和来源 IP，再按 docs/SECURITY.md 处置。",
+      "重防护（边缘限流、CrowdSec、Anubis）默认关闭，不要提前开在正常业务上。",
+    ];
+  }
+
+  const advice: string[] = [];
+  if (top === "probe") {
+    advice.push(
+      "扫描探测：到 Cloudflare Security Events 核对来源，封持续扫描的 IP 或 ASN；确认 /.env、/.git 等路径没有真实文件泄露。",
+    );
+  } else if (top === "auth") {
+    advice.push(
+      "疑似撞库或暴力登录：立即在后台“临时收紧限流”；检查失败登录的来源与账号；必要时通知受影响用户改密。不要直接封整段云厂商 IP。",
+    );
+  } else if (top === "shop") {
+    advice.push(
+      "疑似恶意下单或库存探测：后台“临时收紧限流”，必要时暂停相关商品或新订单；没有真实支付的订单不要发货。",
+    );
+  } else if (top === "server_action") {
+    advice.push(
+      "疑似自动化调用后台动作：临时收紧限流，检查是否有账号被盗用；必要时先停用可疑账号。",
+    );
+  } else if (top === "support") {
+    advice.push(
+      "自动客服接口被刷：临时关闭客服入口或继续收紧限流，同时确认上游 Key 的费用没有异常增长。",
+    );
+  } else {
+    advice.push(
+      "先看 /admin/security 的路径分布：集中在一个接口就收紧该入口，分散在全站则优先在 Cloudflare 层处理。",
+    );
+  }
+
+  advice.push(
+    snapshot.defenseMode === "emergency"
+      ? `应急防护已启动，应用层限速减半，约 ${Math.ceil(snapshot.defenseSecondsRemaining / 3600)} 小时后自动恢复；边缘切换仍需运维执行。`
+      : snapshot.strictMode
+        ? `临时收紧限流已开启，约 ${Math.ceil(snapshot.strictSecondsRemaining / 60)} 分钟后自动恢复；确认攻击停止后可手动恢复。`
+        : "登录 /admin/security，点“启动应急防护”：应用层限速立即减半，同时通知运维执行边缘切换，24 小时后自动恢复。",
+  );
+  advice.push(
+    "若站点已超时或出现 5xx：先在 Cloudflare 封来源并考虑 Under Attack Mode；不要急着重启全部容器或清空 Redis。",
+  );
+  advice.push(
+    "处置后记录时间线、来源 IP 和采取的动作；攻击停止前不要关闭告警，也不要删除拦截记录。",
+  );
+  return advice;
+}
+
+export function formatSecurityAlert(snapshot: SecuritySnapshot): string {
+  const types = Object.entries(snapshot.byType)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 4)
+    .map(([type, count]) => `${SECURITY_EVENT_LABELS[type as SecurityEventType] || type} ${count}`)
+    .join("、");
+  const ips = snapshot.topIps
+    .slice(0, 5)
+    .map((item) => `${item.ip}（${item.count} 次）`)
+    .join("、");
+  const latest = snapshot.recent[0];
+  const advice = securityRecommendations(snapshot)
+    .slice(0, 3)
+    .map((line, index) => `${index + 1}. ${line}`);
+
+  return [
+    snapshot.attack
+      ? "CokeAI 安全告警：疑似正在被攻击"
+      : "CokeAI 安全摘要：当前未达到攻击阈值",
+    `近 ${snapshot.windowMinutes} 分钟拦截：${snapshot.windowCount} 次（阈值 ${snapshot.threshold}）`,
+    `今日拦截：${snapshot.todayTotal} 次，独立 IP：${snapshot.todayUniqueIps}`,
+    `类型：${types || "—"}`,
+    `Top IP：${ips || "—"}`,
+    `最近：${latest ? `${latest.method} ${latest.path}（${latest.type}）` : "—"}`,
+    `应急防护：${
+      snapshot.defenseMode === "emergency"
+        ? `已启动，剩余约 ${Math.ceil(snapshot.defenseSecondsRemaining / 3600)} 小时`
+        : "未启动"
+    }`,
+    "处置建议：",
+    ...advice,
+    `后台：/admin/security`,
+    `时间：${new Date(snapshot.generatedAt).toISOString()}`,
+  ].join("\n");
+}
+
+async function postAlertWebhook(
+  text: string,
+  extra: Record<string, unknown> = {},
+): Promise<{ ok: boolean; error?: string }> {
+  const url = process.env.ALERT_WEBHOOK_URL;
+  if (!url) return { ok: false, error: "未配置 ALERT_WEBHOOK_URL" };
+
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "user-agent": "CokeAI-Security/1.0",
+      },
+      body: JSON.stringify({
+        text,
+        content: text,
+        source: "cokeai-security",
+        ...extra,
+      }),
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!response.ok) return { ok: false, error: `告警通道返回 HTTP ${response.status}` };
+    return { ok: true };
+  } catch {
+    return { ok: false, error: "告警通道不可达" };
+  }
+}
+
+/**
+ * Tells the operator channel that a human flipped the emergency switch.
+ * Includes the exact staged edge steps so whoever is on call does not have to
+ * remember the runbook under pressure. No secrets are included.
+ */
+export async function sendEmergencyDefenseNotice(
+  enabled: boolean,
+): Promise<{ ok: boolean; error?: string }> {
+  const text = enabled
+    ? [
+        "CokeAI 应急防护已启动（管理员手动）",
+        "已生效：应用层敏感路径限速减半，24 小时后自动恢复。",
+        "待运维执行（按顺序确认）：",
+        "1. 构建带 caddy-ratelimit 的边缘镜像：docker build --build-arg GOPROXY=https://goproxy.cn,direct -f ops/edge/Dockerfile -t cokeai-caddy:ratelimit .",
+        "2. 挂载限流片段并重建 edge：EDGE_LIMITS_FILE=./ops/edge/limits.rate-limit.caddy docker compose -f docker-compose.yml -f ops/edge/compose.build.yml up -d edge",
+        "3. 验证通过并经审批后，把 Cloudflare Tunnel origin 从 app:3000 改为 edge:8080，复验首页 /shop /login /v1。",
+        "后台：/admin/security（可关闭应急防护）",
+        `时间：${new Date().toISOString()}`,
+      ].join("\n")
+    : [
+        "CokeAI 应急防护已关闭（管理员手动）",
+        "已恢复：应用层限流回到常规水平。",
+        "请确认 Cloudflare Tunnel origin 已改回 app:3000，并复验首页、/shop、/login、/v1。",
+        "后台：/admin/security",
+        `时间：${new Date().toISOString()}`,
+      ].join("\n");
+  return postAlertWebhook(text, {
+    source: "cokeai-security",
+    emergency_defense: enabled ? "on" : "off",
+  });
+}
+
+async function claimManualAlert(key: string, seconds: number): Promise<boolean> {
+  const client = getRedis();
+  if (!client) return true;
+  try {
+    await ensureConnected(client);
+    return (await client.set(key, "1", "EX", seconds, "NX")) === "OK";
+  } catch {
+    // Redis down: a human explicitly asked to send, do not block the action.
+    return true;
+  }
+}
+
+export async function sendSecurityTestAlert(): Promise<{
+  ok: boolean;
+  error?: string;
+}> {
+  if (!(await claimManualAlert("sec:alert:test", 30))) {
+    return { ok: false, error: "测试过于频繁，请 30 秒后再试" };
+  }
+  const text = [
+    "CokeAI 安全告警通道测试",
+    "这是一条管理员手动触发的测试消息。",
+    `时间：${new Date().toISOString()}`,
+  ].join("\n");
+  return postAlertWebhook(text, { test: true });
+}
+
+/**
+ * Manual escape hatch: n8n may be down while the site is under attack, so the
+ * admin can push the current summary directly from /admin/security.
+ */
+export async function sendSecuritySummaryAlert(): Promise<{
+  ok: boolean;
+  error?: string;
+}> {
+  if (!(await claimManualAlert("sec:alert:manual", 30))) {
+    return { ok: false, error: "请 30 秒后再发送" };
+  }
+  const snapshot = await getSecuritySnapshot(50);
+  const text = `${formatSecurityAlert(snapshot)}\n\n（管理员手动发送）`;
+  return postAlertWebhook(text, { attack: snapshot.attack, manual: true });
+}

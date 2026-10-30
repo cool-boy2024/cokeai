@@ -1,0 +1,153 @@
+{
+  "name": "CokeAI｜安全攻击告警（每 5 分钟）",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## 安全攻击告警\n\n每 5 分钟读取一次 `/api/internal/security/summary?mark=1`。\n\n只有 `attack=true` 且 `should_alert=true` 时才推送给管理员。\n\n同一波攻击由服务端冷却 key 控制，不会每 5 分钟重复推送。\n\n`ALERT_WEBHOOK_URL` 为空时工作流安全结束，不发送消息。",
+        "height": 240,
+        "width": 360,
+        "color": 3
+      },
+      "id": "45f45491-5c54-4871-a7ec-0e2688b4ac4e",
+      "name": "使用说明",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -500,
+        -70
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "2,7,12,17,22,27,32,37,42,47,52,57 * * * *"
+            }
+          ]
+        }
+      },
+      "id": "f99870cb-4e0b-4f40-81b3-31012f7fd677",
+      "name": "每 5 分钟",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -40,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://app:3000/api/internal/security/summary?mark=1",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-internal-secret",
+              "value": "={{ $env.INTERNAL_API_SECRET }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "8ecb1759-2f51-4d01-bc2c-ab9b34ebce1c",
+      "name": "读取安全摘要",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        210,
+        80
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first()?.json || {};\nconst statusCode = raw.statusCode || 0;\nconst body = raw.body || raw;\n\nif (!body.available || !body.attack || !body.should_alert || !$env.ALERT_WEBHOOK_URL) {\n  return [];\n}\n\nconst fmtTime = (value) => {\n  if (!value) return '无';\n  const numeric = Number(value);\n  const millis = Number.isFinite(numeric) ? (numeric < 1e12 ? numeric * 1000 : numeric) : Date.parse(String(value));\n  const date = new Date(millis);\n  return Number.isNaN(date.getTime()) ? String(value) : date.toISOString();\n};\n\nconst topIps = Array.isArray(body.top_ips) && body.top_ips.length\n  ? body.top_ips.slice(0, 5).map((item) => `${item.ip}（${item.count} 次）`).join('、')\n  : '无';\nconst byType = body.by_type && typeof body.by_type === 'object'\n  ? Object.entries(body.by_type).map(([type, count]) => `${type} ${count}`).join('、') || '无'\n  : '无';\nconst recentLines = Array.isArray(body.recent) && body.recent.length\n  ? body.recent.slice(0, 3).map((event) => `${fmtTime(event.at)} ${event.type || ''} ${event.ip || ''}`.trim())\n  : [`最近一次：${fmtTime(body.last_event_at)}`];\n\nconst fallback = [\n  'CokeAI 安全攻击告警',\n  `近 ${body.window_minutes ?? '—'} 分钟拦截：${body.window_count ?? '—'} 次（阈值 ${body.threshold ?? '—'}）`,\n  `今日拦截：${body.today_total ?? '—'} 次，独立 IP：${body.today_unique_ips ?? '—'}`,\n  `Top IP：${topIps}`,\n  `类型分布：${byType}`,\n  '最近事件：',\n  ...recentLines,\n  '后台：/admin/security',\n  `时间：${fmtTime(body.generated_at) || new Date().toISOString()}`,\n].join('\\n');\n\nconst text = body.alert_text || fallback;\n\nreturn [{ json: { text, content: text, source: 'cokeai-security', attack: true } }];"
+      },
+      "id": "83a3a437-569d-473f-8939-a1cc4abbd237",
+      "name": "判断攻击状态",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        450,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.ALERT_WEBHOOK_URL }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "fc3f288f-42b4-426c-9a14-d74a8b4214a0",
+      "name": "推送告警",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        690,
+        80
+      ],
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "每 5 分钟": {
+      "main": [
+        [
+          {
+            "node": "读取安全摘要",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "读取安全摘要": {
+      "main": [
+        [
+          {
+            "node": "判断攻击状态",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "判断攻击状态": {
+      "main": [
+        [
+          {
+            "node": "推送告警",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Shanghai"
+  },
+  "versionId": "bd6f4851-d467-41bc-9404-eb3f3695250b",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": []
+}
