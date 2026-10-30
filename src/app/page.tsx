@@ -152,44 +152,44 @@ export default async function HomePage() {
           <div className="container hero-center">
             <div className="hero-eyebrow">
               <i />
-              AI API · 数字商品
+              数字商品 · 人工审核
             </div>
             <h1 className="hero-title">
               <span className="hero-line">
                 <span>CokeAI 小店</span>
               </span>
               <span className="hero-line hero-line-sub">
-                <span>接上你需要的模型。</span>
+                <span>订阅、账号、接码，都在这里。</span>
               </span>
             </h1>
             <p className="hero-lead">
-              OpenAI 兼容接口，按量计费。
+              订阅、卡密、代充，人工审核后发货。
               <br />
-              注册、充值、创建 Key，就能用。
+              下单后订单进度随时可查。
             </p>
             <div className="hero-actions">
-              <Link className="btn btn-primary" href="/register">
-                创建账号 <ArrowRight size={16} />
+              <Link className="btn btn-primary" href="/shop">
+                逛逛小店 <ArrowRight size={16} />
               </Link>
-              <Link className="hero-secondary" href="/pricing">
-                查看价格 <ArrowUpRight size={14} />
+              <Link className="hero-secondary" href="/dashboard/shop">
+                查看订单 <ArrowUpRight size={14} />
               </Link>
             </div>
             <div className="hero-proof">
               <span className="proof-pill">
-                <Check size={14} /> OpenAI SDK 兼容
+                <Check size={14} /> 人工审核后发货
               </span>
               <span className="proof-pill">
-                <Wallet size={14} /> USDT 充值
+                <Wallet size={14} /> 订单进度可查
               </span>
               <span className="proof-pill">
-                <Check size={14} /> 余额不过期
+                <Check size={14} /> 质保按商品标注
               </span>
             </div>
             <HeroBrandStrip />
             <div className="hero-note">
-              {showcase.length > 0
-                ? `${showcase.length} 个模型已就绪`
+              {shopProducts.length > 0
+                ? `${shopProducts.length} 件商品在售`
                 : "品牌仅作生态示意"}
             </div>
           </div>

@@ -9,8 +9,8 @@ gsap.registerPlugin(ScrollTrigger, CustomEase);
 const EASE = CustomEase.create("coke-base", "M0,0 C0.22,1 0.36,1 1,1");
 
 const LINES = [
-  ["一个", "接口，", "接上", "你常用的", "模型。"],
-  ["每一笔", "用量，", "都", "算得", "清楚。"],
+  ["订阅、", "账号、", "接码，", "都放在", "一家店。"],
+  ["下单后", "人工", "审核，", "进度", "随时可查。"],
 ];
 
 const WORDS = LINES.flat();
