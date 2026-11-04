@@ -17,6 +17,7 @@
     "shop:publish": "node scripts/shop-publish.mjs",
     "shop:sync": "tsx scripts/shop-sync.ts",
     "test:shop": "tsx scripts/test-shop.ts",
+    "test:shop:expiry": "tsx scripts/test-shop-expiry.ts",
     "pricing:sync": "node scripts/pricing-sync.mjs",
     "verify:sub2api": "node scripts/verify-sub2api-config.mjs",
     "smoke:prod": "node scripts/smoke-production.mjs",

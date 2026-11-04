@@ -685,7 +685,12 @@ export async function expireShopOrders(): Promise<number> {
     `UPDATE shop_orders o
         SET status = 'expired', updated_at = now()
       WHERE o.status = 'pending_payment'
-        AND o.expires_at < now()
+        AND (
+          o.expires_at < now()
+          -- Older orders kept a longer fulfillment deadline after the USDT
+          -- quote ended. Honor their payment deadline without rewriting data.
+          OR (o.payment_provider = 'usdt_trc20' AND o.pay_expires_at < now())
+        )
         AND NOT EXISTS (
           SELECT 1 FROM shop_usdt_deposits d
            WHERE d.order_id = o.id AND d.received_usdt > 0
