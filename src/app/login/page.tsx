@@ -3,10 +3,10 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ArrowLeft } from "@phosphor-icons/react/dist/ssr";
 import { AuthForm } from "@/components/AuthForm";
-import { AuthTunnel } from "@/components/auth/AuthTunnel";
+import { AuthGalaxy } from "@/components/auth/AuthGalaxy";
 import { Logo } from "@/components/Logo";
 import { getCurrentUser } from "@/lib/auth";
-import "../auth-tunnel.css";
+import "../auth-galaxy.css";
 
 export const metadata: Metadata = {
   title: "登录",
@@ -31,7 +31,7 @@ export default async function LoginPage({
       <a className="skip-link" href="#main-content">
         跳到主要内容
       </a>
-      <AuthTunnel />
+      <AuthGalaxy />
       <header className="auth-topbar">
         <Logo />
         <Link className="auth-back" href="/">
@@ -40,24 +40,26 @@ export default async function LoginPage({
       </header>
       <main id="main-content" className="auth-main">
         <div className="auth-stage">
-          <aside className="auth-intro" aria-hidden="true">
-            <p className="auth-kicker">CokeAI · 身份节点</p>
+          <aside className="auth-intro" aria-label="CokeAI 介绍">
+            <p className="auth-kicker">CokeAI · AI 生态</p>
             <p className="auth-display">
-              穿过隧道，
-              <br />
-              <span>回到你的控制台。</span>
+              欢迎来到
+              <span className="auth-display-brand">CokeAI</span>
             </p>
             <p className="auth-intro-note">
-              API Key、余额、订单与订阅，在一个入口完成。
+              API Key、余额、订单与订阅，统一管理。
             </p>
             <p className="auth-intro-foot">
-              <span>01 / 身份验证</span>
-              <i />
-              <span>02 / 控制台</span>
+              <span className="auth-intro-dot" />
+              AI API · 数字商品 · 人民币计费
             </p>
+            <p className="auth-intro-disclaimer">生态标识仅作示意</p>
           </aside>
           <section className="auth-card" aria-labelledby="auth-title">
             <div className="auth-card-head">
+              <p className="auth-welcome">
+                欢迎来到 <strong>CokeAI</strong>
+              </p>
               <p className="auth-eyebrow">安全入口 · AUTH</p>
               <h2 id="auth-title">登录</h2>
               <p className="auth-sub">继续管理你的 API Key 和余额。</p>
