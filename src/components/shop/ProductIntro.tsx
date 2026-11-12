@@ -1,5 +1,6 @@
 import type { PublicShopProduct } from "@/lib/shop/catalog";
 import { buildShopFacts } from "@/lib/shop/intro";
+import { ExpandableText } from "./ExpandableText";
 
 export function ProductIntro({ product }: { product: PublicShopProduct }) {
   const facts = buildShopFacts(product);
@@ -7,7 +8,10 @@ export function ProductIntro({ product }: { product: PublicShopProduct }) {
   return (
     <section className="shop-section shop-intro">
       <h2>商品介绍</h2>
-      <p className="shop-description shop-source-copy">{product.description}</p>
+      <ExpandableText
+        className="shop-description shop-source-copy"
+        text={product.description}
+      />
 
       <dl className="shop-facts">
         {facts.map((fact) => (
