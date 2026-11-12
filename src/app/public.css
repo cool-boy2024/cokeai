@@ -3412,7 +3412,11 @@ body {
   }
 
   .public-main .home-hero {
-    padding: 256px 0 64px;
+    padding: 216px 0 64px;
+  }
+
+  .public-main .home-hero .hero-note {
+    display: none;
   }
 
   .public-main .home-hero h1.hero-title {
@@ -3427,9 +3431,9 @@ body {
      above the title, with fewer cards so it stays readable at 390px. */
   .hero-orbit-stage {
     display: block;
-    top: 30px;
+    top: 24px;
     bottom: auto;
-    height: 188px;
+    height: 160px;
     perspective: 900px;
     -webkit-mask-image: linear-gradient(
       90deg,
@@ -3638,7 +3642,7 @@ body {
   }
 
   .public-main .home-hero {
-    padding: 256px 0 56px;
+    padding: 216px 0 48px;
   }
 
   .public-main .home-hero h1.hero-title {
@@ -4495,5 +4499,452 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .announcement-close {
     transition: none;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Mobile compaction
+   Conservative phone-only tightening for the public home, shop list and
+   product detail. Desktop rules are untouched; every override lives inside
+   the 720px breakpoint so it can be reverted by deleting this block.
+   -------------------------------------------------------------------------- */
+
+.shop-expand-toggle {
+  display: none;
+}
+
+@media (max-width: 720px) {
+  /* Home: shorter sections, same content and order. */
+  .public-main .section {
+    padding: 40px 0;
+  }
+
+  .tagline-section {
+    padding: 40px 0;
+  }
+
+  .cta-section {
+    padding: 40px 0 48px;
+  }
+
+  .shop-collection {
+    padding: 40px 0;
+  }
+
+  .shop-collection-center {
+    margin-bottom: 24px;
+  }
+
+  .public-main .home-hero .hero-note {
+    display: none;
+  }
+
+  /* Home storefront preview: keep all three cards in a swipeable rail. */
+  .shop-grid-home {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 12px;
+    margin-inline: -16px;
+    padding: 2px 16px 12px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .shop-grid-home::-webkit-scrollbar {
+    display: none;
+  }
+
+  .shop-grid-home .shop-product-card,
+  .shop-grid-home .shop-product-card.is-featured {
+    display: flex;
+    flex: 0 0 80%;
+    flex-direction: column;
+    grid-column: auto;
+    scroll-snap-align: start;
+  }
+
+  .shop-grid-home .shop-product-card .shop-cover,
+  .shop-grid-home .shop-product-card.is-featured .shop-cover {
+    height: 150px;
+    min-height: 150px;
+  }
+
+  .shop-grid-home .shop-product-card.is-featured .shop-cover-label {
+    font-size: 48px;
+  }
+
+  .shop-grid-home .shop-product-card.is-featured .shop-product-card-body {
+    gap: 8px;
+    padding: 16px;
+  }
+
+  .shop-grid-home .shop-product-card.is-featured h3 {
+    font-size: 18px;
+    line-height: 24px;
+  }
+
+  .shop-grid-home .shop-product-card-foot {
+    margin-top: auto;
+  }
+
+  /* Shop list: cover on the left, details on the right, one compact row. */
+  .public-main .shop-page {
+    padding-bottom: 40px;
+  }
+
+  .public-main .shop-hero {
+    padding: 32px 0 28px;
+  }
+
+  .public-main .shop-hero h1 {
+    margin-bottom: 12px;
+    font-size: 32px;
+    line-height: 1.08;
+  }
+
+  .public-main .shop-hero p {
+    font-size: 15px;
+    line-height: 22px;
+  }
+
+  .public-main .shop-hero-inner {
+    gap: 20px;
+  }
+
+  .public-main .shop-hero-points {
+    gap: 8px 16px;
+  }
+
+  .public-main .shop-hero-points span {
+    font-size: 13px;
+  }
+
+  .public-main .shop-catalog {
+    padding-top: 24px;
+  }
+
+  .public-main .shop-catalog-head {
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+
+  .public-main .shop-filters {
+    gap: 4px;
+  }
+
+  .public-main .shop-filter {
+    padding: 6px 12px;
+    font-size: 13px;
+  }
+
+  .public-main .shop-grid-catalog {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .public-main .shop-grid-catalog .shop-product-card,
+  .public-main .shop-grid-catalog .shop-product-card.is-featured {
+    display: grid;
+    grid-column: auto;
+    grid-template-columns: 116px minmax(0, 1fr);
+    border-radius: 14px;
+  }
+
+  .public-main .shop-grid-catalog .shop-cover,
+  .public-main .shop-grid-catalog .shop-product-card.is-featured .shop-cover {
+    height: 100%;
+    min-height: 132px;
+    padding: 12px;
+  }
+
+  .public-main .shop-grid-catalog .shop-cover-label,
+  .public-main .shop-grid-catalog .shop-product-card.is-featured .shop-cover-label {
+    font-size: 30px;
+  }
+
+  .public-main .shop-grid-catalog .shop-cover-caption {
+    font-size: 9px;
+  }
+
+  .public-main .shop-grid-catalog .shop-cover-orbit {
+    top: -30px;
+    right: -28px;
+    width: 100px;
+    height: 100px;
+    box-shadow: 0 0 0 16px color-mix(in srgb, var(--cover-line) 45%, transparent);
+  }
+
+  .public-main .shop-grid-catalog .shop-cover-muse-mark,
+  .public-main .shop-grid-catalog .shop-product-card.is-featured .shop-cover-muse-mark {
+    width: 40px;
+    height: 40px;
+  }
+
+  .public-main .shop-grid-catalog .shop-product-card-body,
+  .public-main .shop-grid-catalog .shop-product-card.is-featured .shop-product-card-body {
+    gap: 5px;
+    justify-content: flex-start;
+    padding: 12px 14px;
+  }
+
+  .public-main .shop-grid-catalog .shop-product-card h3,
+  .public-main .shop-grid-catalog .shop-product-card.is-featured h3 {
+    font-size: 16px;
+    line-height: 22px;
+  }
+
+  .public-main .shop-grid-catalog .shop-product-card p {
+    font-size: 12px;
+    line-height: 16px;
+    -webkit-line-clamp: 2;
+  }
+
+  .public-main .shop-grid-catalog .shop-product-card-top {
+    gap: 8px;
+  }
+
+  .public-main .shop-grid-catalog .shop-badge {
+    padding: 2px 6px;
+    font-size: 10px;
+  }
+
+  .public-main .shop-grid-catalog .shop-product-card-foot {
+    margin-top: auto;
+    padding-top: 8px;
+  }
+
+  .public-main .shop-grid-catalog .shop-product-card-foot strong {
+    font-size: 18px;
+    line-height: 22px;
+  }
+
+  .public-main .shop-grid-catalog .shop-product-card-foot span:not(.shop-card-arrow) {
+    font-size: 10px;
+    line-height: 14px;
+  }
+
+  .public-main .shop-grid-catalog .shop-card-arrow {
+    width: 26px;
+    height: 26px;
+  }
+
+  .public-main .shop-note {
+    margin-top: 24px;
+    padding-top: 20px;
+    font-size: 13px;
+    line-height: 19px;
+  }
+
+  /* Product detail: tighter spacing and a fixed-height intro preview. */
+  .public-main .shop-crumbs {
+    padding: 16px 0 12px;
+    font-size: 13px;
+  }
+
+  .public-main .shop-detail {
+    gap: 24px;
+    padding-bottom: 24px;
+  }
+
+  .public-main .shop-detail-cover {
+    height: 180px;
+    border-radius: 14px;
+  }
+
+  .public-main .shop-detail-meta {
+    gap: 12px;
+    padding: 16px 0 12px;
+  }
+
+  .public-main .shop-detail-meta h1 {
+    margin: 4px 0;
+    font-size: 26px;
+    line-height: 32px;
+  }
+
+  .public-main .shop-detail-meta p {
+    font-size: 14px;
+    line-height: 20px;
+  }
+
+  .public-main .shop-detail-badges {
+    gap: 6px;
+  }
+
+  .public-main .shop-section {
+    padding: 14px 0;
+  }
+
+  .public-main .shop-section h2 {
+    margin-bottom: 8px;
+    font-size: 17px;
+  }
+
+  .public-main .shop-section p,
+  .public-main .shop-list {
+    font-size: 14px;
+    line-height: 22px;
+  }
+
+  .public-main .shop-facts {
+    gap: 10px 12px;
+    margin-top: 12px;
+    padding: 12px;
+  }
+
+  .public-main .shop-notices {
+    margin: 6px 0 16px;
+    padding: 16px;
+    border-radius: 14px;
+  }
+
+  .public-main .shop-notices h2 {
+    font-size: 20px;
+    line-height: 26px;
+  }
+
+  .public-main .shop-notices-lead {
+    margin-top: 8px;
+    font-size: 14px;
+    line-height: 21px;
+  }
+
+  .public-main .shop-notices-groups {
+    gap: 14px;
+    margin-top: 14px;
+  }
+
+  .public-main .shop-notice-group.is-warning {
+    padding: 12px 14px;
+  }
+
+  .public-main .shop-notice-text {
+    font-size: 14px;
+    line-height: 22px;
+  }
+
+  .public-main .shop-notices-foot {
+    margin-top: 12px;
+    padding-top: 10px;
+    font-size: 13px;
+    line-height: 19px;
+  }
+
+  .public-main .shop-tutorial-caption {
+    margin-top: 8px;
+    font-size: 13px;
+    line-height: 19px;
+  }
+
+  .public-main .shop-tutorial-steps {
+    gap: 10px;
+    margin-top: 12px;
+  }
+
+  /* Delivery flow: three stacked cards become three compact rows. */
+  .public-main .shop-steps {
+    grid-template-columns: 1fr;
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  .public-main .shop-step {
+    display: grid;
+    grid-template-columns: 22px 76px minmax(0, 1fr);
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+  }
+
+  .public-main .shop-step span {
+    margin: 0;
+    font-size: 11px;
+  }
+
+  .public-main .shop-step strong {
+    margin: 0;
+    font-size: 13px;
+  }
+
+  .public-main .shop-step p {
+    font-size: 12px;
+    line-height: 16px;
+  }
+
+  .public-main .shop-buy-panel {
+    gap: 12px;
+    padding: 18px;
+    border-radius: 18px;
+  }
+
+  .public-main .shop-buy-price strong {
+    font-size: 30px;
+    line-height: 34px;
+  }
+
+  .public-main .shop-aside-note {
+    font-size: 13px;
+  }
+
+  .shop-expandable .shop-expandable-text {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 10;
+  }
+
+  .shop-expandable.is-expanded .shop-expandable-text {
+    display: block;
+    overflow: visible;
+    -webkit-line-clamp: unset;
+  }
+
+  .shop-expand-toggle {
+    display: inline-flex;
+    min-height: 36px;
+    align-items: center;
+    gap: 4px;
+    margin-top: 8px;
+    padding: 6px 14px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--surface);
+    color: var(--ink);
+    font-size: 13px;
+    font-weight: 500;
+  }
+
+  /* Footer: 2x2 grid and less vertical air. */
+  .public-footer.site-footer {
+    margin-top: 40px;
+  }
+
+  .public-footer .footer-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 24px 16px;
+    padding: 36px 0 24px;
+  }
+
+  .public-footer .footer-brand p {
+    margin-top: 10px;
+    font-size: 13px;
+    line-height: 19px;
+  }
+
+  .public-footer .footer-col h4 {
+    margin-bottom: 10px;
+  }
+
+  .public-footer .footer-col a {
+    margin-bottom: 6px;
+    font-size: 13px;
+    line-height: 19px;
+  }
+
+  .public-footer .footer-bottom {
+    padding: 16px 0 24px;
   }
 }
