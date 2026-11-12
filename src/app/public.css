@@ -565,6 +565,31 @@ body {
   color: var(--ink);
 }
 
+.public-actions .public-logout-form {
+  display: flex;
+}
+
+.public-actions .public-logout {
+  padding: 8px 12px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  cursor: pointer;
+  transition: color var(--dur-color) var(--ease-out-quint);
+}
+
+.public-actions .public-logout:hover {
+  color: var(--ink);
+}
+
+.public-mobile-foot form {
+  width: 100%;
+}
+
 .public-header .btn {
   min-height: 36px;
   padding: 8px 16px;
@@ -3387,7 +3412,7 @@ body {
   }
 
   .public-main .home-hero {
-    padding: 72px 0 64px;
+    padding: 256px 0 64px;
   }
 
   .public-main .home-hero h1.hero-title {
@@ -3398,16 +3423,58 @@ body {
     font-size: 30px;
   }
 
+  /* Keep the desktop storefront facade on phones: a scaled-down orbit band
+     above the title, with fewer cards so it stays readable at 390px. */
   .hero-orbit-stage {
+    display: block;
+    top: 30px;
+    bottom: auto;
+    height: 188px;
+    perspective: 900px;
+    -webkit-mask-image: linear-gradient(
+      90deg,
+      transparent 0,
+      #000 7%,
+      #000 93%,
+      transparent 100%
+    );
+    mask-image: linear-gradient(
+      90deg,
+      transparent 0,
+      #000 7%,
+      #000 93%,
+      transparent 100%
+    );
+  }
+
+  .orbit-item {
+    width: 68px;
+    height: 82px;
+    margin: -41px 0 0 -34px;
+  }
+
+  .orbit-item:nth-child(n + 7) {
     display: none;
   }
 
+  .orbit-card {
+    gap: 6px;
+    border-radius: 12px;
+  }
+
+  .orbit-card img {
+    width: 22px;
+    height: 22px;
+  }
+
+  .orbit-card span {
+    font-size: 9px;
+    letter-spacing: 0.04em;
+    line-height: 12px;
+  }
+
   .hero-brand-strip {
-    display: grid;
-    width: min(100%, 360px);
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 8px;
-    margin: 24px auto 0;
+    display: none;
   }
 
   .hero-brand-chip {
@@ -3571,7 +3638,7 @@ body {
   }
 
   .public-main .home-hero {
-    padding: 56px 0 56px;
+    padding: 256px 0 56px;
   }
 
   .public-main .home-hero h1.hero-title {

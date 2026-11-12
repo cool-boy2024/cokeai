@@ -1328,6 +1328,28 @@ tbody tr:hover {
   color: var(--ink);
 }
 
+.topbar-logout {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  gap: 5px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: color 160ms ease, border-color 160ms ease, background 160ms ease;
+}
+
+.topbar-logout:hover {
+  border-color: #a9bfb5;
+  background: #fff;
+  color: var(--ink);
+}
+
 .app-content {
   max-width: 1240px;
   margin: 0 auto;

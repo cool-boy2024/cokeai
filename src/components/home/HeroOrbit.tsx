@@ -19,8 +19,11 @@ export function HeroOrbit() {
   useEffect(() => {
     const stage = stageRef.current;
     const layer = layerRef.current;
+    // Phones hide four cards with CSS; only animate what is actually shown so
+    // the remaining six stay evenly spaced.
     const items = itemsRef.current.filter(
-      (item): item is HTMLDivElement => Boolean(item),
+      (item): item is HTMLDivElement =>
+        item !== null && item.offsetParent !== null,
     );
     if (!stage || !layer || items.length === 0) return;
 

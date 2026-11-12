@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { BookOpen, ExternalLink, Plus } from "lucide-react";
+import { BookOpen, ExternalLink, LogOut, Plus } from "lucide-react";
+import { logoutAction } from "@/app/actions/auth";
 import { requireUser } from "@/lib/auth";
 import { AppSidebar } from "@/components/AppSidebar";
 import { getGatewayBalanceForRequest } from "@/lib/gateway-credits";
@@ -42,6 +43,16 @@ export default async function DashboardLayout({
                 <ExternalLink size={13} /> 运营后台
               </Link>
             ) : null}
+            <form action={logoutAction}>
+              <button
+                className="topbar-logout"
+                type="submit"
+                title="退出登录"
+                aria-label="退出登录"
+              >
+                <LogOut size={13} /> <span>退出</span>
+              </button>
+            </form>
           </div>
         </header>
         <div className="app-content">{children}</div>
