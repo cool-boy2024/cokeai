@@ -3,7 +3,7 @@
   "nodes": [
     {
       "parameters": {
-        "content": "## 安全攻击告警\n\n每 5 分钟读取一次 `/api/internal/security/summary?mark=1`。\n\n只有 `attack=true` 且 `should_alert=true` 时才推送给管理员。\n\n同一波攻击由服务端冷却 key 控制，不会每 5 分钟重复推送。\n\n`ALERT_WEBHOOK_URL` 为空时工作流安全结束，不发送消息。",
+        "content": "## 安全攻击告警\n\n每 5 分钟读取一次 `/api/internal/security/summary?mark=1`。\n\n摘要接口会在 `attack=true` 且 `should_alert=true` 时，由应用直接发送到后台配置的告警通道（企业微信 / 飞书 / Webhook / 邮箱）。\n\n本工作流不再推送任何 webhook，也不接触机器人地址或 SMTP 密码。\n\n同一波攻击由服务端冷却 key 控制，不会每 5 分钟重复推送。",
         "height": 240,
         "width": 360,
         "color": 3
@@ -71,7 +71,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const raw = $input.first()?.json || {};\nconst statusCode = raw.statusCode || 0;\nconst body = raw.body || raw;\n\nif (!body.available || !body.attack || !body.should_alert || !$env.ALERT_WEBHOOK_URL) {\n  return [];\n}\n\nconst fmtTime = (value) => {\n  if (!value) return '无';\n  const numeric = Number(value);\n  const millis = Number.isFinite(numeric) ? (numeric < 1e12 ? numeric * 1000 : numeric) : Date.parse(String(value));\n  const date = new Date(millis);\n  return Number.isNaN(date.getTime()) ? String(value) : date.toISOString();\n};\n\nconst topIps = Array.isArray(body.top_ips) && body.top_ips.length\n  ? body.top_ips.slice(0, 5).map((item) => `${item.ip}（${item.count} 次）`).join('、')\n  : '无';\nconst byType = body.by_type && typeof body.by_type === 'object'\n  ? Object.entries(body.by_type).map(([type, count]) => `${type} ${count}`).join('、') || '无'\n  : '无';\nconst recentLines = Array.isArray(body.recent) && body.recent.length\n  ? body.recent.slice(0, 3).map((event) => `${fmtTime(event.at)} ${event.type || ''} ${event.ip || ''}`.trim())\n  : [`最近一次：${fmtTime(body.last_event_at)}`];\n\nconst fallback = [\n  'CokeAI 安全攻击告警',\n  `近 ${body.window_minutes ?? '—'} 分钟拦截：${body.window_count ?? '—'} 次（阈值 ${body.threshold ?? '—'}）`,\n  `今日拦截：${body.today_total ?? '—'} 次，独立 IP：${body.today_unique_ips ?? '—'}`,\n  `Top IP：${topIps}`,\n  `类型分布：${byType}`,\n  '最近事件：',\n  ...recentLines,\n  '后台：/admin/security',\n  `时间：${fmtTime(body.generated_at) || new Date().toISOString()}`,\n].join('\\n');\n\nconst text = body.alert_text || fallback;\n\nreturn [{ json: { text, content: text, source: 'cokeai-security', attack: true } }];"
+        "jsCode": "const raw = $input.first()?.json || {};\nconst body = raw.body || raw;\n\nif (!body.available || !body.attack || !body.should_alert) {\n  return [];\n}\n\n// Delivery already happened inside the summary endpoint using the channel\n// configured at /admin/security/alerts. Keep the result for the execution log.\nreturn [{\n  json: {\n    ok: true,\n    alert_sent: Boolean(body.alert_sent),\n    window_count: body.window_count ?? 0,\n    threshold: body.threshold ?? 0,\n  },\n}];"
       },
       "id": "83a3a437-569d-473f-8939-a1cc4abbd237",
       "name": "判断攻击状态",
@@ -81,30 +81,10 @@
         450,
         80
       ]
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "={{ $env.ALERT_WEBHOOK_URL }}",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json) }}",
-        "options": {
-          "timeout": 15000
-        }
-      },
-      "id": "fc3f288f-42b4-426c-9a14-d74a8b4214a0",
-      "name": "推送告警",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        690,
-        80
-      ],
-      "onError": "continueRegularOutput"
     }
   ],
-  "pinData": {},
+  "pinData": {
+  },
   "connections": {
     "每 5 分钟": {
       "main": [
@@ -127,17 +107,6 @@
           }
         ]
       ]
-    },
-    "判断攻击状态": {
-      "main": [
-        [
-          {
-            "node": "推送告警",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
     }
   },
   "active": false,
@@ -149,5 +118,7 @@
   "meta": {
     "templateCredsSetupCompleted": true
   },
-  "tags": []
+  "tags": [
+
+  ]
 }

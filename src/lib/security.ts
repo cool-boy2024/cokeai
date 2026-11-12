@@ -330,6 +330,10 @@ export async function getSecuritySnapshot(
   const day = dayKey(now);
   const since = now - 24 * 60 * 60 * 1000;
   const windowStart = now - WINDOW_MINUTES * 60 * 1000;
+  // Loaded lazily so proxying every request never pulls in nodemailer.
+  const alertChannelConfigured = await import("@/lib/alerts")
+    .then((module) => module.isAlertConfigured())
+    .catch(() => false);
   const base: SecuritySnapshot = {
     available: false,
     generatedAt: now,
@@ -344,7 +348,7 @@ export async function getSecuritySnapshot(
     recent: [],
     lastEventAt: null,
     alertCooldownSeconds: 0,
-    alertChannelConfigured: Boolean(process.env.ALERT_WEBHOOK_URL),
+    alertChannelConfigured,
     strictMode: false,
     strictSecondsRemaining: 0,
     defenseMode: "normal",
@@ -482,12 +486,27 @@ export async function issueAttackAlertIfDue(
   }
 }
 
+/**
+ * Delivery failed (webhook down, SMTP rejected). Release the cooldown so the
+ * next n8n poll can retry instead of silently skipping the whole window.
+ */
+export async function releaseAttackAlertCooldown(): Promise<void> {
+  const client = getRedis();
+  if (!client) return;
+  try {
+    await ensureConnected(client);
+    await client.del("sec:alert:cooldown");
+  } catch {
+    // Best effort; the next window will retry anyway.
+  }
+}
+
 export function securityRecommendations(snapshot: SecuritySnapshot): string[] {
   const top = Object.entries(snapshot.byType).sort((a, b) => b[1] - a[1])[0]?.[0] || "";
 
   if (!snapshot.attack) {
     return [
-      "当前未达到攻击阈值。保持 ALERT_WEBHOOK_URL 可用，每周看一次最近事件即可。",
+      "当前未达到攻击阈值。保持告警通道可用（/admin/security/alerts），每周看一次最近事件即可。",
       "收到告警后先在 /admin/security 判断类型和来源 IP，再按 docs/SECURITY.md 处置。",
       "重防护（边缘限流、CrowdSec、Anubis）默认关闭，不要提前开在正常业务上。",
     ];
@@ -576,29 +595,8 @@ async function postAlertWebhook(
   text: string,
   extra: Record<string, unknown> = {},
 ): Promise<{ ok: boolean; error?: string }> {
-  const url = process.env.ALERT_WEBHOOK_URL;
-  if (!url) return { ok: false, error: "未配置 ALERT_WEBHOOK_URL" };
-
-  try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "user-agent": "CokeAI-Security/1.0",
-      },
-      body: JSON.stringify({
-        text,
-        content: text,
-        source: "cokeai-security",
-        ...extra,
-      }),
-      signal: AbortSignal.timeout(5_000),
-    });
-    if (!response.ok) return { ok: false, error: `告警通道返回 HTTP ${response.status}` };
-    return { ok: true };
-  } catch {
-    return { ok: false, error: "告警通道不可达" };
-  }
+  const { sendAlert } = await import("@/lib/alerts");
+  return sendAlert(text, extra);
 }
 
 /**
