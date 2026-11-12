@@ -20,6 +20,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { config } from "@/lib/config";
 import { isEasyPayConfigured } from "@/lib/payments/easypay";
 import { getPublicProduct } from "@/lib/shop/catalog";
+import { createShopCaptcha } from "@/lib/shop/captcha";
 import { SHOP_COPY } from "@/lib/shop/copy";
 import { isShopUsdtAvailable } from "@/lib/shop/usdt";
 
@@ -54,6 +55,17 @@ export default async function ShopProductPage({
   if (!product) notFound();
 
   const tutorial = getShopTutorial(product.slug);
+  // Render the first captcha with the page so opening the payment step never
+  // waits on a round trip. Refreshes still go through /api/shop/captcha. A
+  // misconfigured key must not take the product page down.
+  let initialCaptcha: ReturnType<typeof createShopCaptcha> | null = null;
+  if (user) {
+    try {
+      initialCaptcha = createShopCaptcha();
+    } catch {
+      initialCaptcha = null;
+    }
+  }
 
   return (
     <>
@@ -144,6 +156,7 @@ export default async function ShopProductPage({
                 loggedIn={Boolean(user)}
                 defaultEmail={user?.email || ""}
                 qtyMax={config.shopMaxQty}
+                initialCaptcha={initialCaptcha}
                 paymentOptions={{
                   // Personal Alipay QR and manual transfers stay off. The
                   // merchant EasyPay option appears only when configured.
