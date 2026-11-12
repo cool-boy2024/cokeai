@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowLeft, LayoutDashboard, ShoppingBag } from "lucide-react";
+import { ArrowLeft, LayoutDashboard, LogOut, ShoppingBag } from "lucide-react";
+import { logoutAction } from "@/app/actions/auth";
 import { requireAdmin } from "@/lib/auth";
 import { AppSidebar } from "@/components/AppSidebar";
 
@@ -35,6 +36,16 @@ export default async function AdminLayout({
               <LayoutDashboard size={13} /> 用户控制台
             </Link>
             <span className="badge badge-dark">内部</span>
+            <form action={logoutAction}>
+              <button
+                className="topbar-logout"
+                type="submit"
+                title="退出登录"
+                aria-label="退出登录"
+              >
+                <LogOut size={13} /> <span>退出</span>
+              </button>
+            </form>
           </div>
         </header>
         <div className="app-content">{children}</div>

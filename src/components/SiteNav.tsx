@@ -11,6 +11,7 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { X } from "@phosphor-icons/react";
+import { logoutAction } from "@/app/actions/auth";
 import { PUBLIC_API_SALES_ENABLED } from "@/lib/public-features";
 import { Logo } from "./Logo";
 
@@ -243,9 +244,16 @@ export function SiteNav({ loggedIn }: { loggedIn: boolean }) {
 
       <div className="public-mobile-foot">
         {loggedIn ? (
-          <Link className="btn btn-primary" href="/dashboard" onClick={close}>
-            进入控制台
-          </Link>
+          <>
+            <Link className="btn btn-primary" href="/dashboard" onClick={close}>
+              进入控制台
+            </Link>
+            <form action={logoutAction} className="public-mobile-logout">
+              <button className="btn btn-light" type="submit">
+                退出登录
+              </button>
+            </form>
+          </>
         ) : (
           <>
             <Link className="btn btn-primary" href="/register" onClick={close}>
@@ -279,9 +287,16 @@ export function SiteNav({ loggedIn }: { loggedIn: boolean }) {
 
       <div className="public-actions">
         {loggedIn ? (
-          <Link className="btn btn-dark" href="/dashboard">
-            控制台
-          </Link>
+          <>
+            <Link className="btn btn-dark" href="/dashboard">
+              控制台
+            </Link>
+            <form action={logoutAction} className="public-logout-form">
+              <button className="public-logout" type="submit">
+                退出
+              </button>
+            </form>
+          </>
         ) : (
           <>
             <Link className="public-login" href="/login">
