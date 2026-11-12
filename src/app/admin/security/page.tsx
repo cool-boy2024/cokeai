@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import {
   Activity,
   AlertTriangle,
@@ -15,6 +16,11 @@ import {
   toggleEmergencyDefenseAction,
   toggleStrictModeAction,
 } from "@/app/actions/admin-security";
+import {
+  ALERT_CHANNEL_LABELS,
+  alertConfigTarget,
+  getAlertConfig,
+} from "@/lib/alerts";
 import { requireAdmin } from "@/lib/auth";
 import { formatDateTime } from "@/lib/format";
 import {
@@ -106,6 +112,7 @@ export default async function AdminSecurityPage({
   await requireAdmin();
   const params = await searchParams;
   const snapshot = await getSecuritySnapshot(100);
+  const alertConfig = await getAlertConfig();
 
   const topType = Object.entries(snapshot.byType).sort((a, b) => b[1] - a[1])[0];
   const rows = defenseRows(snapshot.defenseMode);
@@ -119,6 +126,9 @@ export default async function AdminSecurityPage({
           <p>应用层拦截、攻击事件与管理员告警。数据来自 Redis，保留最近 2000 条。</p>
         </div>
         <div className="page-head-actions">
+          <Link className="btn btn-light btn-sm" href="/admin/security/alerts">
+            <Bell size={14} /> 告警设置
+          </Link>
           <form action={sendSecuritySummaryAlertAction}>
             <button className="btn btn-light btn-sm" type="submit">
               <Bell size={14} /> 发送当前摘要
@@ -181,7 +191,9 @@ export default async function AdminSecurityPage({
       {params.test === "failed" ? (
         <div className="notice notice-red">
           <AlertTriangle size={16} />
-          <div>告警未发送。检查 ALERT_WEBHOOK_URL 是否配置、服务端能否访问该地址。</div>
+          <div>
+            告警未发送。到“告警设置”检查渠道是否配置，并点“保存并发送测试”验证。
+          </div>
         </div>
       ) : null}
       {params.mode === "strict" ? (
@@ -286,7 +298,7 @@ export default async function AdminSecurityPage({
         </div>
         <ol className="small" style={{ paddingLeft: 20, lineHeight: 1.9 }}>
           <li>立即生效：登录、注册、下单、API、Server Action 等敏感入口限速减半，不需要发版。</li>
-          <li>自动通知：ALERT_WEBHOOK_URL 已配置时，告警通道会收到启动信息和三步边缘切换命令。</li>
+          <li>自动通知：告警通道已配置时，会收到启动信息和三步边缘切换命令。</li>
           <li>
             待运维：构建 <code>cokeai-caddy:ratelimit</code> 镜像、挂载
             <code>limits.rate-limit.caddy</code>、验证 429 与 SSE，再经审批把 Tunnel origin 从
@@ -355,7 +367,7 @@ export default async function AdminSecurityPage({
           <div>
             <h2>告警通道</h2>
             <p className="small muted">
-              与健康告警共用 ALERT_WEBHOOK_URL。应用只记录事件，n8n 负责推送，避免攻击时阻塞请求。
+              支持企业微信、飞书、自定义 Webhook 和邮箱 SMTP。n8n 只负责每 5 分钟拉取摘要，实际发送由应用完成。
             </p>
           </div>
           <span
@@ -370,8 +382,11 @@ export default async function AdminSecurityPage({
           <Radar size={16} />
           <div>
             {snapshot.alertChannelConfigured
-              ? "攻击达到阈值后，n8n 会每 5 分钟检查一次并推送；同一波攻击受冷却时间限制。"
-              : "ALERT_WEBHOOK_URL 为空时不会推送。先在 .env 配置告警 webhook，再点右上角“测试告警”。"}
+              ? `当前通道：${ALERT_CHANNEL_LABELS[alertConfig.channel]} · ${alertConfigTarget(alertConfig)}。攻击达到阈值后，同一波攻击受 30 分钟冷却限制。`
+              : "还没有配置告警通道。"}
+            {" "}
+            <Link href="/admin/security/alerts">去告警设置</Link>
+            ，填好机器人或邮箱后点“保存并发送测试”。
           </div>
         </div>
       </section>

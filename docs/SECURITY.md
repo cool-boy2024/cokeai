@@ -120,39 +120,36 @@ Caddy 边缘限流只有在流量经过 `edge:8080` 时才生效。现在 Cloudf
 
 ## 5. 告警通道配置与验证
 
-- `ALERT_WEBHOOK_URL` **与健康告警共用**，不重复定义。支持接收 `{ "text": "...", "content": "..." }` 的 Webhook（Slack、Discord 或自建转发器）。
-- n8n 工作流 `n8n/workflows/08-security-alert.json` 每 5 分钟调用内部摘要接口 `/api/internal/security/summary?mark=1`。`mark=1` 会占用告警冷却，保证一波攻击只推一条，不会每 5 分钟刷屏。
+告警渠道在后台 **`/admin/security` → “告警设置”**（`/admin/security/alerts`）配置，不需要改 `.env` 或重启。
+
+- 支持：**企业微信机器人、飞书机器人、自定义 Webhook、邮箱 SMTP**。
+- 企业微信/飞书：在群里添加自定义机器人，把 Webhook 地址粘进后台；二维码/密钥只加密存数据库，不回显。
+- 邮箱：选 QQ / 163 / Gmail 或自定义 SMTP，填邮箱地址、SMTP 授权码、收件人。QQ/163 的“密码”是邮箱设置里生成的授权码，不是登录密码。
+- 保存后点“保存并发送测试”，群里或邮箱收到测试消息即生效。
+- 旧的 `ALERT_WEBHOOK_URL` 只作为后台未配置时的兜底，可保留或删除。
+- n8n 工作流 `n8n/workflows/08-security-alert.json` 每 5 分钟调用内部摘要接口 `/api/internal/security/summary?mark=1`。`mark=1` 会占用告警冷却；**实际发送由应用在接口内完成**，n8n 不接触机器人地址或 SMTP 密码。
 - 阈值：近 15 分钟拦截次数 ≥ `SECURITY_ATTACK_THRESHOLD`（默认 60）判定为疑似攻击。
 - 冷却：同一波攻击最多每 `SECURITY_ALERT_COOLDOWN_MINUTES`（默认 30 分钟）告警一次，Redis key 为 `sec:alert:cooldown`。
 - 管理员页有两个手动入口：
   - “测试告警”：发一条明确标注测试的消息，30 秒内只能点一次。
-  - “把当前摘要发到告警通道”：把当前统计和最近事件摘要立即发送，用于确认通道和内容格式。
+  - “发送当前摘要”：把当前统计和最近事件摘要立即发送，用于确认通道和内容格式。
 - `SECURITY_GUARD_ENABLED=false` 会同时关闭扫描拦截和所有限流，只用于本地排障；生产不要长期关闭。
 
 验证步骤：
 
-1. 在 `.env` 配好 `ALERT_WEBHOOK_URL`，确认 app 和 n8n 能访问该地址。
-2. 打开 `/admin/security`，确认“告警通道”显示“已配置”。
-3. 点“测试告警”，到接收端确认收到；页面应提示“测试告警已发送”。
-4. 点“把当前摘要发到告警通道”，确认收到摘要且没有密钥、token、顾客隐私。
-5. 在 n8n 里手动执行一次 `08-security-alert.json`，确认返回 `ok: true`，且 `alert_channel_configured: true`。
+1. 打开 `/admin/security/alerts`，选择渠道并填好信息。
+2. 点“保存并发送测试”，到群里或邮箱确认收到。
+3. 回到 `/admin/security`，确认“告警通道”显示“已配置”和当前通道。
+4. 点“发送当前摘要”，确认收到摘要且没有密钥、token、顾客隐私。
+5. 在 n8n 里手动执行一次 `08-security-alert.json`，确认返回 `ok: true`；攻击时 `alert_sent` 为 true。
 6. 确认工作流已启用；n8n 工作流默认不启用，导入后先手动跑一次再启用。
 
-### 5.1 飞书 / 企业微信对接（交给伙伴完成）
+### 5.1 伙伴只需要做什么
 
-应用当前发送通用 JSON `{ "text": "...", "content": "...", "source": "cokeai-security", ... }`，Slack、Discord 和自建转发器可直接接收；**飞书和企业微信的机器人不吃这个格式**，需要伙伴在 `src/lib/security.ts` 的 `postAlertWebhook` 里按所选渠道改 body：
-
-- 飞书自定义机器人：`{"msg_type":"text","content":{"text":"..."}}`
-- 企业微信机器人：`{"msgtype":"text","text":{"content":"..."}}`
-
-对接清单：
-
-1. 在飞书群或企业微信群添加自定义机器人，拿到 webhook URL。URL 含凭证，只放服务器 `.env`，不要进仓库、PR、聊天或截图。
-2. 生产 `.env` 设置 `ALERT_WEBHOOK_URL=<机器人地址>`，重启 app 和 n8n。
-3. 修改 `postAlertWebhook` 的 body 适配所选渠道；保留 `source`、`attack`、`emergency_defense` 等字段，方便以后换渠道。
-4. 在 `/admin/security` 点“测试告警”，确认群内收到；再点“发送当前摘要”。
-5. 手动执行一次 n8n 工作流 `08-security-alert.json`，确认攻击时能推送。
-6. 在 `docs/HANDOFF.md` 的待办里把这一项勾掉，并写明使用的是飞书还是企业微信（不要写 URL）。
+1. 在飞书群或企业微信群添加自定义机器人，复制 Webhook 地址；或准备一个用于发信的邮箱和 SMTP 授权码。
+2. 登录运营后台 → 安全 → 告警设置，选择渠道，粘贴/填写自己的信息。
+3. 点“保存并发送测试”，确认自己的群或邮箱收到。
+4. 不需要改代码、`.env`、n8n 或服务器；Webhook/授权码不要发到聊天或写进仓库。
 
 ## 6. 一键应急防护与临时收紧
 
@@ -160,7 +157,7 @@ Caddy 边缘限流只有在流量经过 `edge:8080` 时才生效。现在 Cloudf
 
 - **入口**：`/admin/security` 右上角“启动应急防护”。
 - **立即生效**：应用层敏感入口（登录、注册、验证码、下单、API、Server Action）限速减半，不需要发版。
-- **自动通知**：向 `ALERT_WEBHOOK_URL` 推送启动消息和边缘切换三步命令；通道未配置时只改限流、不阻塞操作。
+- **自动通知**：向后台配置的告警通道推送启动消息和边缘切换三步命令；通道未配置时只改限流、不阻塞操作。
 - **自动恢复**：24 小时后自动过期；也可以在页面点“关闭应急防护”立即恢复。Redis key 为 `sec:defense`，配合 `sec:strict`。
 - **不会自动做的事**：不修改 Cloudflare Tunnel、不重建容器、不安装 Anubis/CrowdSec/WAF。边缘切换和重型防护仍按第 7 节由运维人工执行。
 - **注意**：它是降压，不是封禁。攻击者换 IP 仍可继续；仍需配合 Cloudflare 封 IP、Under Attack Mode 或边缘限流。
@@ -243,7 +240,7 @@ done | sort | uniq -c
 - 验证码接口在约第 31 次开始返回 429，并出现 `触发限流` 事件。
 - 登录页在约第 61 次开始返回 429。
 - 用管理员账号打开 `/admin/security`，能看到统计、Top IP、最近事件、防护状态表。
-- 配置了 `ALERT_WEBHOOK_URL` 后点“测试告警”，接收端应收到测试消息；未配置时应提示失败，而不是静默成功。
+- 在 `/admin/security/alerts` 保存渠道后点“测试告警”，接收端应收到测试消息；未配置时应提示失败，而不是静默成功。
 
 注意：本地是开发环境，`next dev` 的编译会干扰连续请求的耗时；以状态码分布为准，不要用本地结果推断生产容量。
 

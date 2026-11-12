@@ -143,11 +143,11 @@ curl -s -o /dev/null -w "health %{http_code}\n" http://127.0.0.1:3000/api/health
 
 ## 安全（2026-10-30）
 
-- 当前真正生效的只有应用层防护：`src/proxy.ts` 的扫描拦截，登录/注册/小店/API/Server Action 按 IP 限流；事件写 Redis，管理员页 `/admin/security`；n8n 每 5 分钟通过 `ALERT_WEBHOOK_URL` 推送告警。
+- 当前真正生效的只有应用层防护：`src/proxy.ts` 的扫描拦截，登录/注册/小店/API/Server Action 按 IP 限流；事件写 Redis，管理员页 `/admin/security`；n8n 每 5 分钟拉取摘要，应用把告警发到后台配置的通道。
 - **Cloudflare Tunnel 仍指向 `app:3000`**，边缘 Caddy 限流不在公网链路上；CrowdSec、Anubis、WAF 均未启用。`ops/edge/` 的限流预案默认关闭，启用前必须单独审批并验证回滚。
 - 告警阈值默认 60 次 / 15 分钟（`SECURITY_ATTACK_THRESHOLD`），冷却 30 分钟（`SECURITY_ALERT_COOLDOWN_MINUTES`）。管理员页可“测试告警”“把当前摘要发到告警通道”，也可临时收紧限流（`sec:strict`，默认 60 分钟自动恢复）。
 - **一键应急防护**在 `/admin/security` 右上角：点击后应用层限速立即减半（`sec:defense` + `sec:strict`，24 小时自动恢复），并向告警通道发送边缘切换三步命令；不会自动改 Tunnel 或重建容器。关闭同理，恢复限流并提示把 Tunnel 改回 `app:3000`。
-- **待伙伴完成**：告警渠道对接飞书或企业微信。当前 payload 是通用 `{text, content}`，飞书/企微机器人需要在 `src/lib/security.ts` 的 `postAlertWebhook` 中改 body；步骤见 `docs/SECURITY.md` 第 5.1 节。webhook URL 只放服务器 `.env`，不进仓库。
+- **伙伴只需要在后台填信息**：安全 → 告警设置（`/admin/security/alerts`）选择企业微信机器人、飞书机器人、自定义 Webhook 或邮箱 SMTP，填自己的 Webhook 或邮箱授权码，点“保存并发送测试”即可。地址和密码加密存数据库，不回显；不需要改 `.env`、代码或 n8n。步骤见 `docs/SECURITY.md` 第 5.1 节。
 - 处置顺序固定：先确认告警 → 看 `/admin/security` → 判断类型 → 采取动作 → 通知/记录 → 恢复。完整手册、各类型建议与红线见 `docs/SECURITY.md`。
 
 ## 给伙伴 AI 的工作方式建议

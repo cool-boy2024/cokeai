@@ -333,6 +333,12 @@ pre {
   gap: 14px;
 }
 
+.form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .form-error,
 .form-success {
   padding: 10px 12px;

@@ -709,3 +709,15 @@ CREATE INDEX IF NOT EXISTS announcements_public_idx
 
 INSERT INTO schema_migrations (version) VALUES ('004_announcements')
 ON CONFLICT (version) DO NOTHING;
+
+-- Generic admin-managed integration settings. Values are encrypted with
+-- APP_ENCRYPTION_KEY (same scheme as payment_settings).
+CREATE TABLE IF NOT EXISTS app_settings (
+  key TEXT PRIMARY KEY,
+  value_encrypted TEXT NOT NULL,
+  updated_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+INSERT INTO schema_migrations (version) VALUES ('005_app_settings')
+ON CONFLICT (version) DO NOTHING;

@@ -1,8 +1,10 @@
+import { sendAlert } from "@/lib/alerts";
 import { unauthorized, verifyInternalSecret } from "@/lib/internal";
 import {
   formatSecurityAlert,
   getSecuritySnapshot,
   issueAttackAlertIfDue,
+  releaseAttackAlertCooldown,
   securityRecommendations,
 } from "@/lib/security";
 
@@ -19,7 +21,21 @@ export async function GET(request: Request): Promise<Response> {
 
   const snapshot = await getSecuritySnapshot(200);
   const mark = new URL(request.url).searchParams.get("mark") === "1";
-  const shouldAlert = mark ? await issueAttackAlertIfDue(snapshot) : false;
+  const shouldAlert =
+    mark && snapshot.alertChannelConfigured
+      ? await issueAttackAlertIfDue(snapshot)
+      : false;
+  // Deliver from the app so the channel configured in /admin/security/alerts
+  // applies without giving n8n access to the webhook or SMTP secret.
+  const alertResult = shouldAlert
+    ? await sendAlert(formatSecurityAlert(snapshot), {
+        attack: snapshot.attack,
+        source: "cokeai-security",
+      })
+    : null;
+  if (alertResult && !alertResult.ok) {
+    await releaseAttackAlertCooldown();
+  }
 
   return Response.json(
     {
@@ -42,6 +58,8 @@ export async function GET(request: Request): Promise<Response> {
       defense_mode: snapshot.defenseMode,
       defense_seconds_remaining: snapshot.defenseSecondsRemaining,
       recommendations: securityRecommendations(snapshot),
+      alert_sent: Boolean(alertResult?.ok),
+      alert_error: alertResult?.error ?? null,
       alert_text: shouldAlert ? formatSecurityAlert(snapshot) : null,
       generated_at: new Date(snapshot.generatedAt).toISOString(),
     },

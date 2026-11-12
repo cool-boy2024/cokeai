@@ -69,9 +69,13 @@ docker compose up -d --force-recreate n8n
 
 如果不填 `ALERT_WEBHOOK_URL`，工作流仍会正常拉取数据，但不会发送消息。
 
+安全告警工作流 `08-security-alert.json` 例外：它只负责轮询摘要，实际发送由应用完成，
+渠道在后台 **`/admin/security/alerts`** 配置（企业微信 / 飞书 / Webhook / 邮箱），
+不需要给 n8n 配置 `ALERT_WEBHOOK_URL`。
+
 ## 4. 导入工作流
 
-在 n8n 中依次进入 **Workflows → Import from File**，导入 `n8n/workflows/` 下的六个 JSON 文件。
+在 n8n 中依次进入 **Workflows → Import from File**，导入 `n8n/workflows/` 下的八个 JSON 文件。
 
 也可以使用命令行导入：
 
