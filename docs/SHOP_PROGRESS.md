@@ -22,8 +22,10 @@
   仍保留记录但 `published_at` 为空，补货后再次同步即可上架。
 - 数据表：`shop_suppliers.kind` CHECK 扩为 `aibijia|manual|zyanai`；其余复用
   `shop_offers`、`shop_products`、`shop_product_sources`。
+- 生产执行：镜像会额外打包 `zyanai-sync.mjs`（`npm run build:zyanai`），
+  在 app 容器内运行 `docker compose exec app node zyanai-sync.mjs`
+  （加 `--dry` 只预览）。未配置定时同步；刷新价格或补货时手动执行。
 - 验证：本地导入 38/38，公共可售 38；`npm run typecheck`、`npm run build` 通过。
-  生产迁移随容器启动执行，未配置定时同步；需要刷新价格时手动跑一次命令。
 
 ## 2026-11-13：USDT 三网收款（TRC20 / BSC BEP20 / Polygon）
 

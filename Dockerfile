@@ -9,7 +9,7 @@ WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-RUN npm run build
+RUN npm run build && npm run build:zyanai
 
 FROM node:22-alpine AS runner
 RUN apk add --no-cache libc6-compat
@@ -27,6 +27,9 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/db ./db
 COPY --from=builder --chown=nextjs:nodejs /app/scripts ./scripts
+# Standalone bundle for the zyanai mirror; run it inside the app container when
+# the supplier catalogue needs a refresh.
+COPY --from=builder --chown=nextjs:nodejs /app/zyanai-sync.mjs ./zyanai-sync.mjs
 # Next bundles most deps; seed scripts still need bcryptjs on disk.
 COPY --from=deps --chown=nextjs:nodejs /app/node_modules/bcryptjs ./node_modules/bcryptjs
 

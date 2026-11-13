@@ -1,7 +1,7 @@
 import { config } from "@/lib/config";
 import { query, withTransaction } from "@/lib/db";
 import { suggestRetailPrice } from "@/lib/shop/catalog";
-import { extractReadableText } from "@/lib/shop/import";
+import { extractReadableText } from "@/lib/shop/readable";
 import { sanitizeSupplierCopy } from "@/lib/shop/sanitize";
 
 /**
