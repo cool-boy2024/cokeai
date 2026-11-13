@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:zyanai": "esbuild scripts/sync-zyanai.ts --bundle --platform=node --format=esm --target=node22 --tsconfig=tsconfig.json --packages=external --outfile=zyanai-sync.mjs",
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "db:migrate": "node scripts/migrate.mjs",
@@ -54,6 +55,7 @@
     "@types/qrcode": "^1.5.6",
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
+    "esbuild": "^0.28.2",
     "puppeteer-core": "^25.16.0",
     "tsx": "^4.23.15",
     "typescript": "5.9.3"

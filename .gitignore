@@ -38,3 +38,6 @@ tools/supplier-scraper/*.jsonl
 .DS_Store
 *.log
 .claude/
+
+# Bundled maintenance scripts (built in Docker, not committed)
+zyanai-sync.mjs
