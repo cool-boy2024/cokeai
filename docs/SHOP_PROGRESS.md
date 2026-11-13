@@ -1,6 +1,20 @@
 # 小店实施进度
 
-更新时间：2026-11-13
+更新时间：2026-11-14
+
+## 2026-11-14：zyanai 商品定时同步（每 6 小时）
+
+- 接口：`POST /api/internal/shop/zyanai-sync`，`x-internal-secret` 校验与帮助中心
+  同步一致；支持 `?dry=1` 只抓不写、`?limit=N` 限量。返回
+  `{ ok, supplierId, itemsSeen, imported, skipped }`，有跳过项时 HTTP 207。
+  单次最长 300 秒，调用 `syncZyanaiProducts()`，与手动脚本完全同一条路径。
+- 定时：`n8n/workflows/10-zyanai-sync.json`，cron `41 */6 * * *`
+  （Asia/Shanghai，00:41 / 06:41 / 12:41 / 18:41），带 secret 调用上述接口，
+  超时 300 秒，失败不阻断工作流；帮助中心同步在 `:23`，两者错开。
+- 行为：只更新商品标题、介绍、价格和库存状态；缺货隐藏、补货恢复上架；
+  价格变化写 `shop_offer_price_history`；每次运行记 `shop_sync_runs`；
+  不触碰订单、支付和 USDT 扫描。
+- 手动兜底：`docker compose exec app node zyanai-sync.mjs` 或后台带 secret 调接口。
 
 ## 2026-11-13：zyanai.cc 商品镜像（人工采购）
 
@@ -24,7 +38,7 @@
   `shop_offers`、`shop_products`、`shop_product_sources`。
 - 生产执行：镜像会额外打包 `zyanai-sync.mjs`（`npm run build:zyanai`），
   在 app 容器内运行 `docker compose exec app node zyanai-sync.mjs`
-  （加 `--dry` 只预览）。未配置定时同步；刷新价格或补货时手动执行。
+  （加 `--dry` 只预览）。定时同步见上一节（n8n 每 6 小时）。
 - 验证：本地导入 38/38，公共可售 38；`npm run typecheck`、`npm run build` 通过。
 
 ## 2026-11-13：USDT 三网收款（TRC20 / BSC BEP20 / Polygon）
