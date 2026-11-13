@@ -1,5 +1,6 @@
 import { query, toNumber } from "@/lib/db";
 import { parseEasyPayNotification } from "@/lib/payments/easypay";
+import { notifyShopOrderPaid } from "@/lib/shop/notify";
 import { markShopOrderPaid } from "@/lib/shop/orders";
 
 export const runtime = "nodejs";
@@ -105,6 +106,7 @@ async function handle(request: Request): Promise<Response> {
         WHERE provider = 'easypay' AND event_id = $1`,
       [eventId],
     );
+    void notifyShopOrderPaid(order.id);
     return text("success");
   } catch (error) {
     const message = error instanceof Error ? error.message : "payment_failed";

@@ -55,7 +55,13 @@ function isActive(href: string, pathname: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export function DashboardNav({ admin = false }: { admin?: boolean }) {
+export function DashboardNav({
+  admin = false,
+  badges,
+}: {
+  admin?: boolean;
+  badges?: Record<string, number>;
+}) {
   const pathname = usePathname();
   const items = admin ? adminItems : userItems;
 
@@ -64,6 +70,7 @@ export function DashboardNav({ admin = false }: { admin?: boolean }) {
       {items.map((item) => {
         const Icon = item.icon;
         const active = isActive(item.href, pathname);
+        const count = badges?.[item.href] || 0;
         return (
           <Link
             key={item.href}
@@ -72,6 +79,11 @@ export function DashboardNav({ admin = false }: { admin?: boolean }) {
           >
             <Icon />
             <span>{item.label}</span>
+            {count > 0 ? (
+              <span className="nav-count" aria-label={`${count} 个待处理`}>
+                {count > 99 ? "99+" : count}
+              </span>
+            ) : null}
           </Link>
         );
       })}
