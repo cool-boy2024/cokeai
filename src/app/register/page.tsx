@@ -45,14 +45,10 @@ export default async function RegisterPage({
               欢迎来到
               <span className="auth-display-brand">CokeAI</span>
             </p>
-            <p className="auth-intro-note">
-              API Key、余额、订单与订阅，统一管理。
-            </p>
             <p className="auth-intro-foot">
               <span className="auth-intro-dot" />
               AI API · 数字商品 · 人民币计费
             </p>
-            <p className="auth-intro-disclaimer">生态标识仅作示意</p>
           </aside>
           <section className="auth-card" aria-labelledby="auth-title">
             <div className="auth-card-head">
@@ -60,7 +56,7 @@ export default async function RegisterPage({
                 欢迎来到 <strong>CokeAI</strong>
               </p>
               <p className="auth-eyebrow">安全入口 · AUTH</p>
-              <h2 id="auth-title">创建账户</h2>
+              <h1 id="auth-title">创建账户</h1>
               <p className="auth-sub">注册后充值即可使用，余额不过期。</p>
             </div>
             <AuthForm mode="register" refCode={refCode} />

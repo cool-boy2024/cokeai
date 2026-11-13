@@ -60,6 +60,10 @@
    -------------------------------------------------------------------------- */
 
 .auth-galaxy {
+  --tunnel-x: 64%;
+  --tunnel-y: 45%;
+  --tunnel-ring: 980px;
+  --tunnel-perspective: 1200px;
   position: fixed;
   inset: 0;
   z-index: 1;
@@ -132,8 +136,8 @@
 .auth-galaxy__scene {
   position: absolute;
   inset: 0;
-  perspective: 1200px;
-  perspective-origin: 72% 46%;
+  perspective: var(--tunnel-perspective);
+  perspective-origin: var(--tunnel-x) var(--tunnel-y);
 }
 
 .auth-galaxy__layer {
@@ -142,37 +146,111 @@
   transform-style: preserve-3d;
 }
 
-.auth-galaxy__orbit {
+/* --------------------------------------------------------------------------
+   Light tunnel
+   Twelve concentric rings fly from the vanishing point towards the viewer.
+   Rings are staggered with negative delays, so every frame (and every paused
+   reduced-motion frame) shows several tunnel depths at once.
+   -------------------------------------------------------------------------- */
+
+.auth-tunnel__core {
   position: absolute;
-  border: 1px solid rgba(31, 111, 92, 0.13);
+  top: var(--tunnel-y);
+  left: var(--tunnel-x);
+  width: min(64vmin, 720px);
+  aspect-ratio: 1;
   border-radius: 50%;
+  background: radial-gradient(
+    circle at 50% 50%,
+    rgba(31, 111, 92, 0.13),
+    rgba(31, 111, 92, 0.045) 36%,
+    transparent 68%
+  );
+  opacity: 0.72;
+  transform: translate(-50%, -50%) scale(0.98);
+  animation: auth-tunnel-core 12s ease-in-out infinite alternate;
+  will-change: opacity, transform;
 }
 
-.auth-galaxy__orbit--a {
-  top: 46%;
-  left: 72%;
-  width: min(720px, 56vw);
-  height: min(720px, 82vh);
-  transform: translate(-50%, -50%) rotate(-14deg);
+.auth-tunnel__rings {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
 }
 
-.auth-galaxy__orbit--b {
-  top: 48%;
-  left: 70%;
-  width: min(920px, 68vw);
-  height: min(500px, 54vh);
-  border-style: dashed;
-  opacity: 0.58;
-  transform: translate(-50%, -50%) rotate(18deg);
+.auth-tunnel__ring {
+  position: absolute;
+  top: var(--tunnel-y);
+  left: var(--tunnel-x);
+  width: var(--tunnel-ring);
+  height: var(--tunnel-ring);
+  border: 1px solid rgba(22, 22, 21, 0.19);
+  border-radius: 50%;
+  opacity: 0.4;
+  /* Ready-made still frame: with motion enabled the keyframes take over; with
+     reduced motion this staggered set remains as a complete tunnel. */
+  transform: translate(-50%, -50%)
+    translateZ(calc(-780px + var(--ring-index) * 92px))
+    scale(calc(0.44 + var(--ring-index) * 0.045));
+  animation: auth-tunnel-ring 9s linear infinite;
+  animation-delay: calc(var(--ring-index) * -0.75s);
+  will-change: transform, opacity;
 }
 
-.auth-galaxy__orbit--c {
-  top: 72%;
-  left: 20%;
-  width: min(540px, 38vw);
-  height: min(320px, 32vh);
-  opacity: 0.52;
-  transform: translate(-50%, -50%) rotate(-8deg);
+.auth-tunnel__ring:nth-child(2n) {
+  border-color: rgba(31, 111, 92, 0.3);
+}
+
+.auth-tunnel__ring:nth-child(3n) {
+  border-color: rgba(22, 22, 21, 0.12);
+}
+
+.auth-tunnel__ring--accent {
+  border-width: 1.5px;
+  border-color: rgba(31, 111, 92, 0.42);
+  box-shadow: 0 0 30px rgba(31, 111, 92, 0.1);
+}
+
+.auth-tunnel__streaks {
+  position: absolute;
+  inset: 0;
+}
+
+.auth-tunnel__streak {
+  position: absolute;
+  top: var(--tunnel-y);
+  left: var(--tunnel-x);
+  width: var(--streak-length, 120px);
+  height: 1.5px;
+  border-radius: 9999px;
+  background: linear-gradient(90deg, transparent, rgba(31, 111, 92, 0.5));
+  transform-origin: 0 50%;
+  opacity: 0;
+  animation: auth-tunnel-streak 4.2s linear infinite;
+  animation-delay: var(--streak-delay, 0s);
+  will-change: transform, opacity;
+}
+
+.auth-tunnel__streak::after {
+  position: absolute;
+  top: 50%;
+  right: -2px;
+  width: 3px;
+  height: 3px;
+  margin-top: -1.5px;
+  border-radius: 50%;
+  background: rgba(31, 111, 92, 0.55);
+  box-shadow: 0 0 8px rgba(31, 111, 92, 0.34);
+  content: "";
+}
+
+.auth-tunnel__streak:nth-child(3n) {
+  background: linear-gradient(90deg, transparent, rgba(22, 22, 21, 0.28));
+}
+
+.auth-tunnel__streak:nth-child(3n)::after {
+  background: rgba(22, 22, 21, 0.38);
+  box-shadow: none;
 }
 
 .auth-galaxy__slot {
@@ -337,19 +415,11 @@
   margin-top: 2px;
 }
 
-.auth-intro-note {
-  max-width: 380px;
-  margin: 22px 0 0;
-  color: var(--muted);
-  font-size: 15px;
-  line-height: 1.75;
-}
-
 .auth-intro-foot {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-top: clamp(36px, 8vh, 88px);
+  margin-top: clamp(44px, 11vh, 104px);
   color: var(--muted);
   font-family: var(--mono);
   font-size: 10px;
@@ -365,14 +435,6 @@
   border-radius: 50%;
   background: var(--green);
   box-shadow: 0 0 0 4px rgba(31, 111, 92, 0.1);
-}
-
-.auth-intro-disclaimer {
-  margin: 10px 0 0;
-  color: #9a968e;
-  font-size: 10px;
-  letter-spacing: 0.02em;
-  line-height: 16px;
 }
 
 /* --------------------------------------------------------------------------
@@ -475,7 +537,7 @@
   content: "";
 }
 
-.auth-page.auth-space .auth-card h2 {
+.auth-page.auth-space .auth-card h1 {
   margin: 0;
   color: var(--ink);
   font-size: 36px;
@@ -680,7 +742,7 @@
     margin-bottom: 10px;
   }
 
-  .auth-page.auth-space .auth-card h2 {
+  .auth-page.auth-space .auth-card h1 {
     font-size: 30px;
   }
 
@@ -699,35 +761,15 @@
     height: 38px;
   }
 
-  .auth-galaxy__scene {
-    perspective: 900px;
-    perspective-origin: 50% 30%;
+  .auth-galaxy {
+    --tunnel-x: 50%;
+    --tunnel-y: 18%;
+    --tunnel-ring: 560px;
+    --tunnel-perspective: 760px;
   }
 
-  .auth-galaxy__orbit--a {
-    top: 11%;
-    left: 50%;
-    width: 128vw;
-    height: 200px;
-    transform: translate(-50%, -50%) rotate(-5deg);
-  }
-
-  .auth-galaxy__orbit--b {
-    top: 9%;
-    left: 50%;
-    width: 168vw;
-    height: 280px;
-    opacity: 0.5;
-    transform: translate(-50%, -50%) rotate(4deg);
-  }
-
-  .auth-galaxy__orbit--c {
-    top: 89%;
-    left: 44%;
-    width: 140vw;
-    height: 220px;
-    opacity: 0.45;
-    transform: translate(-50%, -50%) rotate(-6deg);
+  .auth-tunnel__core {
+    width: min(72vmin, 420px);
   }
 
   .auth-galaxy__slot--desktop-only {
@@ -770,7 +812,7 @@
     margin-bottom: 6px;
   }
 
-  .auth-page.auth-space .auth-card h2 {
+  .auth-page.auth-space .auth-card h1 {
     font-size: 28px;
   }
 
@@ -857,6 +899,54 @@
   }
 }
 
+@keyframes auth-tunnel-ring {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) translateZ(-900px) scale(0.3);
+  }
+  8% {
+    opacity: 0.62;
+  }
+  55% {
+    opacity: 0.74;
+  }
+  84% {
+    opacity: 0.46;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) translateZ(350px) scale(1.02);
+  }
+}
+
+@keyframes auth-tunnel-streak {
+  0% {
+    opacity: 0;
+    transform: rotate(var(--streak-angle)) translateX(52px) scaleX(0.35);
+  }
+  14% {
+    opacity: 0.7;
+  }
+  76% {
+    opacity: 0.24;
+  }
+  100% {
+    opacity: 0;
+    transform: rotate(var(--streak-angle)) translateX(860px) scaleX(1.45);
+  }
+}
+
+@keyframes auth-tunnel-core {
+  from {
+    opacity: 0.58;
+    transform: translate(-50%, -50%) scale(0.94);
+  }
+  to {
+    opacity: 0.86;
+    transform: translate(-50%, -50%) scale(1.05);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .auth-topbar,
   .auth-intro,
@@ -867,6 +957,23 @@
   }
 
   .auth-galaxy__dust {
+    animation: none;
+  }
+
+  /* Drop the animation and keep the pre-set staggered rings and rays: the
+     static frame still shows the full multi-layer tunnel instead of a single
+     flat circle. */
+  .auth-tunnel__ring {
+    animation: none;
+  }
+
+  .auth-tunnel__streak {
+    animation: none;
+    opacity: 0.24;
+    transform: rotate(var(--streak-angle)) translateX(300px);
+  }
+
+  .auth-tunnel__core {
     animation: none;
   }
 }
