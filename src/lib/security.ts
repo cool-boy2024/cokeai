@@ -31,6 +31,15 @@ export type SecurityIpCount = { ip: string; count: number };
 
 export type DefenseMode = "normal" | "emergency";
 
+export type SecurityStatus = "normal" | "watch" | "attack" | "emergency";
+
+export type SecurityHourBucket = {
+  at: number;
+  label: string;
+  shortLabel: string;
+  count: number;
+};
+
 export type SecuritySnapshot = {
   available: boolean;
   generatedAt: number;
@@ -38,12 +47,21 @@ export type SecuritySnapshot = {
   windowCount: number;
   threshold: number;
   attack: boolean;
+  status: SecurityStatus;
+  count5m: number;
+  count15m: number;
+  count1h: number;
   todayTotal: number;
   todayUniqueIps: number;
+  last24hTotal: number;
+  last7dTotal: number;
   byType: Record<string, number>;
+  byTypeLast7d: Record<string, number>;
+  hourly: SecurityHourBucket[];
   topIps: SecurityIpCount[];
   recent: SecurityEvent[];
   lastEventAt: number | null;
+  lastAttackAt: number | null;
   alertCooldownSeconds: number;
   alertChannelConfigured: boolean;
   strictMode: boolean;
@@ -61,6 +79,17 @@ const MAX_EVENTS = 2_000;
 const COUNTER_TTL_SECONDS = 2 * 24 * 60 * 60;
 const WINDOW_MINUTES = 15;
 
+// Non-deduped counters: one increment per actually blocked request.
+const STATS_PREFIX = "sec:stats";
+const STATS_TTL_SECONDS = 9 * 24 * 60 * 60;
+const MINUTE_COUNTER_TTL_SECONDS = 2 * 60 * 60;
+const LAST_EVENT_KEY = `${STATS_PREFIX}:last`;
+const ATTACK_MARK_KEY = `${STATS_PREFIX}:attack:last`;
+const WINDOW_5M_KEY = `${STATS_PREFIX}:w:5m`;
+const WINDOW_15M_KEY = `${STATS_PREFIX}:w:15m`;
+const WINDOW_1H_KEY = `${STATS_PREFIX}:w:1h`;
+const PUBLIC_STATUS_CACHE_MS = 60_000;
+
 function positiveInt(name: string, fallback: number): number {
   const raw = process.env[name];
   if (!raw) return fallback;
@@ -75,6 +104,18 @@ export const securityPolicy = {
   eventRetentionDays: positiveInt("SECURITY_EVENT_RETENTION_DAYS", 7),
 } as const;
 
+/**
+ * Visible status thresholds. They are derived from the existing 15-minute
+ * alert threshold; the proxy policies themselves are unchanged.
+ */
+export const securityStatusRules = {
+  watch5m: 5,
+  watch1h: 10,
+  attack5m: Math.max(10, Math.ceil(securityPolicy.attackThreshold / 2)),
+  attack15m: securityPolicy.attackThreshold,
+  attack1h: securityPolicy.attackThreshold * 2,
+} as const;
+
 export const SECURITY_EVENT_LABELS: Record<SecurityEventType, string> = {
   probe: "扫描探测",
   rate_limit: "触发限流",
@@ -84,6 +125,39 @@ export const SECURITY_EVENT_LABELS: Record<SecurityEventType, string> = {
   support: "客服接口频控",
   test: "测试事件",
 };
+
+export const SECURITY_STATUS_LABELS: Record<SecurityStatus, string> = {
+  normal: "正常",
+  watch: "观察",
+  attack: "攻击中",
+  emergency: "应急防护",
+};
+
+/**
+ * Status is derived from real, non-deduped block counters. Emergency mode wins;
+ * otherwise any of the three attack windows triggers "攻击中" and lower recent
+ * activity triggers "观察".
+ */
+export function getSecurityStatus(
+  defenseMode: DefenseMode,
+  counts: { count5m: number; count15m: number; count1h: number },
+): SecurityStatus {
+  if (defenseMode === "emergency") return "emergency";
+  if (
+    counts.count5m >= securityStatusRules.attack5m ||
+    counts.count15m >= securityStatusRules.attack15m ||
+    counts.count1h >= securityStatusRules.attack1h
+  ) {
+    return "attack";
+  }
+  if (
+    counts.count5m >= securityStatusRules.watch5m ||
+    counts.count1h >= securityStatusRules.watch1h
+  ) {
+    return "watch";
+  }
+  return "normal";
+}
 
 const SUSPICIOUS_PATH_PATTERNS = [
   /^\/\.(?:env|git|svn|hg|aws|ssh|ds_store)/i,
@@ -205,13 +279,88 @@ export function clientIpFromHeaders(headers: Headers): string {
   return (headers.get("x-real-ip") || "local").trim().slice(0, 64);
 }
 
+const dayFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Shanghai",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+const hourFormatter = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Asia/Shanghai",
+  hour: "2-digit",
+  hourCycle: "h23",
+});
+
+const timelineShortFormatter = new Intl.DateTimeFormat("zh-CN", {
+  timeZone: "Asia/Shanghai",
+  month: "2-digit",
+  day: "2-digit",
+});
+
 function dayKey(at = Date.now()): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Shanghai",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date(at));
+  return dayFormatter.format(new Date(at));
+}
+
+function hourKey(at: number): string {
+  return hourFormatter.format(new Date(at));
+}
+
+function hourField(at: number): string {
+  return `h${hourKey(at)}`;
+}
+
+function minuteCounterKey(at: number): string {
+  return `${STATS_PREFIX}:m:${Math.floor(at / 60_000)}`;
+}
+
+function recentDayKeys(now: number, count: number): string[] {
+  return Array.from({ length: count }, (_, index) => dayKey(now - index * 86_400_000));
+}
+
+function minuteCounterKeys(now: number, count: number): string[] {
+  const currentMinute = Math.floor(now / 60_000);
+  return Array.from(
+    { length: count },
+    (_, index) => `${STATS_PREFIX}:m:${currentMinute - index}`,
+  );
+}
+
+function timelineShortLabel(at: number): string {
+  const hour = hourKey(at);
+  if (hour === "00") return timelineShortFormatter.format(new Date(at));
+  return `${Number(hour)}时`;
+}
+
+function timelineLabel(at: number): string {
+  return `${timelineShortFormatter.format(new Date(at))} ${hourKey(at)}:00`;
+}
+
+function sumNumbers(values: Array<number | null>): number {
+  return values.reduce<number>((total, value) => total + (value || 0), 0);
+}
+
+function typeCountsFromHash(hash: Record<string, string> | null): Record<string, number> {
+  const counts: Record<string, number> = {};
+  if (!hash) return counts;
+  for (const [field, raw] of Object.entries(hash)) {
+    if (field === "total" || /^h\d{2}$/.test(field)) continue;
+    const value = Number(raw);
+    if (Number.isFinite(value) && value > 0) counts[field] = value;
+  }
+  return counts;
+}
+
+function addTypeCounts(target: Record<string, number>, source: Record<string, number>): void {
+  for (const [type, count] of Object.entries(source)) {
+    target[type] = (target[type] || 0) + count;
+  }
+}
+
+function numericValue(raw: unknown): number | null {
+  if (raw === null || raw === undefined || raw === "") return null;
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : null;
 }
 
 function normalizeEvent(
@@ -233,6 +382,76 @@ function normalizeEvent(
 }
 
 /**
+ * Increment the non-deduped block counters. This is called for every blocked
+ * request before the 60-second event dedupe, so "today / 24h / 7d" never
+ * undercounts a burst that the event log intentionally collapses.
+ *
+ * Keys:
+ * - sec:stats:YYYY-MM-DD     hash: total, one field per type, h00..h23
+ * - sec:stats:m:<epochMin>   per-minute total for 5m / 15m / 1h windows
+ * - sec:stats:last           last block timestamp
+ * - sec:stats:attack:last    last time an attack threshold was crossed
+ * - sec:ips / sec:ipcount    unique IPs and per-IP counts for the day
+ *
+ * Every key has a TTL of at least two hours; daily keys live nine days so the
+ * admin page can show today plus the previous seven days.
+ */
+export async function bumpSecurityCounters(
+  type: SecurityEventType,
+  at = Date.now(),
+  ip = "unknown",
+): Promise<void> {
+  const client = getRedis();
+  if (!client) return;
+
+  const day = dayKey(at);
+  const statsKey = `${STATS_PREFIX}:${day}`;
+  const minuteKey = minuteCounterKey(at);
+  try {
+    await ensureConnected(client);
+    const results = await client
+      .multi()
+      .hincrby(statsKey, "total", 1)
+      .hincrby(statsKey, type, 1)
+      .hincrby(statsKey, hourField(at), 1)
+      .expire(statsKey, STATS_TTL_SECONDS)
+      .incr(minuteKey)
+      .expire(minuteKey, MINUTE_COUNTER_TTL_SECONDS)
+      .set(LAST_EVENT_KEY, String(at), "EX", STATS_TTL_SECONDS)
+      .incr(WINDOW_5M_KEY)
+      .expire(WINDOW_5M_KEY, 300, "NX")
+      .incr(WINDOW_15M_KEY)
+      .expire(WINDOW_15M_KEY, 900, "NX")
+      .incr(WINDOW_1H_KEY)
+      .expire(WINDOW_1H_KEY, 3_600, "NX")
+      // Per-source counts are also non-deduped, so the admin top-IP table
+      // matches the total instead of showing one event per 60s window.
+      .pfadd(`sec:ips:${day}`, ip)
+      .expire(`sec:ips:${day}`, COUNTER_TTL_SECONDS)
+      .zincrby(`sec:ipcount:${day}`, 1, ip)
+      .zremrangebyrank(`sec:ipcount:${day}`, 0, -5_001)
+      .expire(`sec:ipcount:${day}`, COUNTER_TTL_SECONDS)
+      .exec();
+
+    const window5m = Number(commandResult(results, 7) || 0);
+    const window15m = Number(commandResult(results, 9) || 0);
+    const window1h = Number(commandResult(results, 11) || 0);
+    if (
+      window5m >= securityStatusRules.attack5m ||
+      window15m >= securityStatusRules.attack15m ||
+      window1h >= securityStatusRules.attack1h
+    ) {
+      await client.set(ATTACK_MARK_KEY, String(at), "EX", STATS_TTL_SECONDS);
+    }
+  } catch (error) {
+    console.warn(
+      "[security] counters not recorded",
+      error instanceof Error ? error.message : error,
+    );
+  }
+}
+
+/**
  * Persist one event. Called only when a guard actually blocks something, so
  * the common path costs no extra Redis writes.
  */
@@ -243,7 +462,6 @@ export async function recordSecurityEvent(
   const client = getRedis();
   if (!client) return;
 
-  const day = dayKey(event.at);
   try {
     await ensureConnected(client);
     await client
@@ -251,16 +469,6 @@ export async function recordSecurityEvent(
       .zadd(EVENTS_KEY, event.at, JSON.stringify(event))
       .zremrangebyrank(EVENTS_KEY, 0, -(MAX_EVENTS + 1))
       .expire(EVENTS_KEY, securityPolicy.eventRetentionDays * 24 * 60 * 60)
-      .incr(`sec:count:all:${day}`)
-      .expire(`sec:count:all:${day}`, COUNTER_TTL_SECONDS)
-      .hincrby(`sec:type:${day}`, event.type, 1)
-      .expire(`sec:type:${day}`, COUNTER_TTL_SECONDS)
-      // HyperLogLog keeps unique-IP counting at a fixed ~12KB per day.
-      .pfadd(`sec:ips:${day}`, event.ip)
-      .expire(`sec:ips:${day}`, COUNTER_TTL_SECONDS)
-      .zincrby(`sec:ipcount:${day}`, 1, event.ip)
-      .zremrangebyrank(`sec:ipcount:${day}`, 0, -5_001)
-      .expire(`sec:ipcount:${day}`, COUNTER_TTL_SECONDS)
       .exec();
   } catch (error) {
     console.warn(
@@ -279,6 +487,10 @@ export async function recordSecurityEventOnce(
   dedupeSeconds = 60,
 ): Promise<void> {
   const event = normalizeEvent(input);
+
+  // Count every block first. The event log below still dedupes noisy sources.
+  await bumpSecurityCounters(event.type, event.at, event.ip);
+
   const client = getRedis();
   if (!client) return;
   const dedupeKey = `sec:dedupe:${event.type}:${event.ip}`;
@@ -329,7 +541,6 @@ export async function getSecuritySnapshot(
   const now = Date.now();
   const day = dayKey(now);
   const since = now - 24 * 60 * 60 * 1000;
-  const windowStart = now - WINDOW_MINUTES * 60 * 1000;
   // Loaded lazily so proxying every request never pulls in nodemailer.
   const alertChannelConfigured = await import("@/lib/alerts")
     .then((module) => module.isAlertConfigured())
@@ -341,12 +552,21 @@ export async function getSecuritySnapshot(
     windowCount: 0,
     threshold: securityPolicy.attackThreshold,
     attack: false,
+    status: "normal",
+    count5m: 0,
+    count15m: 0,
+    count1h: 0,
     todayTotal: 0,
     todayUniqueIps: 0,
+    last24hTotal: 0,
+    last7dTotal: 0,
     byType: {},
+    byTypeLast7d: {},
+    hourly: [],
     topIps: [],
     recent: [],
     lastEventAt: null,
+    lastAttackAt: null,
     alertCooldownSeconds: 0,
     alertChannelConfigured,
     strictMode: false,
@@ -361,39 +581,84 @@ export async function getSecuritySnapshot(
 
   try {
     await ensureConnected(client);
-    const results = await client
-      .multi()
-      .zcount(EVENTS_KEY, windowStart, "+inf")
-      .get(`sec:count:all:${day}`)
-      .pfcount(`sec:ips:${day}`)
-      .zrevrange(`sec:ipcount:${day}`, 0, 9, "WITHSCORES")
-      .hgetall(`sec:type:${day}`)
-      .zrevrangebyscore(
-        EVENTS_KEY,
-        "+inf",
-        since,
-        "LIMIT",
-        0,
-        Math.min(Math.max(recentLimit, 1), 500),
-      )
-      .ttl("sec:alert:cooldown")
-      .ttl(STRICT_KEY)
-      .get(DEFENSE_KEY)
-      .ttl(DEFENSE_KEY)
-      .exec();
+    const dayKeys = recentDayKeys(now, 7);
+    const minuteKeys = minuteCounterKeys(now, 60);
+    const commands = client.multi();
+    commands.mget(...minuteKeys);
+    for (const key of dayKeys) commands.hgetall(`${STATS_PREFIX}:${key}`);
+    commands.pfcount(`sec:ips:${day}`);
+    commands.zrevrange(`sec:ipcount:${day}`, 0, 9, "WITHSCORES");
+    commands.zrevrangebyscore(
+      EVENTS_KEY,
+      "+inf",
+      since,
+      "LIMIT",
+      0,
+      Math.min(Math.max(recentLimit, 1), 500),
+    );
+    commands.ttl("sec:alert:cooldown");
+    commands.ttl(STRICT_KEY);
+    commands.get(DEFENSE_KEY);
+    commands.ttl(DEFENSE_KEY);
+    commands.get(ATTACK_MARK_KEY);
+    commands.get(LAST_EVENT_KEY);
+    const results = await commands.exec();
 
-    const windowCount = Number(commandResult(results, 0) || 0);
-    const todayTotal = Number(commandResult(results, 1) || 0);
-    const todayUniqueIps = Number(commandResult(results, 2) || 0);
-    const ipFlat = Array.isArray(commandResult(results, 3))
-      ? (commandResult(results, 3) as string[])
+    // Index 0: last 60 per-minute counters (current minute first).
+    const minuteRaw = commandResult(results, 0);
+    const minuteCounts = Array.isArray(minuteRaw)
+      ? minuteRaw.map((value) => Number(value) || 0)
       : [];
-    const typeHash = (commandResult(results, 4) || {}) as Record<string, string>;
-    const recent = parseEvents(commandResult(results, 5));
-    const cooldown = Number(commandResult(results, 6) || 0);
-    const strictTtl = Number(commandResult(results, 7) || 0);
-    const defenseRaw = commandResult(results, 8);
-    const defenseTtl = Number(commandResult(results, 9) || 0);
+    const count5m = sumNumbers(minuteCounts.slice(0, 5));
+    const count15m = sumNumbers(minuteCounts.slice(0, 15));
+    const count1h = sumNumbers(minuteCounts.slice(0, 60));
+
+    // Indexes 1..7: today plus the previous six days.
+    const dayHashes = dayKeys.map((_, index) => {
+      const raw = commandResult(results, 1 + index);
+      return raw && typeof raw === "object"
+        ? (raw as Record<string, string>)
+        : null;
+    });
+    const todayHash = dayHashes[0];
+    const todayTotal = numericValue(todayHash?.total) ?? 0;
+    const byType = typeCountsFromHash(todayHash);
+    const byTypeLast7d: Record<string, number> = {};
+    let last7dTotal = 0;
+    for (const hash of dayHashes) {
+      last7dTotal += numericValue(hash?.total) ?? 0;
+      addTypeCounts(byTypeLast7d, typeCountsFromHash(hash));
+    }
+
+    const hashByDay = new Map(
+      dayKeys.map((key, index) => [key, dayHashes[index]] as const),
+    );
+    const currentHourStart = Math.floor(now / 3_600_000) * 3_600_000;
+    const hourly: SecurityHourBucket[] = [];
+    for (let offset = 23; offset >= 0; offset -= 1) {
+      const at = currentHourStart - offset * 3_600_000;
+      const hash = hashByDay.get(dayKey(at));
+      const count = numericValue(hash?.[hourField(at)]) ?? 0;
+      hourly.push({
+        at,
+        label: timelineLabel(at),
+        shortLabel: timelineShortLabel(at),
+        count,
+      });
+    }
+    const last24hTotal = hourly.reduce((total, bucket) => total + bucket.count, 0);
+
+    const todayUniqueIps = Number(commandResult(results, 8) || 0);
+    const ipFlat = Array.isArray(commandResult(results, 9))
+      ? (commandResult(results, 9) as string[])
+      : [];
+    const recent = parseEvents(commandResult(results, 10));
+    const cooldown = Number(commandResult(results, 11) || 0);
+    const strictTtl = Number(commandResult(results, 12) || 0);
+    const defenseRaw = commandResult(results, 13);
+    const defenseTtl = Number(commandResult(results, 14) || 0);
+    const lastAttackRaw = commandResult(results, 15);
+    const lastEventRaw = commandResult(results, 16);
 
     let defenseSince: number | null = null;
     let defenseMode: DefenseMode = "normal";
@@ -423,23 +688,32 @@ export async function getSecuritySnapshot(
       if (ip && Number.isFinite(count)) topIps.push({ ip, count });
     }
 
-    const byType: Record<string, number> = {};
-    for (const [type, count] of Object.entries(typeHash)) {
-      const value = Number(count);
-      if (Number.isFinite(value)) byType[type] = value;
-    }
+    const status = getSecurityStatus(defenseMode, {
+      count5m,
+      count15m,
+      count1h,
+    });
 
     return {
       ...base,
       available: true,
-      windowCount,
-      attack: windowCount >= securityPolicy.attackThreshold,
+      windowCount: count15m,
+      attack: count15m >= securityPolicy.attackThreshold,
+      status,
+      count5m,
+      count15m,
+      count1h,
       todayTotal,
       todayUniqueIps,
+      last24hTotal,
+      last7dTotal,
       byType,
+      byTypeLast7d,
+      hourly,
       topIps,
       recent,
-      lastEventAt: recent[0]?.at ?? null,
+      lastEventAt: numericValue(lastEventRaw) ?? recent[0]?.at ?? null,
+      lastAttackAt: numericValue(lastAttackRaw),
       alertCooldownSeconds: Number.isFinite(cooldown) && cooldown > 0 ? cooldown : 0,
       strictMode: Number.isFinite(strictTtl) && strictTtl > 0,
       strictSecondsRemaining:
@@ -457,6 +731,57 @@ export async function getSecuritySnapshot(
       error instanceof Error ? error.message : error,
     );
     return base;
+  }
+}
+
+export type PublicSecurityStatus = {
+  available: boolean;
+  guardEnabled: boolean;
+  todayTotal: number | null;
+};
+
+let publicStatusCache:
+  | { expiresAt: number; value: PublicSecurityStatus }
+  | null = null;
+let publicStatusInflight: Promise<PublicSecurityStatus> | null = null;
+
+/**
+ * Public footer data. Only the daily total is exposed; IPs, paths, alert
+ * configuration and recent events stay behind /admin/security.
+ *
+ * The Redis read is cached in-process for 60 seconds, and any failure degrades
+ * to "防护已开启" without a number rather than showing a fake count.
+ */
+export async function getPublicSecurityStatus(): Promise<PublicSecurityStatus> {
+  const now = Date.now();
+  if (publicStatusCache && publicStatusCache.expiresAt > now) {
+    return publicStatusCache.value;
+  }
+  if (publicStatusInflight) return publicStatusInflight;
+
+  publicStatusInflight = (async (): Promise<PublicSecurityStatus> => {
+    const guardEnabled = securityPolicy.guardEnabled;
+    const client = getRedis();
+    if (!client) return { available: false, guardEnabled, todayTotal: null };
+    try {
+      await ensureConnected(client);
+      const raw = await client.hget(`${STATS_PREFIX}:${dayKey()}`, "total");
+      return {
+        available: true,
+        guardEnabled,
+        todayTotal: numericValue(raw) ?? 0,
+      };
+    } catch {
+      return { available: false, guardEnabled, todayTotal: null };
+    }
+  })();
+
+  try {
+    const value = await publicStatusInflight;
+    publicStatusCache = { expiresAt: Date.now() + PUBLIC_STATUS_CACHE_MS, value };
+    return value;
+  } finally {
+    publicStatusInflight = null;
   }
 }
 

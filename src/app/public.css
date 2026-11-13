@@ -4948,3 +4948,29 @@ body {
     padding: 16px 0 24px;
   }
 }
+
+/* Public footer: live application-layer protection status. Numbers only,
+   never IPs, paths or alert configuration. */
+.public-footer .footer-bottom {
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.footer-security {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.footer-security-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 0 3px var(--green-soft);
+}
+
+.footer-security.is-off .footer-security-dot {
+  background: var(--muted);
+  box-shadow: none;
+}

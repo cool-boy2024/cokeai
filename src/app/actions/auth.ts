@@ -62,7 +62,19 @@ async function authRateLimit(action: string, email: string): Promise<string | nu
     emailCap,
     600,
   );
-  if (!emailLimit.allowed) return "该邮箱尝试次数过多，请稍后再试。";
+  if (!emailLimit.allowed) {
+    await recordSecurityEventOnce(
+      {
+        type: "auth",
+        ip,
+        path: `/${action}`,
+        method: "POST",
+        detail: `${action} email limit ${emailCap}/10m`,
+      },
+      60,
+    );
+    return "该邮箱尝试次数过多，请稍后再试。";
+  }
   return null;
 }
 
