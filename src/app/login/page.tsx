@@ -48,7 +48,7 @@ export default async function LoginPage({
             </p>
             <p className="auth-intro-foot">
               <span className="auth-intro-dot" />
-              AI API · 数字商品 · 人民币计费
+              AI API · 数字商品
             </p>
           </aside>
           <section className="auth-card" aria-labelledby="auth-title">
