@@ -105,6 +105,44 @@ export async function updateUserStatusAction(formData: FormData): Promise<void> 
   saved("/admin/users");
 }
 
+/**
+ * Promote or demote an operator. Every admin can grant admin, matching how the
+ * shop is run: the owner makes the partner an admin once, and the partner can
+ * then add the rest of the team. Two guards keep this from locking anyone out:
+ * an admin cannot change their own role, and the last active admin cannot be
+ * demoted.
+ */
+export async function setUserRoleAction(formData: FormData): Promise<void> {
+  const admin = await requireAdmin();
+  const userId = String(formData.get("userId") || "");
+  const role = String(formData.get("role") || "");
+  if (!userId || !["user", "admin"].includes(role)) {
+    fail("/admin/users", "参数无效");
+  }
+  if (userId === admin.id) {
+    fail("/admin/users", "不能修改自己的角色，请让另一位管理员操作");
+  }
+
+  if (role === "user") {
+    const otherAdmins = await query<{ count: string }>(
+      "SELECT COUNT(*) AS count FROM users WHERE role = 'admin' AND status = 'active' AND id <> $1",
+      [userId],
+    );
+    if (toNumber(otherAdmins.rows[0]?.count) === 0) {
+      fail("/admin/users", "至少需要保留一位可用管理员");
+    }
+  }
+
+  const updated = await query(
+    "UPDATE users SET role = $2, updated_at = now() WHERE id = $1",
+    [userId, role],
+  );
+  if (updated.rowCount === 0) fail("/admin/users", "用户不存在");
+
+  revalidatePath("/admin/users");
+  saved("/admin/users");
+}
+
 export async function adjustBalanceAction(formData: FormData): Promise<void> {
   const admin = await requireAdmin();
   const userId = String(formData.get("userId") || "");
