@@ -692,6 +692,11 @@ ALTER TABLE shop_suppliers ADD COLUMN IF NOT EXISTS meta_etag TEXT;
 ALTER TABLE shop_suppliers ADD COLUMN IF NOT EXISTS last_success_at TIMESTAMPTZ;
 ALTER TABLE shop_suppliers ADD COLUMN IF NOT EXISTS last_feed_hash TEXT;
 
+-- 2026-11-13: zyanai.cc mirror (manual procurement, public list + item pages).
+ALTER TABLE shop_suppliers DROP CONSTRAINT IF EXISTS shop_suppliers_kind_check;
+ALTER TABLE shop_suppliers ADD CONSTRAINT shop_suppliers_kind_check
+  CHECK (kind IN ('aibijia', 'manual', 'zyanai'));
+
 INSERT INTO schema_migrations (version) VALUES ('003_shop') ON CONFLICT (version) DO NOTHING;
 
 

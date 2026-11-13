@@ -2,6 +2,29 @@
 
 更新时间：2026-11-13
 
+## 2026-11-13：zyanai.cc 商品镜像（人工采购）
+
+- 供货方式：只同步商品，不接下单接口。客户付款后，运营按
+  `shop_offers.url` 去 zyanai 手工购买，再在订单页人工交付；发货方式统一
+  为 `manual`，预计 15–60 分钟。
+- 数据来源：公开列表 `https://zyanai.cc/user/api/index/commodity?limit=100&page=1`
+  取 `status=1 && hide!=1`，再逐条抓商品页，解析 `_var_item` 与
+  `.tokyo-description-body`。当前 38 款全部可导入。
+- 适配器：`src/lib/shop/zyanai.ts`；命令行 `npm run shop:zyanai -- --dry`
+  （只抓不写库）或 `npm run shop:zyanai`（写库）。重复执行按 slug 幂等，
+  价格变化写入 `shop_offer_price_history`，每次运行记一条 `shop_sync_runs`。
+- 商品身份：`external_key = zyanai:{id}`，slug 为 `zy-{id}-{brand}-{ascii}`；
+  售价按拿货价 ÷(1−30%) 计算（`config.shopImportTargetMarginBps`）。
+- 文案：保留商品原文，但删除供应商店名/域名/联系方式/批发话术，软化为可兑现
+  的表述（“官方/保证/最低价”移除），把“自动发货”改成人工采购口径，并去掉
+  80%/20% 退款结算公式。描述不足 40 字时补一段中性的交付说明。
+- 库存：以供货页 stock 文本映射 `in_stock/low_stock/out_of_stock`；缺货商品
+  仍保留记录但 `published_at` 为空，补货后再次同步即可上架。
+- 数据表：`shop_suppliers.kind` CHECK 扩为 `aibijia|manual|zyanai`；其余复用
+  `shop_offers`、`shop_products`、`shop_product_sources`。
+- 验证：本地导入 38/38，公共可售 38；`npm run typecheck`、`npm run build` 通过。
+  生产迁移随容器启动执行，未配置定时同步；需要刷新价格时手动跑一次命令。
+
 ## 2026-11-13：USDT 三网收款（TRC20 / BSC BEP20 / Polygon）
 
 - 数据结构：`usdt_deposits`、`shop_usdt_deposits` 增加 `scan_from_block`，
