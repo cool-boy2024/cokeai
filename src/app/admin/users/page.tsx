@@ -1,6 +1,10 @@
 import type { Metadata } from "next";
 import { AlertTriangle, CheckCircle2, Search, Users } from "lucide-react";
-import { adjustBalanceAction, updateUserStatusAction } from "@/app/actions/admin";
+import {
+  adjustBalanceAction,
+  setUserRoleAction,
+  updateUserStatusAction,
+} from "@/app/actions/admin";
 import { requireAdmin } from "@/lib/auth";
 import { query } from "@/lib/db";
 import { formatDateTime, formatNumber } from "@/lib/format";
@@ -68,6 +72,7 @@ export default async function AdminUsersPage({
         <div>
           <h1>用户管理</h1>
           <p>停用立即阻止调用；额度调整经网关队列同步。</p>
+          <p>管理员可以进入运营后台，也可以给其他账户授予管理员权限。</p>
         </div>
         <span className="badge badge-dark">
           <Users size={12} /> {formatNumber(usersResult.rows.length)} 位用户
@@ -201,6 +206,27 @@ export default async function AdminUsersPage({
                             type="submit"
                           >
                             {user.status === "active" ? "停用账户" : "恢复账户"}
+                          </button>
+                        </form>
+                        <form action={setUserRoleAction} className="mt-12">
+                          <input type="hidden" name="userId" value={user.id} />
+                          <input
+                            type="hidden"
+                            name="role"
+                            value={user.role === "admin" ? "user" : "admin"}
+                          />
+                          <p className="small muted">
+                            {user.role === "admin"
+                              ? "取消后该账户只能使用控制台，不能再进入运营后台。"
+                              : "设为管理员后，该账户可以进入运营后台，也能给其他账户授予管理员。"}
+                          </p>
+                          <button
+                            className={`btn btn-sm ${
+                              user.role === "admin" ? "btn-danger" : "btn-dark"
+                            }`}
+                            type="submit"
+                          >
+                            {user.role === "admin" ? "取消管理员" : "设为管理员"}
                           </button>
                         </form>
                       </details>
