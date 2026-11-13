@@ -19,10 +19,11 @@ import {
 import { getCurrentUser } from "@/lib/auth";
 import { config } from "@/lib/config";
 import { isEasyPayConfigured } from "@/lib/payments/easypay";
+import { USDT_NETWORKS } from "@/lib/payments/networks";
+import { configuredUsdtNetworks } from "@/lib/payments/usdt";
 import { getPublicProduct } from "@/lib/shop/catalog";
 import { createShopCaptcha } from "@/lib/shop/captcha";
 import { SHOP_COPY } from "@/lib/shop/copy";
-import { isShopUsdtAvailable } from "@/lib/shop/usdt";
 
 export const dynamic = "force-dynamic";
 
@@ -47,10 +48,10 @@ export default async function ShopProductPage({
 }) {
   if (!config.shopEnabled) notFound();
   const { slug } = await params;
-  const [product, user, usdtAvailable] = await Promise.all([
+  const [product, user, usdtNetworkIds] = await Promise.all([
     getPublicProduct(slug),
     getCurrentUser(),
-    isShopUsdtAvailable(),
+    configuredUsdtNetworks(),
   ]);
   if (!product) notFound();
 
@@ -162,7 +163,11 @@ export default async function ShopProductPage({
                   // merchant EasyPay option appears only when configured.
                   alipayManual: false,
                   alipay: config.shopEasypayEnabled && isEasyPayConfigured(),
-                  usdt: usdtAvailable,
+                  usdtNetworks: usdtNetworkIds.map((id) => ({
+                    provider: USDT_NETWORKS[id].provider,
+                    label: USDT_NETWORKS[id].label,
+                    hint: `${USDT_NETWORKS[id].chainLabel} · 链上确认`,
+                  })),
                   manual: false,
                 }}
               />

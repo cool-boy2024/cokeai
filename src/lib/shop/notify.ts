@@ -7,6 +7,8 @@ const PROVIDER_LABELS: Record<string, string> = {
   alipay_easypay: "支付宝",
   alipay_manual: "支付宝（人工收款）",
   usdt_trc20: "USDT TRC20",
+  usdt_bsc: "USDT BEP20（BSC）",
+  usdt_polygon: "USDT Polygon",
   manual: "人工确认",
 };
 

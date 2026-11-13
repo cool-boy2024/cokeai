@@ -5,7 +5,11 @@ import { redirect } from "next/navigation";
 import { getClientIp, requireUser } from "@/lib/auth";
 import { config } from "@/lib/config";
 import { easyPayConfigError } from "@/lib/payments/easypay";
-import { isUsdtConfigured } from "@/lib/payments/usdt";
+import {
+  networkForProvider,
+  providerForNetwork,
+} from "@/lib/payments/networks";
+import { isUsdtNetworkConfigured } from "@/lib/payments/usdt";
 import { query } from "@/lib/db";
 import { fixedWindowLimit } from "@/lib/rate-limit";
 import { recordSecurityEventOnce } from "@/lib/security";
@@ -21,7 +25,11 @@ export async function createShopCheckoutAction(
 ): Promise<ShopCheckoutState> {
   const user = await requireUser();
   const productId = String(formData.get("productId") || "");
-  const provider = String(formData.get("provider") || "alipay");
+  const postedProvider = String(formData.get("provider") || "alipay");
+  // Older pages posted the single value "usdt"; treat it as TRC20.
+  const provider = postedProvider === "usdt" ? "usdt_trc20" : postedProvider;
+  const usdtNetwork = networkForProvider(provider);
+  const isUsdt = usdtNetwork !== null;
   const expectedPriceMicros = Number(formData.get("expectedPriceMicros") || 0);
 
   if (!productId) return { error: "商品不存在，请刷新后重试。" };
@@ -29,8 +37,8 @@ export async function createShopCheckoutAction(
     return { error: "商品价格异常，请刷新后重试。" };
   }
   // Personal Alipay QR and manual transfers stay disabled. The shop accepts
-  // USDT and, when configured, the merchant EasyPay gateway.
-  if (!["usdt", "alipay"].includes(provider)) {
+  // USDT on the configured networks and, when configured, EasyPay.
+  if (!isUsdt && provider !== "alipay") {
     return { error: "支付方式无效。" };
   }
 
@@ -72,12 +80,12 @@ export async function createShopCheckoutAction(
     );
     return { error: "下单过于频繁，请稍后再试。" };
   }
-  if (provider === "usdt" && !(await isUsdtConfigured())) {
+  if (usdtNetwork && !(await isUsdtNetworkConfigured(usdtNetwork))) {
     return { error: "加密货币收款配置中，暂不可下单。" };
   }
   if (provider === "alipay") {
     if (!config.shopEasypayEnabled) {
-      return { error: "小店当前仅支持 USDT TRC20 支付。" };
+      return { error: "小店当前仅支持 USDT 支付。" };
     }
     const error = easyPayConfigError();
     if (error) return { error };
@@ -109,7 +117,8 @@ export async function createShopCheckoutAction(
       contactEmail,
       customerInput,
       note: String(formData.get("note") || ""),
-      paymentProvider: provider === "usdt" ? "usdt_trc20" : "alipay_easypay",
+      paymentProvider:
+        usdtNetwork !== null ? providerForNetwork(usdtNetwork) : "alipay_easypay",
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "下单失败";
@@ -169,6 +178,7 @@ export async function createShopCheckoutAction(
     await createShopUsdtDeposit({
       orderId: created.id,
       amountMicros: created.amountMicros,
+      network: usdtNetwork ?? "trc20",
     });
   } catch (error) {
     await cancelPendingShopOrder(created.id, user.id);

@@ -1,6 +1,32 @@
 # 小店实施进度
 
-更新时间：2026-10-29
+更新时间：2026-11-13
+
+## 2026-11-13：USDT 三网收款（TRC20 / BSC BEP20 / Polygon）
+
+- 数据结构：`usdt_deposits`、`shop_usdt_deposits` 增加 `scan_from_block`，
+  `network` CHECK 扩为 `trc20|bsc|polygon`；`shop_orders` 与 `payment_settings`
+  的 provider/channel CHECK 同步加入 `usdt_bsc`、`usdt_polygon`。迁移幂等，
+  随容器启动执行。
+- 派生：TRON 继续 `m/44'/195'/0'/0/index`；BSC/Polygon 用
+  `m/44'/60'/0'/0/index`（EIP-55 展示）。三条链共用一个派生序号，地址不会重复。
+  已用 Hardhat 测试助记词核对 EVM 向量 `0xf39F…2266`。
+- 扫描：新增 `src/lib/payments/evm.ts`，按 USDT 合约 + Transfer 事件 topic 拉
+  `eth_getLogs`，5000 区块分段；报价时记录当前块高（head − 10）作为起点，
+  避免回扫整条链。BSC USDT 为 18 位小数，按 BigInt 精确换算。
+- 结算：充值/小店扫描器与过期检查共用 `observeDeposit`，单个链 RPC 失败不会
+  中断其他链；关闭某网络只停止报价，已报价的存款仍会继续扫描到确认。
+- 后台：`/admin/payments` 拆成四块（支付宝 + 三张 USDT 网络卡），各自保存
+  xpub、TronGrid Key（仅 TRC20）和首个收款地址；启用前会核对派生地址。
+- 默认公共 RPC 更新为 `https://bsc-dataseed1.bnbchain.org` 与
+  `https://polygon-bor-rpc.publicnode.com`（旧的 `bsc-dataseed.binance.org`
+  已无响应，`polygon-rpc.com` 现在要求 API Key）。可通过
+  `USDT_BSC_RPC_URL` / `USDT_POLYGON_RPC_URL` 换成私有节点。
+- 启用方式：后台分别填写 BSC/Polygon 的账户 xpub、核对首地址、勾选开放；
+  或设置环境变量 `USDT_BSC_ENABLED` / `USDT_POLYGON_ENABLED` 与对应 xpub。
+  未配置 xpub 时前台不会出现该网络，生产当前保持未启用。
+- 验证：本地三链各建一笔订单并渲染结算页（二维码、网络文案、确认数 0/30 或
+  0/19）；`npm run typecheck`、`npm run build`、`npm run test:shop` 通过。
 
 ## 已完成
 

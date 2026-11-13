@@ -157,7 +157,13 @@ export async function createShopOrder(input: {
   contactEmail?: string;
   customerInput?: Record<string, string>;
   note?: string;
-  paymentProvider: "alipay_easypay" | "alipay_manual" | "usdt_trc20" | "manual";
+  paymentProvider:
+    | "alipay_easypay"
+    | "alipay_manual"
+    | "usdt_trc20"
+    | "usdt_bsc"
+    | "usdt_polygon"
+    | "manual";
 }): Promise<{ id: string; orderNo: string; amountMicros: number }> {
   return withTransaction(async (client) => {
     const productResult = await client.query<{
@@ -377,7 +383,13 @@ export async function getAdminShopOrder(id: string): Promise<ShopOrderDetail | n
 
 export async function markShopOrderPaid(input: {
   orderNo: string;
-  provider: "alipay_easypay" | "alipay_manual" | "usdt_trc20" | "manual";
+  provider:
+    | "alipay_easypay"
+    | "alipay_manual"
+    | "usdt_trc20"
+    | "usdt_bsc"
+    | "usdt_polygon"
+    | "manual";
   providerRef: string;
   paidAmountMicros?: number;
   payTxid?: string;
@@ -693,7 +705,7 @@ export async function expireShopOrders(): Promise<number> {
         -- Cancel a USDT order only after the scanner explicitly found no
         -- funds. A TronGrid outage must leave it pending for the next scan.
         AND (
-          o.payment_provider <> 'usdt_trc20'
+          o.payment_provider NOT IN ('usdt_trc20', 'usdt_bsc', 'usdt_polygon')
           OR NOT EXISTS (
             SELECT 1 FROM shop_usdt_deposits d WHERE d.order_id = o.id
           )

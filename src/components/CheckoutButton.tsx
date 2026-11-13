@@ -16,7 +16,15 @@ export function CheckoutButton({
   className = "btn btn-primary btn-block",
 }: {
   planId: string;
-  provider: "stripe" | "manual" | "alipay_manual" | "easypay" | "usdt";
+  provider:
+    | "stripe"
+    | "manual"
+    | "alipay_manual"
+    | "easypay"
+    | "usdt"
+    | "usdt_trc20"
+    | "usdt_bsc"
+    | "usdt_polygon";
   label: string;
   className?: string;
 }) {

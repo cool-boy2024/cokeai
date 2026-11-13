@@ -99,7 +99,7 @@ export default async function AdminShopOrdersPage({
                       <td className="nowrap">
                         {order.payment_provider === "alipay_easypay"
                           ? "支付宝"
-                          : order.payment_provider === "usdt_trc20"
+                          : order.payment_provider.startsWith("usdt_")
                             ? "USDT"
                             : "人工"}
                       </td>

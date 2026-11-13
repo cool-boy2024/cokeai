@@ -37,7 +37,9 @@ const providerLabels: Record<string, string> = {
   manual: "人工",
   alipay_easypay: "支付宝",
   alipay_manual: "支付宝（人工核实）",
-  usdt_trc20: "USDT",
+  usdt_trc20: "USDT TRC20",
+  usdt_bsc: "USDT BEP20",
+  usdt_polygon: "USDT Polygon",
   stripe: "银行卡",
 };
 
