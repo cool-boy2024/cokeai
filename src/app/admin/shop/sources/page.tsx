@@ -667,6 +667,14 @@ export default async function AdminShopSourcesPage({
                             </form>
                           </>
                         ) : null}
+                        <a
+                          className="btn btn-ghost btn-sm"
+                          href={offer.url}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          打开
+                        </a>
                       </div>
                     </td>
                   </tr>
