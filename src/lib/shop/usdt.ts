@@ -13,6 +13,7 @@ import {
 } from "@/lib/payments/usdt";
 import { getUsdtSettings } from "@/lib/payments/settings";
 import { sumTransferUnits } from "@/lib/payments/tron-receipts";
+import { notifyShopOrderPaid } from "./notify";
 import { markShopOrderPaid } from "./orders";
 
 export type ShopUsdtDeposit = {
@@ -367,6 +368,7 @@ export async function scanShopUsdtDeposits(limit = 20): Promise<{
             paidAmountMicros: toNumber(deposit.order_amount_micros),
             note: `USDT 已确认 ${total} USDT（${evaluation.status}）`,
           });
+          void notifyShopOrderPaid(deposit.order_id);
           paid += 1;
         } catch (error) {
           const message = error instanceof Error ? error.message : "";

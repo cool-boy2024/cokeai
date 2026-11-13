@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ArrowLeft, LayoutDashboard, LogOut, ShoppingBag } from "lucide-react";
 import { logoutAction } from "@/app/actions/auth";
 import { requireAdmin } from "@/lib/auth";
+import { query } from "@/lib/db";
 import { AppSidebar } from "@/components/AppSidebar";
 
 export const metadata: Metadata = {
@@ -19,9 +20,27 @@ export default async function AdminLayout({
 }) {
   const user = await requireAdmin();
 
+  // Counts that stay in reach from every admin page: paid orders still need a
+  // trip to the supplier, unpaid ones need watching before they expire.
+  const counts = await query<{ pending: string; to_buy: string }>(
+    `SELECT COUNT(*) FILTER (
+              WHERE status = 'pending_payment' AND expires_at > now()
+            )::text AS pending,
+            COUNT(*) FILTER (WHERE status IN ('paid', 'procuring'))::text AS to_buy
+       FROM shop_orders`,
+  );
+  const shopCounts = counts.rows[0];
+
   return (
     <div className="app-shell">
-      <AppSidebar user={user} admin />
+      <AppSidebar
+        user={user}
+        admin
+        badges={{
+          "/admin/shop": Number(shopCounts?.pending || 0),
+          "/admin/shop/queue": Number(shopCounts?.to_buy || 0),
+        }}
+      />
       <main className="app-main">
         <header className="app-topbar">
           <span className="app-topbar-title">运营后台</span>

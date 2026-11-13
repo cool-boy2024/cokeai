@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { AlertTriangle, ArrowUpRight, PackageSearch, RefreshCw } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, Clock, PackageSearch, RefreshCw } from "lucide-react";
 import { adminSyncShopAction } from "@/app/actions/admin-shop";
 import { requireAdmin } from "@/lib/auth";
 import { query, toNumber } from "@/lib/db";
@@ -17,6 +17,7 @@ type ShopStats = {
   procuring_count: string;
   delivered_today: string;
   refund_count: string;
+  pending_count: string;
   active_products: string;
   paused_products: string;
 };
@@ -34,6 +35,9 @@ export default async function AdminShopPage() {
          COUNT(*) FILTER (WHERE status = 'procuring')::text AS procuring_count,
          COUNT(*) FILTER (WHERE status = 'delivered' AND delivered_at >= date_trunc('day', now()))::text AS delivered_today,
          COUNT(*) FILTER (WHERE status = 'refund_pending')::text AS refund_count,
+         COUNT(*) FILTER (
+           WHERE status = 'pending_payment' AND expires_at > now()
+         )::text AS pending_count,
          (SELECT COUNT(*) FROM shop_products WHERE status = 'active' AND availability IN ('in_stock','low_stock'))::text AS active_products,
          (SELECT COUNT(*) FROM shop_products WHERE pricing_review_required = TRUE)::text AS paused_products
        FROM shop_orders`,
@@ -101,6 +105,16 @@ export default async function AdminShopPage() {
         <div className="notice notice-red">
           <AlertTriangle size={16} />
           <div>有 {stats.refund_count} 笔订单等待退款处理。</div>
+        </div>
+      ) : null}
+
+      {Number(stats?.pending_count || 0) > 0 ? (
+        <div className="notice">
+          <Clock size={16} />
+          <div>
+            有 {stats.pending_count} 笔订单已下单未支付，超时未付款会自动过期。{" "}
+            <Link href="/admin/shop/orders?status=pending_payment">查看待支付订单</Link>
+          </div>
         </div>
       ) : null}
 

@@ -1112,6 +1112,23 @@ tbody tr:hover {
   content: "";
 }
 
+/* Pending work in the sidebar: unpaid orders and orders waiting to be bought. */
+.sidebar-link .nav-count {
+  display: inline-flex;
+  min-width: 18px;
+  height: 18px;
+  margin-left: auto;
+  padding: 0 5px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--red-soft);
+  color: var(--red-deep);
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
 /* Route progress for app pages. Public pages use the page wipe instead. */
 .nav-progress {
   position: fixed;

@@ -8,9 +8,11 @@ import { DashboardNav } from "./DashboardNav";
 export function AppSidebar({
   user,
   admin = false,
+  badges,
 }: {
   user: SessionUser;
   admin?: boolean;
+  badges?: Record<string, number>;
 }) {
   const initial = (user.name || user.email).slice(0, 1).toUpperCase();
 
@@ -23,7 +25,7 @@ export function AppSidebar({
 
       <div className="sidebar-group">
         <div className="sidebar-label">{admin ? "Operations" : "Workspace"}</div>
-        <DashboardNav admin={admin} />
+        <DashboardNav admin={admin} badges={badges} />
       </div>
 
       {admin ? (
