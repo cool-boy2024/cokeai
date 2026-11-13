@@ -22,10 +22,12 @@ import {
   getAlertConfig,
 } from "@/lib/alerts";
 import { requireAdmin } from "@/lib/auth";
+import { SecurityVisibility } from "@/components/admin/SecurityVisibility";
 import { formatDateTime } from "@/lib/format";
 import {
   getSecuritySnapshot,
   SECURITY_EVENT_LABELS,
+  SECURITY_STATUS_LABELS,
   securityPolicy,
   securityRecommendations,
   type DefenseMode,
@@ -114,7 +116,6 @@ export default async function AdminSecurityPage({
   const snapshot = await getSecuritySnapshot(100);
   const alertConfig = await getAlertConfig();
 
-  const topType = Object.entries(snapshot.byType).sort((a, b) => b[1] - a[1])[0];
   const rows = defenseRows(snapshot.defenseMode);
   const advice = securityRecommendations(snapshot);
 
@@ -167,11 +168,15 @@ export default async function AdminSecurityPage({
             </button>
           </form>
           <span
-            className={`badge ${
-              snapshot.attack ? "badge-red badge-dot" : "badge-green badge-dot"
+            className={`badge badge-dot ${
+              snapshot.status === "attack" || snapshot.status === "emergency"
+                ? "badge-red"
+                : snapshot.status === "watch"
+                  ? "badge-yellow"
+                  : "badge-green"
             }`}
           >
-            {snapshot.attack ? "疑似攻击中" : "未检测到攻击"}
+            {SECURITY_STATUS_LABELS[snapshot.status]}
           </span>
         </div>
       </div>
@@ -266,6 +271,8 @@ export default async function AdminSecurityPage({
         </div>
       ) : null}
 
+      <SecurityVisibility snapshot={snapshot} />
+
       <section className="panel mb-16">
         <div className="panel-head">
           <div>
@@ -334,33 +341,6 @@ export default async function AdminSecurityPage({
           ))}
         </ol>
       </section>
-
-      <div className="stat-grid">
-        <div className="stat-card">
-          <div className="stat-label">近 {snapshot.windowMinutes} 分钟拦截</div>
-          <div className="stat-value">{snapshot.windowCount}</div>
-          <div className="stat-foot">告警阈值 {snapshot.threshold}</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-label">今日拦截</div>
-          <div className="stat-value">{snapshot.todayTotal}</div>
-          <div className="stat-foot">按北京时间统计</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-label">今日独立 IP</div>
-          <div className="stat-value">{snapshot.todayUniqueIps}</div>
-          <div className="stat-foot">触发过拦截的来源</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-label">主要类型</div>
-          <div className="stat-value" style={{ fontSize: 20 }}>
-            {topType ? typeLabel(topType[0]) : "—"}
-          </div>
-          <div className="stat-foot">
-            {topType ? `${topType[1]} 次` : "暂无事件"}
-          </div>
-        </div>
-      </div>
 
       <section className="panel mb-16">
         <div className="panel-head">
