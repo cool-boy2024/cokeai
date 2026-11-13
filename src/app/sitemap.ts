@@ -30,6 +30,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
     },
     ...apiPages,
     {
+      url: `${config.appUrl}/help`,
+      lastModified: now,
+      changeFrequency: "weekly",
+      priority: 0.6,
+    },
+    {
       url: `${config.appUrl}/shop/terms`,
       lastModified: now,
       changeFrequency: "yearly",

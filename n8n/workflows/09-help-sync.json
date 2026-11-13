@@ -1,0 +1,100 @@
+{
+  "name": "CokeAI｜帮助中心同步（每 6 小时）",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## 帮助中心同步\n\n每 6 小时拉取上游公开帮助中心，更新 /help 的文章、图片与视频。\n\n- 上游删除的文章标记为下架，不删除本地记录\n- 单篇抓取失败时保留旧内容\n- 手动补同步：后台 /admin/help\n\n只读取公开页面，不登录上游、不绕过验证码。",
+        "height": 220,
+        "width": 380,
+        "color": 6
+      },
+      "id": "d1a1b2c3-4d5e-4f60-8a71-92b3c4d5e901",
+      "name": "使用说明",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -520,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "23 */6 * * *"
+            }
+          ]
+        }
+      },
+      "id": "d1a1b2c3-4d5e-4f60-8a71-92b3c4d5e902",
+      "name": "每 6 小时 :23",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -40,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://app:3000/api/internal/help/sync",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-internal-secret",
+              "value": "={{ $env.INTERNAL_API_SECRET }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{}",
+        "options": {
+          "timeout": 120000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "d1a1b2c3-4d5e-4f60-8a71-92b3c4d5e903",
+      "name": "同步帮助中心",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        210,
+        80
+      ],
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "每 6 小时 :23": {
+      "main": [
+        [
+          {
+            "node": "同步帮助中心",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Shanghai"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": []
+}

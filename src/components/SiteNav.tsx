@@ -25,10 +25,12 @@ const LINKS = PUBLIC_API_SALES_ENABLED
   : [
       { href: "/shop", label: "小店", index: "01" },
       { href: "/#faq", label: "常见问题", index: "02" },
+      { href: "/help", label: "帮助中心", index: "03" },
     ];
 
 function isActive(pathname: string, href: string) {
   if (href === "/shop") return pathname.startsWith("/shop");
+  if (href === "/help") return pathname === "/help" || pathname.startsWith("/help/");
   if (href === "/#models") return false;
   return pathname === href;
 }

@@ -39,6 +39,7 @@ const adminItems = [
   { href: "/admin/shop/sources", label: "货源", icon: PackageSearch },
   { href: "/admin/users", label: "用户", icon: Users },
   { href: "/admin/announcements", label: "公告", icon: Megaphone },
+  { href: "/admin/help", label: "帮助中心", icon: BookOpen },
   { href: "/admin/plans", label: "充值包", icon: CreditCard },
   { href: "/admin/pricing", label: "定价", icon: SlidersHorizontal },
   { href: "/admin/gateway", label: "网关", icon: Gauge },

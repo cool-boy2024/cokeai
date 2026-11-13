@@ -32,6 +32,7 @@ export function SiteFooter() {
             <h4>支持</h4>
             <a href={`mailto:${supportEmail}`}>{supportEmail}</a>
             <Link href="/#faq">常见问题</Link>
+            <Link href="/help">帮助中心</Link>
             {PUBLIC_API_SALES_ENABLED ? (
               <Link href="/docs#errors">错误码</Link>
             ) : null}
