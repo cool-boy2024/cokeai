@@ -26,6 +26,7 @@ const LINKS = PUBLIC_API_SALES_ENABLED
       { href: "/shop", label: "小店", index: "01" },
       { href: "/#faq", label: "常见问题", index: "02" },
       { href: "/help", label: "帮助中心", index: "03" },
+      { href: "/tools/2fa", label: "2FA 工具", index: "04" },
     ];
 
 function isActive(pathname: string, href: string) {

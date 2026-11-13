@@ -36,6 +36,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.6,
     },
     {
+      url: `${config.appUrl}/tools/2fa`,
+      lastModified: now,
+      changeFrequency: "monthly",
+      priority: 0.5,
+    },
+    {
       url: `${config.appUrl}/shop/terms`,
       lastModified: now,
       changeFrequency: "yearly",

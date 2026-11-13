@@ -148,6 +148,14 @@ function absolutize(html: string): string {
   const rewrite = (value: string): string => {
     const trimmed = value.trim();
     if (!trimmed) return value;
+    // The supplier's TOTP helper is mirrored as our own page, so tutorial
+    // links keep readers on this site instead of sending them to zyanai.cc.
+    if (
+      trimmed === "/2FA.html" ||
+      /^https?:\/\/(?:www\.)?zyanai\.cc\/2FA\.html\/?$/i.test(trimmed)
+    ) {
+      return "/tools/2fa";
+    }
     if (
       trimmed.startsWith("#") ||
       trimmed.startsWith("data:") ||

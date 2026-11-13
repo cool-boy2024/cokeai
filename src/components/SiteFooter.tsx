@@ -10,8 +10,10 @@ export async function SiteFooter() {
   // The footer shows live protection data; keep it out of the static cache.
   await connection();
   const security = await getPublicSecurityStatus();
+  // Do not publish that the guard is off; an absent line leaks less than a
+  // footer telling scanners the application layer is currently disabled.
   const securityText = !security.guardEnabled
-    ? "应用层防护已关闭"
+    ? null
     : security.available && security.todayTotal !== null
       ? `应用层防护已开启 · 今日拦截 ${security.todayTotal.toLocaleString("zh-CN")} 次`
       : "应用层防护已开启";
@@ -44,6 +46,7 @@ export async function SiteFooter() {
             <a href={`mailto:${supportEmail}`}>{supportEmail}</a>
             <Link href="/#faq">常见问题</Link>
             <Link href="/help">帮助中心</Link>
+            <Link href="/tools/2fa">2FA 验证码工具</Link>
             {PUBLIC_API_SALES_ENABLED ? (
               <Link href="/docs#errors">错误码</Link>
             ) : null}
@@ -62,10 +65,12 @@ export async function SiteFooter() {
               ? "数字商品为人工发货 · API 按实际用量计费"
               : "数字商品为人工发货 · 质保按商品标注"}
           </span>
-          <span className={`footer-security${security.guardEnabled ? "" : " is-off"}`}>
-            <span className="footer-security-dot" aria-hidden="true" />
-            {securityText}
-          </span>
+          {securityText ? (
+            <span className="footer-security">
+              <span className="footer-security-dot" aria-hidden="true" />
+              {securityText}
+            </span>
+          ) : null}
         </div>
       </div>
     </footer>
