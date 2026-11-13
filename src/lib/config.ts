@@ -73,6 +73,24 @@ export const config = {
   usdtContract: process.env.USDT_TRC20_CONTRACT || "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t",
   usdtTronGridUrl: (process.env.USDT_TRONGRID_URL || "https://api.trongrid.io").replace(/\/$/, ""),
   usdtTronGridApiKey: process.env.USDT_TRONGRID_API_KEY || "",
+  // BSC and Polygon share the BIP44 EVM path m/44'/60'/0'/0/index. The same
+  // account xpub can serve both chains; operators may also configure a
+  // different wallet per chain in the admin panel.
+  usdtBscEnabled: boolEnv("USDT_BSC_ENABLED", false),
+  usdtPolygonEnabled: boolEnv("USDT_POLYGON_ENABLED", false),
+  usdtEvmXpub: process.env.USDT_EVM_XPUB || "",
+  usdtBscXpub: process.env.USDT_BSC_XPUB || process.env.USDT_EVM_XPUB || "",
+  usdtPolygonXpub: process.env.USDT_POLYGON_XPUB || process.env.USDT_EVM_XPUB || "",
+  usdtBscContract: process.env.USDT_BSC_CONTRACT || "0x55d398326f99059fF775485246999027B3197955",
+  usdtPolygonContract: process.env.USDT_POLYGON_CONTRACT || "0xc2132D05D31c914a87C6611C10748AEb04B58e8F",
+  // Both defaults were verified reachable on 2026-11-13: the legacy
+  // bsc-dataseed.binance.org host stopped answering and polygon-rpc.com began
+  // rejecting requests without an API key.
+  usdtBscRpcUrl: (process.env.USDT_BSC_RPC_URL || "https://bsc-dataseed1.bnbchain.org").replace(/\/$/, ""),
+  usdtPolygonRpcUrl: (process.env.USDT_POLYGON_RPC_URL || "https://polygon-bor-rpc.publicnode.com").replace(/\/$/, ""),
+  // EVM receipts are more expensive to verify than Tron; 30 blocks is roughly
+  // 60-90 seconds on BSC/Polygon and still reorg-safe.
+  usdtEvmConfirmations: intEnv("USDT_EVM_CONFIRMATIONS", 30),
   usdtRateUrl:
     process.env.USDT_RATE_URL ||
     "https://api.coingecko.com/api/v3/simple/price?ids=tether&vs_currencies=cny",

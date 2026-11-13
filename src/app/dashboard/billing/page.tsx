@@ -9,7 +9,8 @@ import { query } from "@/lib/db";
 import { formatDateTime, orderStatusLabel } from "@/lib/format";
 import { getGatewayBalanceForRequest as getGatewayBalance } from "@/lib/gateway-credits";
 import { isEasyPayConfigured } from "@/lib/payments/easypay";
-import { isUsdtConfigured } from "@/lib/payments/usdt";
+import { USDT_NETWORKS, isUsdtProvider, networkForProvider } from "@/lib/payments/networks";
+import { configuredUsdtNetworks } from "@/lib/payments/usdt";
 import { getManualAlipaySettings } from "@/lib/payments/settings";
 import { formatCny } from "@/lib/money";
 
@@ -42,12 +43,12 @@ type OrderRow = {
 };
 
 function providerLabel(provider: string): string {
+  const usdtNetwork = networkForProvider(provider);
+  if (usdtNetwork) return USDT_NETWORKS[usdtNetwork].label;
   switch (provider) {
     case "alipay_manual":
     case "alipay_easypay":
       return "支付宝";
-    case "usdt_trc20":
-      return "USDT";
     case "stripe":
       return "银行卡";
     case "manual":
@@ -94,15 +95,15 @@ export default async function BillingPage({
       ? pendingOrder
       : null;
   const usdtOrder =
-    pendingOrder?.status === "pending" && pendingOrder.payment_provider === "usdt_trc20"
+    pendingOrder?.status === "pending" && isUsdtProvider(pendingOrder.payment_provider)
       ? pendingOrder
       : null;
   const supportEmail = process.env.SUPPORT_EMAIL || "support@cokeai.cc.cd";
   const alipayReady = isEasyPayConfigured();
-  const usdtReady = await isUsdtConfigured();
+  const usdtNetworkIds = await configuredUsdtNetworks();
   const onlineMethods = [
     alipayReady || personalAlipay.enabled ? "支付宝" : null,
-    usdtReady ? "USDT" : null,
+    usdtNetworkIds.length > 0 ? "USDT" : null,
     config.stripeEnabled ? "银行卡" : null,
   ].filter(Boolean);
   const hasOnline = onlineMethods.length > 0;
@@ -211,14 +212,15 @@ export default async function BillingPage({
                   className={`btn ${plan.highlight ? "btn-primary" : "btn-dark"} btn-block`}
                 />
               ) : null}
-              {usdtReady ? (
+              {usdtNetworkIds.map((network) => (
                 <CheckoutButton
+                  key={network}
                   planId={plan.id}
-                  provider="usdt"
-                  label="USDT (TRC20)"
+                  provider={USDT_NETWORKS[network].provider}
+                  label={USDT_NETWORKS[network].label}
                   className="btn btn-ghost btn-block"
                 />
-              ) : null}
+              ))}
               {config.manualPaymentsEnabled && !personalAlipay.enabled ? (
                 <CheckoutButton
                   planId={plan.id}

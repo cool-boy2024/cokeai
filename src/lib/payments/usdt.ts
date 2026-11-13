@@ -1,12 +1,24 @@
-import { HDKey } from "@scure/bip32";
-import { keccak_256 } from "@noble/hashes/sha3.js";
-import { secp256k1 } from "@noble/curves/secp256k1.js";
-import bs58check from "bs58check";
 import { config } from "@/lib/config";
 import { query, toNumber, withTransaction } from "@/lib/db";
 import { fulfillOrder } from "@/lib/orders";
-import { getUsdtSettings } from "./settings";
+import { deriveUsdtAddress } from "./derive";
+import { evmBlockNumber, evmListTransfers, evmUnitsToUsdt } from "./evm";
+import {
+  USDT_NETWORKS,
+  isUsdtNetwork,
+  networkForProvider,
+  providerForNetwork,
+  type UsdtNetwork,
+} from "./networks";
+import {
+  getUsdtNetworkSettings,
+  getUsdtSettings,
+  isUsdtNetworkConfigured,
+} from "./settings";
 import { sumTransferUnits, verifiedTransfers, type SolidReceipt } from "./tron-receipts";
+
+export { deriveEvmAddress, deriveTronAddress, deriveUsdtAddress, validateEvmXpub, validateUsdtXpub } from "./derive";
+export { isUsdtConfigured, configuredUsdtNetworks, isUsdtNetworkConfigured } from "./settings";
 
 export type UsdtDepositStatus =
   | "waiting"
@@ -31,6 +43,7 @@ export type UsdtDeposit = {
   status: UsdtDepositStatus;
   expires_at: string;
   last_checked_at: string | null;
+  scan_from_block?: string | null;
 };
 
 export type TronGridTransfer = {
@@ -54,38 +67,9 @@ type TronGridResponse =
   | { data?: TronGridTransfer[]; success?: boolean }
   | TronGridTransfer[];
 
-export async function isUsdtConfigured(): Promise<boolean> {
-  const settings = await getUsdtSettings();
-  // TronGrid allows low-volume keyless queries. A key is strongly recommended
-  // for production, but requiring one would block a first small test.
-  if (!settings.usdtEnabled || !settings.usdtXpub) return false;
-  try { validateUsdtXpub(settings.usdtXpub); return true; } catch { return false; }
-}
-
-export function validateUsdtXpub(xpub: string): void {
-  if (!/^xpub[1-9A-HJ-NP-Za-km-z]{100,115}$/.test(xpub)) throw new Error("请输入账户扩展公钥 xpub");
-  const account = HDKey.fromExtendedKey(xpub);
-  if (account.privateKey || account.depth !== 3 || account.index !== 0x80000000) throw new Error("xpub 须为 m/44'/195'/0' 的账户公钥");
-}
-
-export function deriveTronAddress(index: number, xpub: string = config.usdtXpub): string {
-  if (!Number.isInteger(index) || index < 0 || index >= 0x80000000) {
-    throw new Error("USDT 派生索引无效");
-  }
-  validateUsdtXpub(xpub);
-  // The configured account xpub is m/44'/195'/0'; deposit addresses live at
-  // .../0/index (external chain), matching scripts/generate-trc20-wallet.mjs.
-  const account = HDKey.fromExtendedKey(xpub);
-  const child = account.deriveChild(0).deriveChild(index);
-  if (!child.publicKey) throw new Error("无法派生收款地址");
-  const uncompressed = secp256k1.Point.fromHex(
-    Buffer.from(child.publicKey).toString("hex"),
-  ).toBytes(false);
-  const hash = keccak_256(uncompressed.slice(1));
-  const body = new Uint8Array(21);
-  body[0] = 0x41; // Tron mainnet address version
-  body.set(hash.slice(-20), 1);
-  return bs58check.encode(body);
+export async function isUsdtProviderReady(provider: string): Promise<boolean> {
+  const network = networkForProvider(provider);
+  return network ? isUsdtNetworkConfigured(network) : false;
 }
 
 let cachedRate: { value: number; expiresAt: number } | null = null;
@@ -156,9 +140,13 @@ export async function quoteUsdt(amountYuan: number): Promise<{
 export async function createUsdtDeposit(input: {
   orderId: string;
   amountYuan: number;
+  network?: UsdtNetwork;
 }): Promise<{ deposit: UsdtDeposit; address: string; amountUsdt: number; expiresAt: string }> {
-  const settings = await getUsdtSettings();
-  if (!(await isUsdtConfigured())) throw new Error("USDT 支付尚未配置");
+  const network: UsdtNetwork = input.network ?? "trc20";
+  const meta = USDT_NETWORKS[network];
+  const provider = providerForNetwork(network);
+  if (!(await isUsdtNetworkConfigured(network))) throw new Error("USDT 支付尚未配置");
+  const settings = await getUsdtNetworkSettings(network);
 
   const quote = await quoteUsdt(input.amountYuan);
   if (quote.amountUsdt < config.usdtMinAmount) {
@@ -166,6 +154,12 @@ export async function createUsdtDeposit(input: {
   }
 
   const expiresAt = new Date(Date.now() + config.usdtQuoteMinutes * 60_000);
+  // EVM deposits record the quote block so the scanner never asks the node for
+  // an unbounded log range. A small buffer covers a block mined mid-request.
+  let scanFromBlock: number | null = null;
+  if (meta.kind === "evm") {
+    scanFromBlock = Math.max(0, (await evmBlockNumber(network)) - 10);
+  }
   const result = await withTransaction(async (client) => {
     // Lock the parent even when no deposit exists yet: concurrent creates
     // must share one address and one locked quote.
@@ -173,7 +167,7 @@ export async function createUsdtDeposit(input: {
       "SELECT status, amount_micros, payment_provider FROM orders WHERE id=$1 FOR UPDATE", [input.orderId],
     );
     const locked = lockedOrder.rows[0];
-    if (!locked || locked.status !== "pending" || locked.payment_provider !== "usdt_trc20") throw new Error("订单状态不可支付");
+    if (!locked || locked.status !== "pending" || locked.payment_provider !== provider) throw new Error("订单状态不可支付");
     if (BigInt(locked.amount_micros) !== BigInt(Math.round(input.amountYuan * 1_000_000))) throw new Error("订单金额不一致");
     // Reuse the existing quote when the user refreshes the payment page. This
     // keeps the address stable and avoids burning derivation indexes.
@@ -210,32 +204,35 @@ export async function createUsdtDeposit(input: {
       "SELECT nextval('usdt_derivation_seq')::text AS index",
     );
     const index = Number(seq.rows[0].index);
-    const address = deriveTronAddress(index, settings.usdtXpub);
+    const address = deriveUsdtAddress(network, index, settings.xpub);
 
     const updated = await client.query(
       `UPDATE orders
-          SET payment_provider = 'usdt_trc20',
+          SET payment_provider = $7,
               pay_amount = $2,
               pay_currency = 'USDT',
               pay_address = $3,
               pay_quoted_at = now(),
               pay_expires_at = $4,
               derivation_index = $5,
-              payment_meta = jsonb_set(coalesce(payment_meta, '{}'::jsonb), '{usdt_rate}', to_jsonb($6::numeric)),
+              payment_meta = jsonb_set(
+                jsonb_set(coalesce(payment_meta, '{}'::jsonb), '{usdt_rate}', to_jsonb($6::numeric)),
+                '{usdt_network}', to_jsonb($8::text)
+              ),
               updated_at = now()
         WHERE id = $1 AND status = 'pending'`,
-      [input.orderId, quote.amountUsdt, address, expiresAt, index, quote.rate],
+      [input.orderId, quote.amountUsdt, address, expiresAt, index, quote.rate, provider, network],
     );
     if (updated.rowCount === 0) throw new Error("订单状态不可支付");
 
     const inserted = await client.query<UsdtDeposit>(
       `INSERT INTO usdt_deposits
-        (order_id, address, derivation_index, expected_usdt, expires_at)
-       VALUES ($1, $2, $3, $4, $5)
+        (order_id, network, address, derivation_index, expected_usdt, expires_at, scan_from_block)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING id, order_id, network, address, derivation_index, expected_usdt,
                  received_usdt, txid, block_number, confirmations, status,
-                 expires_at, last_checked_at`,
-      [input.orderId, address, index, quote.amountUsdt, expiresAt],
+                 expires_at, last_checked_at, scan_from_block`,
+      [input.orderId, network, address, index, quote.amountUsdt, expiresAt, scanFromBlock],
     );
     return inserted.rows[0];
   });
@@ -261,46 +258,99 @@ export async function getUsdtDepositForOrder(orderId: string): Promise<UsdtDepos
   return result.rows[0] || null;
 }
 
+export type ObservedTransfer = {
+  txid: string;
+  block: number;
+  /** Unix seconds of the block that includes the transfer. */
+  receivedAt?: number;
+};
+
 /**
- * Checks the chain once immediately before an expiry cancellation. A payment
- * broadcast just before the deadline must never be lost because the five
- * minute scanner has not observed it yet. "unknown" means TronGrid failed;
- * in that case the order is left pending for the next scan.
+ * One chain observation for a deposit, shared by the scanners and the
+ * last-chance expiry check. Returns the confirmed value received and the
+ * newest transfer; `head` is the chain tip used for the confirmation count.
  */
-async function checkDepositBeforeExpiry(deposit: {
-  id: string;
-  order_id: string;
+export async function observeDeposit(deposit: {
+  network: string;
   address: string;
-  expected_usdt: string;
-  status: UsdtDepositStatus;
-  expires_at: string;
-}): Promise<"clear" | "funded" | "unknown"> {
-  try {
-    const settings = await getUsdtSettings();
+  scan_from_block?: string | null;
+}): Promise<{ received: number; latest?: ObservedTransfer; head: number }> {
+  const network: UsdtNetwork = isUsdtNetwork(deposit.network) ? deposit.network : "trc20";
+  const meta = USDT_NETWORKS[network];
+
+  if (meta.kind === "tron") {
     const block = await currentTronBlock();
     const transfers = (await listTransfers(deposit.address)).filter(
       (tx) =>
         tx.type === "Transfer" &&
         tx.to === deposit.address &&
-        tx.token_info?.address?.trim() === settings.usdtContract,
+        tx.token_info?.address?.trim() === meta.contract &&
+        Number(tx.token_info.decimals) === meta.decimals,
     );
     const units = sumTransferUnits(transfers);
-    if (units > BigInt(Number.MAX_SAFE_INTEGER)) return "unknown";
-    const received = Number(units) / 1_000_000;
-    if (received <= 0) return "clear";
-
-    const latest = [...transfers].sort(
+    if (units > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error("转账金额超出自动核账范围");
+    const newest = [...transfers].sort(
       (a, b) => Number(b.block) - Number(a.block),
     )[0];
-    const confirmations = latest ? Math.max(0, block - Number(latest.block)) : 0;
+    return {
+      received: Number(units) / 10 ** meta.decimals,
+      latest: newest
+        ? {
+            txid: newest.transaction_id,
+            block: Number(newest.block),
+            receivedAt: newest.block_timestamp,
+          }
+        : undefined,
+      head: block,
+    };
+  }
+
+  const listed = await evmListTransfers({
+    network,
+    address: deposit.address,
+    fromBlock: deposit.scan_from_block ? Number(deposit.scan_from_block) : null,
+  });
+  const units = listed.transfers.reduce((sum, tx) => sum + tx.units, 0n);
+  const newest = [...listed.transfers].sort((a, b) => b.block - a.block)[0];
+  return {
+    received: evmUnitsToUsdt(units, meta.decimals),
+    latest: newest
+      ? { txid: newest.txid, block: newest.block, receivedAt: newest.timestamp }
+      : undefined,
+    head: listed.latestBlock,
+  };
+}
+
+/**
+ * Checks the chain once immediately before an expiry cancellation. A payment
+ * broadcast just before the deadline must never be lost because the five
+ * minute scanner has not observed it yet. "unknown" means the chain query
+ * failed; in that case the order is left pending for the next scan.
+ */
+async function checkDepositBeforeExpiry(deposit: {
+  id: string;
+  order_id: string;
+  network: string;
+  address: string;
+  expected_usdt: string;
+  status: UsdtDepositStatus;
+  expires_at: string;
+  scan_from_block?: string | null;
+}): Promise<"clear" | "funded" | "unknown"> {
+  try {
+    const network: UsdtNetwork = isUsdtNetwork(deposit.network) ? deposit.network : "trc20";
+    const { received, latest, head } = await observeDeposit(deposit);
+    if (received <= 0) return "clear";
+
+    const confirmations = latest ? Math.max(0, head - latest.block) : 0;
     const evaluation = evaluateUsdtDeposit({
       currentStatus: deposit.status,
       expectedUsdt: toNumber(deposit.expected_usdt),
       receivedUsdt: received,
       confirmations,
-      requiredConfirmations: config.usdtConfirmations,
+      requiredConfirmations: USDT_NETWORKS[network].requiredConfirmations,
       expiresAt: deposit.expires_at,
-      receivedAt: latest?.block_timestamp,
+      receivedAt: latest?.receivedAt,
     });
     await query(
       `UPDATE usdt_deposits
@@ -316,8 +366,8 @@ async function checkDepositBeforeExpiry(deposit: {
       [
         deposit.id,
         received,
-        latest?.transaction_id || null,
-        latest ? Number(latest.block) : null,
+        latest?.txid || null,
+        latest?.block ?? null,
         confirmations,
         evaluation.status,
       ],
@@ -346,7 +396,7 @@ async function cancelExpiredUsdtOrder(
       WHERE o.id = $1
         ${userClause}
         AND o.status = 'pending'
-        AND o.payment_provider = 'usdt_trc20'
+        AND o.payment_provider IN ('usdt_trc20', 'usdt_bsc', 'usdt_polygon')
         AND o.pay_txid IS NULL
         AND o.pay_expires_at IS NOT NULL
         AND o.pay_expires_at <= now()
@@ -379,22 +429,25 @@ export async function expireUsdtOrderForUser(
 ): Promise<boolean> {
   const result = await query<{
     deposit_id: string | null;
+    network: string | null;
     address: string | null;
     expected_usdt: string | null;
     received_usdt: string | null;
     deposit_status: UsdtDepositStatus | null;
     deposit_expires_at: string | null;
     confirmations: number | null;
+    scan_from_block: string | null;
   }>(
-    `SELECT d.id AS deposit_id, d.address, d.expected_usdt, d.received_usdt,
-            d.status AS deposit_status, d.expires_at AS deposit_expires_at,
-            d.confirmations
+    `SELECT d.id AS deposit_id, d.network, d.address, d.expected_usdt,
+            d.received_usdt, d.status AS deposit_status,
+            d.expires_at AS deposit_expires_at, d.confirmations,
+            d.scan_from_block
        FROM orders o
        LEFT JOIN usdt_deposits d ON d.order_id = o.id
       WHERE o.id = $1
         AND o.user_id = $2
         AND o.status = 'pending'
-        AND o.payment_provider = 'usdt_trc20'
+        AND o.payment_provider IN ('usdt_trc20', 'usdt_bsc', 'usdt_polygon')
         AND o.pay_expires_at IS NOT NULL
         AND o.pay_expires_at <= now()
       LIMIT 1`,
@@ -413,10 +466,12 @@ export async function expireUsdtOrderForUser(
     const check = await checkDepositBeforeExpiry({
       id: row.deposit_id,
       order_id: orderId,
+      network: row.network || "trc20",
       address: row.address,
       expected_usdt: row.expected_usdt,
       status: row.deposit_status || "waiting",
       expires_at: row.deposit_expires_at || new Date().toISOString(),
+      scan_from_block: row.scan_from_block,
     });
     if (check !== "clear") return false;
   }
@@ -435,7 +490,7 @@ export async function expireUnpaidUsdtOrders(limit = 100): Promise<number> {
         SELECT candidate.id
           FROM orders candidate
          WHERE candidate.status = 'pending'
-           AND candidate.payment_provider = 'usdt_trc20'
+           AND candidate.payment_provider IN ('usdt_trc20', 'usdt_bsc', 'usdt_polygon')
            AND candidate.pay_txid IS NULL
            AND candidate.pay_expires_at IS NOT NULL
            AND candidate.pay_expires_at <= now()
@@ -636,7 +691,8 @@ export async function scanUsdtDeposits(limit = 50): Promise<{
   const result = await query<UsdtDeposit>(
     `SELECT d.id, d.order_id, d.network, d.address, d.derivation_index,
             d.expected_usdt, d.received_usdt, d.txid, d.block_number,
-            d.confirmations, d.status, d.expires_at, d.last_checked_at
+            d.confirmations, d.status, d.expires_at, d.last_checked_at,
+            d.scan_from_block
        FROM usdt_deposits d
        JOIN orders o ON o.id = d.order_id
       WHERE d.status IN ('waiting', 'partial', 'confirming', 'expired')
@@ -650,15 +706,6 @@ export async function scanUsdtDeposits(limit = 50): Promise<{
     return { checked: 0, credited: 0, partial: 0, errors: 0 };
   }
 
-  let block = 0;
-  try {
-    block = await currentTronBlock();
-  } catch (error) {
-    console.error("[usdt] block query failed", error instanceof Error ? error.message : error);
-    return { checked: result.rows.length, credited: 0, partial: 0, errors: 1 };
-  }
-
-  const contract = config.usdtContract.trim();
   const usdtSettings = await getUsdtSettings();
   // Keyless TronGrid is fine for a first small test, but pace requests far
   // slower so the public endpoint does not rate-limit the whole scan.
@@ -669,32 +716,21 @@ export async function scanUsdtDeposits(limit = 50): Promise<{
 
   for (const deposit of result.rows) {
     try {
-      const transfers = (await listTransfers(deposit.address)).filter(
-        (tx) =>
-          tx.type === "Transfer" &&
-          tx.to === deposit.address &&
-          tx.token_info?.address?.trim() === contract,
-      );
-
-      const units = sumTransferUnits(transfers);
-      if (units > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error("转账金额超出自动核账范围");
-      const received = Number(units) / 1_000_000;
+      const network: UsdtNetwork = isUsdtNetwork(deposit.network) ? deposit.network : "trc20";
+      // A failing chain must not stop deposits on the other chains: each
+      // observation is caught per row below.
+      const { received, latest, head } = await observeDeposit(deposit);
       const expected = toNumber(deposit.expected_usdt);
-      const latest = [...transfers].sort(
-        (a, b) => Number(b.block) - Number(a.block),
-      )[0];
-      const confirmations = latest
-        ? Math.max(0, block - Number(latest.block))
-        : 0;
+      const confirmations = latest ? Math.max(0, head - latest.block) : 0;
 
       const evaluation = evaluateUsdtDeposit({
         currentStatus: deposit.status,
         expectedUsdt: expected,
         receivedUsdt: received,
         confirmations,
-        requiredConfirmations: config.usdtConfirmations,
+        requiredConfirmations: USDT_NETWORKS[network].requiredConfirmations,
         expiresAt: deposit.expires_at,
-        receivedAt: latest?.block_timestamp,
+        receivedAt: latest?.receivedAt,
       });
 
       // Atomic claim: only the worker that transitions the row out of a
@@ -715,8 +751,8 @@ export async function scanUsdtDeposits(limit = 50): Promise<{
         [
           deposit.id,
           received,
-          latest?.transaction_id || null,
-          latest ? Number(latest.block) : null,
+          latest?.txid || null,
+          latest?.block ?? null,
           confirmations,
           evaluation.status,
         ],

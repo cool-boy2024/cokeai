@@ -8,6 +8,7 @@ import { requireUser } from "@/lib/auth";
 import { config } from "@/lib/config";
 import { query } from "@/lib/db";
 import { expireUsdtOrderForUser } from "@/lib/payments/usdt";
+import { USDT_NETWORKS, networkForProvider } from "@/lib/payments/networks";
 import { formatCny } from "@/lib/money";
 
 export const metadata: Metadata = { title: "USDT 支付" };
@@ -27,6 +28,7 @@ export default async function UsdtPaymentPage({
     amount_micros: string;
     credits_micros: string;
     plan_name: string;
+    payment_provider: string;
     pay_amount: string | null;
     pay_address: string | null;
     pay_expires_at: string | null;
@@ -37,7 +39,7 @@ export default async function UsdtPaymentPage({
     credit_status: string | null;
   }>(
     `SELECT o.id, o.status, o.amount_micros, o.credits_micros, p.name AS plan_name,
-            o.pay_amount, o.pay_address, o.pay_expires_at,
+            o.payment_provider, o.pay_amount, o.pay_address, o.pay_expires_at,
             d.status AS deposit_status, d.received_usdt, d.confirmations, d.txid,
             g.status AS credit_status
        FROM orders o
@@ -73,10 +75,9 @@ export default async function UsdtPaymentPage({
   const paid = orderStatus === "paid";
   const cancelled = orderStatus === "cancelled";
   const creditApplied = order.credit_status === "applied";
-  const requiredConfirmations = Math.max(
-    1,
-    Number.parseInt(process.env.USDT_CONFIRMATIONS || "19", 10) || 19,
-  );
+  const usdtNetwork = networkForProvider(order.payment_provider);
+  const usdtMeta = USDT_NETWORKS[usdtNetwork || "trc20"];
+  const requiredConfirmations = usdtMeta.requiredConfirmations;
   const amountUsdt = Number(order.pay_amount || 0);
   const address = order.pay_address || "";
   const qr = address
@@ -92,7 +93,7 @@ export default async function UsdtPaymentPage({
           </Link>
           <h1 style={{ marginTop: 16 }}>USDT 支付</h1>
           <p>
-            TRC20 网络 · {config.usdtQuoteMinutes} 分钟内支付，超时自动取消
+            {usdtMeta.label} · {config.usdtQuoteMinutes} 分钟内支付，超时自动取消
           </p>
         </div>
       </div>
@@ -138,7 +139,7 @@ export default async function UsdtPaymentPage({
             <div className="panel-head">
               <div>
                 <h2>扫码或转账</h2>
-                <p>请只使用 TRC20 网络的 USDT。</p>
+                <p>请只使用 {usdtMeta.chainLabel} 网络的 USDT。</p>
               </div>
               <Clock3 size={17} />
             </div>
@@ -146,7 +147,7 @@ export default async function UsdtPaymentPage({
               <div style={{ display: "flex", justifyContent: "center" }}>
                 {qr ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={qr} alt="USDT TRC20 收款二维码" width={220} height={220} />
+                  <img src={qr} alt={`${usdtMeta.label} 收款二维码`} width={220} height={220} />
                 ) : null}
               </div>
               <div className="small muted" style={{ marginTop: 10, textAlign: "center" }}>
@@ -180,12 +181,12 @@ export default async function UsdtPaymentPage({
             </div>
             <div className="panel-body">
               <ul className="check-list">
-                <li>网络：TRC20（Tron）</li>
+                <li>网络：{usdtMeta.label}</li>
                 <li>币种：USDT</li>
                 <li>金额：{amountUsdt.toFixed(2)} USDT</li>
                 <li>支付时限：{config.usdtQuoteMinutes} 分钟，超时自动取消</li>
-                <li>到账确认：{requiredConfirmations} 个区块，通常 1–3 分钟</li>
-                <li>请勿使用 ERC20 或其他网络转账</li>
+                <li>到账确认：{requiredConfirmations} 个区块</li>
+                <li>{usdtMeta.transferHint}</li>
               </ul>
               <div className="notice" style={{ marginTop: 20 }}>
                 <ShieldAlert size={16} />

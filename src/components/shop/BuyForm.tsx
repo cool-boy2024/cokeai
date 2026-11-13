@@ -38,7 +38,12 @@ export function BuyForm({
   loggedIn: boolean;
   defaultEmail: string;
   qtyMax: number;
-  paymentOptions: { alipay: boolean; alipayManual: boolean; usdt: boolean; manual: boolean };
+  paymentOptions: {
+    alipay: boolean;
+    alipayManual: boolean;
+    usdtNetworks: Array<{ provider: string; label: string; hint: string }>;
+    manual: boolean;
+  };
   initialCaptcha?: Captcha | null;
 }) {
   const [state, action, pending] = useActionState(createShopCheckoutAction, initial);
@@ -96,7 +101,11 @@ export function BuyForm({
   }, [state.error]);
 
   const methods = [
-    paymentOptions.usdt ? { key: "usdt", label: "USDT TRC20", hint: "加密货币 · 链上确认" } : null,
+    ...paymentOptions.usdtNetworks.map((network) => ({
+      key: network.provider,
+      label: network.label,
+      hint: network.hint,
+    })),
     paymentOptions.alipay ? { key: "alipay", label: "支付宝（易支付）", hint: "第三方网关 · 即时到账" } : null,
     paymentOptions.alipayManual ? { key: "alipay_manual", label: "支付宝", hint: "商家核实到账" } : null,
     paymentOptions.manual ? { key: "manual", label: "人工到账", hint: "联系客服" } : null,

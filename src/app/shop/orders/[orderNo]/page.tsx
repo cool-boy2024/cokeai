@@ -8,9 +8,16 @@ import { DeliveryReveal } from "@/components/shop/DeliveryReveal";
 import { OrderTimeline } from "@/components/shop/OrderTimeline";
 import { getCurrentUser } from "@/lib/auth";
 import { config } from "@/lib/config";
+import { USDT_NETWORKS, networkForProvider } from "@/lib/payments/networks";
 import { formatCny } from "@/lib/money";
 import { decryptCustomerInput, findShopOrderByNo } from "@/lib/shop/orders";
 import { SHOP_COPY } from "@/lib/shop/copy";
+
+function paymentLabel(provider: string): string {
+  if (provider === "alipay_easypay" || provider === "alipay_manual") return "支付宝";
+  const network = networkForProvider(provider);
+  return network ? USDT_NETWORKS[network].label : "人工到账";
+}
 
 export const metadata: Metadata = { title: "订单详情", robots: { index: false } };
 export const dynamic = "force-dynamic";
@@ -110,11 +117,7 @@ export default async function ShopOrderPage({
                 <div>
                   <dt>支付方式</dt>
                   <dd>
-                    {order.payment_provider === "alipay_easypay"
-                      ? "支付宝"
-                      : order.payment_provider === "usdt_trc20"
-                        ? "USDT TRC20"
-                        : "人工到账"}
+                    {paymentLabel(order.payment_provider)}
                   </dd>
                 </div>
                 <div>

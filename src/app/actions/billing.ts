@@ -7,7 +7,8 @@ import { config } from "@/lib/config";
 import { query, toNumber, withTransaction } from "@/lib/db";
 import { getManualAlipaySettings } from "@/lib/payments/settings";
 import { buildEasyPayCheckout, easyPayConfigError } from "@/lib/payments/easypay";
-import { createUsdtDeposit, isUsdtConfigured } from "@/lib/payments/usdt";
+import { networkForProvider } from "@/lib/payments/networks";
+import { createUsdtDeposit, isUsdtNetworkConfigured } from "@/lib/payments/usdt";
 import { createStripeCheckout } from "@/lib/stripe";
 
 export type BillingState = { error?: string };
@@ -18,7 +19,10 @@ export async function createCheckoutAction(
 ): Promise<BillingState> {
   const user = await requireUser();
   const planId = String(formData.get("planId") || "");
-  const provider = String(formData.get("provider") || "stripe");
+  // Older pages posted the single value "usdt"; treat it as TRC20.
+  const postedProvider = String(formData.get("provider") || "stripe");
+  const provider = postedProvider === "usdt" ? "usdt_trc20" : postedProvider;
+  const usdtNetwork = networkForProvider(provider);
 
   const planResult = await query<{
     id: string;
@@ -46,10 +50,13 @@ export async function createCheckoutAction(
     const error = easyPayConfigError();
     if (error) return { error };
   }
-  if (provider === "usdt" && !(await isUsdtConfigured())) {
+  if (usdtNetwork && !(await isUsdtNetworkConfigured(usdtNetwork))) {
     return { error: "USDT 支付尚未配置。" };
   }
-  if (!["stripe", "manual", "alipay_manual", "easypay", "usdt"].includes(provider)) {
+  if (
+    !["stripe", "manual", "alipay_manual", "easypay"].includes(provider) &&
+    !usdtNetwork
+  ) {
     return { error: "支付方式无效。" };
   }
 
@@ -70,7 +77,7 @@ export async function createCheckoutAction(
     redirect(`/dashboard/billing/alipay/${id}`);
   }
 
-  const paymentProvider = provider === "easypay" ? "alipay_easypay" : provider === "usdt" ? "usdt_trc20" : provider;
+  const paymentProvider = provider === "easypay" ? "alipay_easypay" : provider;
   const inserted = await query<{ id: string }>(
     `INSERT INTO orders
       (user_id, plan_id, amount_micros, credits_micros, duration_days, payment_provider)
@@ -119,11 +126,12 @@ export async function createCheckoutAction(
     redirect(checkoutUrl);
   }
 
-  if (provider === "usdt") {
+  if (usdtNetwork) {
     try {
       await createUsdtDeposit({
         orderId,
         amountYuan: toNumber(plan.price_micros) / 1_000_000,
+        network: usdtNetwork,
       });
     } catch (error) {
       console.error("[usdt-checkout]", error);
@@ -179,10 +187,10 @@ export async function cancelOrderAction(formData: FormData): Promise<void> {
       WHERE id = $1
         AND user_id = $2
         AND status = 'pending'
-        AND payment_provider IN ('manual', 'usdt_trc20')
+        AND payment_provider IN ('manual', 'usdt_trc20', 'usdt_bsc', 'usdt_polygon')
         AND pay_txid IS NULL
         AND (
-          payment_provider <> 'usdt_trc20'
+          payment_provider NOT IN ('usdt_trc20', 'usdt_bsc', 'usdt_polygon')
           OR NOT EXISTS (
             SELECT 1
               FROM usdt_deposits d

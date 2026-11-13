@@ -326,15 +326,23 @@ CREATE TABLE IF NOT EXISTS usdt_deposits (
 );
 CREATE INDEX IF NOT EXISTS usdt_deposits_status_idx
   ON usdt_deposits(status, expires_at);
-CREATE UNIQUE INDEX IF NOT EXISTS usdt_deposits_txid_idx
-  ON usdt_deposits(txid) WHERE txid IS NOT NULL;
+
+-- 007_usdt_networks: TRC20, BSC (BEP20) and Polygon. Existing rows are TRC20.
+ALTER TABLE usdt_deposits DROP CONSTRAINT IF EXISTS usdt_deposits_network_check;
+ALTER TABLE usdt_deposits ADD CONSTRAINT usdt_deposits_network_check
+  CHECK (network IN ('trc20', 'bsc', 'polygon'));
+-- First block to scan for EVM deposits; avoids unbounded eth_getLogs ranges.
+ALTER TABLE usdt_deposits ADD COLUMN IF NOT EXISTS scan_from_block BIGINT;
+DROP INDEX IF EXISTS usdt_deposits_txid_idx;
+CREATE UNIQUE INDEX IF NOT EXISTS usdt_deposits_network_txid_idx
+  ON usdt_deposits(network, txid) WHERE txid IS NOT NULL;
 
 INSERT INTO schema_migrations (version) VALUES ('001_init') ON CONFLICT (version) DO NOTHING;
 INSERT INTO schema_migrations (version) VALUES ('002_sub2api_cutover') ON CONFLICT (version) DO NOTHING;
 
 -- 003_personal_payments: merchant settings and independently verified receipts.
 CREATE TABLE IF NOT EXISTS payment_settings (
-  channel TEXT PRIMARY KEY CHECK (channel IN ('alipay_manual', 'usdt_trc20')),
+  channel TEXT PRIMARY KEY CHECK (channel IN ('alipay_manual', 'usdt_trc20', 'usdt_bsc', 'usdt_polygon')),
   enabled BOOLEAN NOT NULL DEFAULT FALSE,
   payload_encrypted TEXT NOT NULL,
   updated_by UUID NOT NULL REFERENCES users(id),
@@ -648,8 +656,13 @@ CREATE TABLE IF NOT EXISTS shop_usdt_deposits (
 );
 CREATE INDEX IF NOT EXISTS shop_usdt_deposits_status_idx
   ON shop_usdt_deposits(status, expires_at);
-CREATE UNIQUE INDEX IF NOT EXISTS shop_usdt_deposits_txid_idx
-  ON shop_usdt_deposits(txid) WHERE txid IS NOT NULL;
+ALTER TABLE shop_usdt_deposits DROP CONSTRAINT IF EXISTS shop_usdt_deposits_network_check;
+ALTER TABLE shop_usdt_deposits ADD CONSTRAINT shop_usdt_deposits_network_check
+  CHECK (network IN ('trc20', 'bsc', 'polygon'));
+ALTER TABLE shop_usdt_deposits ADD COLUMN IF NOT EXISTS scan_from_block BIGINT;
+DROP INDEX IF EXISTS shop_usdt_deposits_txid_idx;
+CREATE UNIQUE INDEX IF NOT EXISTS shop_usdt_deposits_network_txid_idx
+  ON shop_usdt_deposits(network, txid) WHERE txid IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS shop_refunds (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -685,7 +698,14 @@ INSERT INTO schema_migrations (version) VALUES ('003_shop') ON CONFLICT (version
 -- Extend existing installations created before personal Alipay support.
 ALTER TABLE shop_orders DROP CONSTRAINT IF EXISTS shop_orders_payment_provider_check;
 ALTER TABLE shop_orders ADD CONSTRAINT shop_orders_payment_provider_check
-  CHECK (payment_provider IN ('alipay_easypay','alipay_manual','usdt_trc20','manual'));
+  CHECK (payment_provider IN ('alipay_easypay','alipay_manual','usdt_trc20','usdt_bsc','usdt_polygon','manual'));
+
+-- Widens the payment settings channel list on installations created before
+-- BSC/Polygon support. The inline CHECK gets a generated name; drop both
+-- possible names, then recreate it.
+ALTER TABLE payment_settings DROP CONSTRAINT IF EXISTS payment_settings_channel_check;
+ALTER TABLE payment_settings ADD CONSTRAINT payment_settings_channel_check
+  CHECK (channel IN ('alipay_manual','usdt_trc20','usdt_bsc','usdt_polygon'));
 
 -- Customer announcements. An announcement is visible while active and inside
 -- its optional start/end window. The public bar shows the newest pinned item;

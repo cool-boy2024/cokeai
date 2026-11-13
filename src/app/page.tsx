@@ -46,7 +46,7 @@ const API_FAQ = [
   {
     question: "怎么充值？",
     answer:
-      "在控制台选择 USDT TRC20 转账，链上确认后额度自动到账。当前只开这一种充值方式。",
+      "在控制台选择 USDT 转账，链上确认后额度自动到账。可选网络以充值页面实际开通为准。",
   },
   {
     question: "支持哪些模型？",
@@ -133,7 +133,7 @@ export default async function HomePage() {
           <div className="hero-float hero-float-a" aria-hidden="true">
             <Wallet size={16} />
             <div>
-              <strong>USDT · TRC20</strong>
+              <strong>USDT · 多网络</strong>
               <span>链上确认后到账</span>
             </div>
           </div>
@@ -328,7 +328,7 @@ export default async function HomePage() {
                 <li className="step-item">
                   <span className="step-index">02</span>
                   <h3>充值余额</h3>
-                  <p>在控制台选择 USDT TRC20，链上确认后额度到账。</p>
+                  <p>在控制台选择 USDT 网络，链上确认后额度到账。</p>
                 </li>
                 <li className="step-item">
                   <span className="step-index">03</span>

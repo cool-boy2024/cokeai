@@ -187,7 +187,7 @@ export default async function AdminPage({
                         <td className="small">
                           {order.provider === "manual"
                             ? "人工"
-                            : order.provider === "usdt_trc20"
+                            : order.provider.startsWith("usdt_")
                               ? "USDT"
                               : order.provider === "alipay_easypay"
                                 ? "支付宝"
