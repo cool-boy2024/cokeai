@@ -1,0 +1,357 @@
+/* Public help center. Scoped under .help-page so dashboard styles are untouched. */
+
+.help-page .help-hero {
+  padding: 72px 0 8px;
+}
+
+.help-page .help-hero h1 {
+  margin: 12px 0 10px;
+  font-size: clamp(32px, 4vw, 48px);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+.help-page .help-hero p {
+  max-width: 60ch;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1.7;
+}
+
+.help-page .help-count {
+  margin-left: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.help-page .help-list-section {
+  padding: 32px 0 80px;
+}
+
+.help-page .help-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.help-page .help-card {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 28px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  color: var(--ink);
+  text-decoration: none;
+  transition:
+    transform var(--dur-move) var(--ease-out-quint),
+    border-color var(--dur-color) var(--ease-out-quint),
+    box-shadow var(--dur-color) var(--ease-out-quint);
+}
+
+.help-page .help-card:hover {
+  transform: translateY(-4px);
+  border-color: var(--ink);
+  box-shadow: var(--shadow-sm);
+}
+
+.help-page .help-card:active {
+  transform: translateY(-1px);
+}
+
+.help-page .help-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.help-page .help-card-index {
+  color: var(--green);
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+}
+
+.help-page .help-card-time {
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.help-page .help-card h2 {
+  margin: 0;
+  font-size: 20px;
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+}
+
+.help-page .help-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.65;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.help-page .help-card-more {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: auto;
+  padding-top: 8px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.help-page .help-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 40px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.help-page .help-empty strong {
+  font-size: 18px;
+}
+
+.help-page .help-empty p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+/* Article detail */
+
+.help-page .help-article {
+  max-width: 920px;
+  padding: 56px 0 80px;
+}
+
+.help-page .help-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.help-page .help-back:hover {
+  color: var(--ink);
+}
+
+.help-page .help-article-head {
+  margin: 20px 0 32px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--line);
+}
+
+.help-page .help-article-head h1 {
+  margin: 10px 0 12px;
+  font-size: clamp(28px, 3.4vw, 40px);
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+.help-page .help-article-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  color: var(--muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The mirrored markup keeps its own tags; normalise typography here. */
+
+.help-page .help-article-body {
+  color: var(--ink-soft);
+  font-size: 16px;
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+}
+
+.help-page .help-article-body > :first-child {
+  margin-top: 0;
+}
+
+.help-page .help-article-body h1,
+.help-page .help-article-body h2,
+.help-page .help-article-body h3,
+.help-page .help-article-body h4 {
+  margin: 36px 0 14px;
+  color: var(--ink);
+  line-height: 1.4;
+  letter-spacing: -0.01em;
+}
+
+.help-page .help-article-body h1 {
+  font-size: 26px;
+}
+
+.help-page .help-article-body h2 {
+  font-size: 24px;
+}
+
+.help-page .help-article-body h3 {
+  font-size: 20px;
+}
+
+.help-page .help-article-body h4 {
+  font-size: 17px;
+}
+
+.help-page .help-article-body p {
+  margin: 0 0 16px;
+}
+
+.help-page .help-article-body ul,
+.help-page .help-article-body ol {
+  margin: 0 0 16px;
+  padding-left: 24px;
+}
+
+.help-page .help-article-body li {
+  margin: 6px 0;
+}
+
+.help-page .help-article-body a {
+  color: var(--green);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--green) 40%, transparent);
+  text-underline-offset: 3px;
+}
+
+.help-page .help-article-body a:hover {
+  text-decoration-color: var(--green);
+}
+
+.help-page .help-article-body img {
+  max-width: 100%;
+  height: auto;
+  margin: 8px 0 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+/* Tutorial clips are vertical screen recordings; cap the height so one clip
+   never fills the whole screen, and centre it. */
+.help-page .help-article-body video {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  max-height: 72vh;
+  height: auto;
+  margin: 8px auto 20px;
+  border-radius: var(--radius-sm);
+  background: #000;
+}
+
+.help-page .help-article-body blockquote {
+  margin: 0 0 16px;
+  padding: 4px 0 4px 16px;
+  border-left: 2px solid var(--line);
+  color: var(--muted);
+}
+
+.help-page .help-article-body pre {
+  margin: 0 0 16px;
+  padding: 16px;
+  overflow-x: auto;
+  background: var(--paper-deep);
+  border-radius: var(--radius-sm);
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.help-page .help-article-body code {
+  font-family: var(--mono);
+  font-size: 0.92em;
+}
+
+.help-page .help-article-body table {
+  width: 100%;
+  margin: 0 0 20px;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.help-page .help-article-body th,
+.help-page .help-article-body td {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.help-page .help-article-body th {
+  background: var(--paper-deep);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.help-page .help-article-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 48px;
+  padding-top: 24px;
+  border-top: 1px solid var(--line);
+}
+
+@media (max-width: 820px) {
+  .help-page .help-hero {
+    padding: 48px 0 4px;
+  }
+
+  .help-page .help-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .help-page .help-card {
+    padding: 22px;
+  }
+
+  .help-page .help-article {
+    padding: 32px 0 64px;
+  }
+
+  .help-page .help-article-body {
+    font-size: 16px;
+    line-height: 1.75;
+  }
+
+  .help-page .help-article-body h2 {
+    font-size: 21px;
+  }
+
+  .help-page .help-article-body video,
+  .help-page .help-article-body img {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .help-page .help-card {
+    transition: none;
+  }
+
+  .help-page .help-card:hover {
+    transform: none;
+  }
+}

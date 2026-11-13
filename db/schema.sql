@@ -721,3 +721,24 @@ CREATE TABLE IF NOT EXISTS app_settings (
 
 INSERT INTO schema_migrations (version) VALUES ('005_app_settings')
 ON CONFLICT (version) DO NOTHING;
+
+-- Public help center, mirrored from the supplier's public help pages by
+-- /api/internal/help/sync (n8n every six hours) and by /admin/help.
+-- body_html is stored already sanitised and with links made absolute.
+CREATE TABLE IF NOT EXISTS help_articles (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  summary TEXT NOT NULL DEFAULT '',
+  body_html TEXT NOT NULL DEFAULT '',
+  source_url TEXT NOT NULL,
+  published_at TIMESTAMPTZ,
+  content_hash TEXT NOT NULL DEFAULT '',
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  visible BOOLEAN NOT NULL DEFAULT TRUE,
+  synced_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS help_articles_public_idx
+  ON help_articles(visible, sort_order, published_at DESC);
+
+INSERT INTO schema_migrations (version) VALUES ('006_help_articles')
+ON CONFLICT (version) DO NOTHING;
