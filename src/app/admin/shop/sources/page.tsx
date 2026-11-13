@@ -27,6 +27,23 @@ import { offerAvailabilityLabel } from "@/lib/shop/copy";
 export const metadata: Metadata = { title: "小店货源" };
 export const dynamic = "force-dynamic";
 
+/**
+ * Sync failures quote the feed address in their message. Operators see the
+ * error, so strip the supplier host and any raw URL before it reaches the page.
+ */
+function redactSource(text: string): string {
+  const host = (() => {
+    try {
+      return new URL(config.shopFeedUrl).host;
+    } catch {
+      return "";
+    }
+  })();
+  let out = host ? text.split(host).join("数据源") : text;
+  out = out.split(config.shopFeedUrl).join("数据源");
+  return out.replace(/https?:\/\/[^\s"'<>]+/gi, "数据源");
+}
+
 const OFFER_BADGE_CLASS: Record<string, string> = {
   in_stock: "badge-green",
   low_stock: "badge-yellow",
@@ -363,7 +380,7 @@ export default async function AdminShopSourcesPage({
           <dl className="shop-sync-facts">
             <div>
               <dt>数据源</dt>
-              <dd className="shop-break">{supplier?.feed_url || "—"}</dd>
+              <dd>{supplier?.feed_url ? "已配置" : "未配置"}</dd>
             </div>
             <div>
               <dt>上次同步</dt>
@@ -381,7 +398,7 @@ export default async function AdminShopSourcesPage({
             </div>
           </dl>
           {supplier?.last_error ? (
-            <p className="shop-form-error mt-16">{supplier.last_error}</p>
+            <p className="shop-form-error mt-16">{redactSource(supplier.last_error)}</p>
           ) : null}
         </div>
       </section>
@@ -650,14 +667,6 @@ export default async function AdminShopSourcesPage({
                             </form>
                           </>
                         ) : null}
-                        <a
-                          className="btn btn-ghost btn-sm"
-                          href={offer.url}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          打开
-                        </a>
                       </div>
                     </td>
                   </tr>
