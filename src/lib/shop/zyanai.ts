@@ -1,6 +1,6 @@
-import { config } from "@/lib/config";
 import { query, withTransaction } from "@/lib/db";
 import { suggestRetailPrice } from "@/lib/shop/catalog";
+import { getShopTargetMarginBps } from "@/lib/shop/settings";
 import { replaceProductImages } from "@/lib/shop/images";
 import { extractReadableText } from "@/lib/shop/readable";
 import { buildRichDescriptionHtml } from "@/lib/shop/rich-description";
@@ -491,7 +491,7 @@ export async function syncZyanaiProducts(options?: {
 }
 
 async function persistProduct(supplierId: string, product: ZyanaiProduct): Promise<void> {
-  const retail = suggestRetailPrice(product.costMicros, config.shopImportTargetMarginBps);
+  const retail = suggestRetailPrice(product.costMicros, await getShopTargetMarginBps());
   const productId = await withTransaction(async (client) => {
     const offer = await client.query<{ id: string; price_micros: string }>(
       `INSERT INTO shop_offers

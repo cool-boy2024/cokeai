@@ -4,6 +4,7 @@ import { z } from "zod";
 import { config } from "@/lib/config";
 import { query, withTransaction } from "@/lib/db";
 import { suggestRetailPrice } from "@/lib/shop/catalog";
+import { getShopTargetMarginBps } from "@/lib/shop/settings";
 import { classifyOffer } from "@/lib/shop/offer-classify";
 import { sanitizeSupplierCopy, sanitizeSupplierLines } from "@/lib/shop/sanitize";
 
@@ -393,10 +394,10 @@ function slugFor(offer: OfferRow): string {
   return `auto-${key || offer.id.slice(0, 8)}-${offer.id.slice(0, 6)}`;
 }
 
-function priceFor(offer: OfferRow): number {
+function priceFor(offer: OfferRow, targetMarginBps: number): number {
   const cost = Number(offer.price_micros || 0);
   if (cost <= 0) return 0;
-  return suggestRetailPrice(cost, config.shopImportTargetMarginBps);
+  return suggestRetailPrice(cost, targetMarginBps);
 }
 
 /**
@@ -626,7 +627,7 @@ export async function runImportJob(
 
     const brand = inferBrand(offer.source_title);
     const { category, productType } = categoryFor(offer.source_title);
-    const price = priceFor(offer);
+    const price = priceFor(offer, await getShopTargetMarginBps());
     const availability =
       offer.availability === "in_stock" || offer.availability === "low_stock"
         ? offer.availability
