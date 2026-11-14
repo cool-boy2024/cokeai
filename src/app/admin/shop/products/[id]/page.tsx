@@ -4,13 +4,15 @@ import { notFound } from "next/navigation";
 import { AlertTriangle, ArrowLeft, CheckCircle2 } from "lucide-react";
 import {
   adminClearPricingReviewAction,
+  adminResetShopPriceAction,
   adminSaveShopProductAction,
 } from "@/app/actions/admin-shop";
 import { requireAdmin } from "@/lib/auth";
+import { config } from "@/lib/config";
 import { query } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { formatCny } from "@/lib/money";
-import { getAdminProduct } from "@/lib/shop/catalog";
+import { getAdminProduct, suggestRetailPrice } from "@/lib/shop/catalog";
 import { offerAvailabilityLabel, validateProductCopy } from "@/lib/shop/copy";
 
 export const metadata: Metadata = { title: "编辑小店商品" };
@@ -58,6 +60,8 @@ export default async function AdminShopProductEditPage({
     product.price_micros > 0 && cost > 0
       ? ((product.price_micros - cost) / product.price_micros) * 100
       : null;
+  const suggestedPrice =
+    cost > 0 ? suggestRetailPrice(cost, config.shopImportTargetMarginBps) : 0;
 
   return (
     <>
@@ -96,6 +100,12 @@ export default async function AdminShopProductEditPage({
         <div className="notice">
           <AlertTriangle size={16} />
           <div>这条货源已经对应一个商品，已跳到现有商品，请直接审核。</div>
+        </div>
+      ) : null}
+      {flags.error ? (
+        <div className="notice notice-red">
+          <AlertTriangle size={16} />
+          <div>{flags.error}</div>
         </div>
       ) : null}
       {product.pricing_review_required ? (
@@ -165,6 +175,9 @@ export default async function AdminShopProductEditPage({
               <div>
                 <h2>价格与时效</h2>
               </div>
+              <span className={`badge ${product.price_locked ? "badge-yellow" : ""}`}>
+                {product.price_locked ? "手动售价" : "自动定价"}
+              </span>
             </div>
             <div className="shop-form-grid">
               <label className="shop-field">
@@ -222,6 +235,12 @@ export default async function AdminShopProductEditPage({
                 </select>
               </label>
             </div>
+
+            <p className="shop-muted">
+              {product.price_locked
+                ? "当前售价已锁定，货源同步只更新成本，不会覆盖售价。"
+                : "改动售价并保存后会自动锁定，之后不再随货源价格同步。"}
+            </p>
 
             <label className="shop-field">
               <span>质保说明（按货源原文，留空则显示上面的质保类型和天数）</span>
@@ -291,6 +310,24 @@ export default async function AdminShopProductEditPage({
               </p>
             ) : null}
           </section>
+
+          {product.price_locked ? (
+            <section className="panel">
+              <h2>售价已锁定</h2>
+              <p className="shop-muted">
+                定时同步只更新成本和文案，不会覆盖当前售价。
+                {suggestedPrice > 0
+                  ? `按当前货源成本，自动定价约为 ${formatCny(suggestedPrice)}（目标毛利 ${(config.shopImportTargetMarginBps / 100).toFixed(0)}%）。`
+                  : ""}
+              </p>
+              <form action={adminResetShopPriceAction} className="shop-admin-form">
+                <input type="hidden" name="productId" value={product.id} />
+                <button className="btn btn-light btn-block" type="submit">
+                  恢复自动定价
+                </button>
+              </form>
+            </section>
+          ) : null}
 
           {product.pricing_review_required ? (
             <section className="panel">

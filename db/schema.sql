@@ -825,3 +825,9 @@ CREATE TABLE IF NOT EXISTS shop_media_sources (
   media_hash TEXT NOT NULL REFERENCES shop_media(hash) ON DELETE CASCADE,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- A price the operator edited by hand. Scheduled supply syncs refresh copy and
+-- supplier cost, but must not undo a deliberate retail price. Saving a changed
+-- price in the admin form sets this flag; "恢复自动定价" clears it.
+ALTER TABLE shop_products ADD COLUMN IF NOT EXISTS price_locked BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE shop_products ADD COLUMN IF NOT EXISTS price_locked_at TIMESTAMPTZ;

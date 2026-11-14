@@ -6,6 +6,7 @@ import { after } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { config } from "@/lib/config";
 import { query } from "@/lib/db";
+import { suggestRetailPrice } from "@/lib/shop/catalog";
 import { createImportJob, drainQueuedJobs, runImportJob } from "@/lib/shop/import";
 import {
   deliverShopItem,
@@ -174,6 +175,10 @@ export async function adminClearPricingReviewAction(formData: FormData): Promise
   await query(
     `UPDATE shop_products
         SET price_micros = CASE WHEN $2 > 0 THEN $2 ELSE price_micros END,
+            -- Confirming a price after a margin circuit-breaker is a decision
+            -- even when the number is unchanged, so lock it either way.
+            price_locked = CASE WHEN $2 > 0 THEN TRUE ELSE price_locked END,
+            price_locked_at = CASE WHEN $2 > 0 THEN now() ELSE price_locked_at END,
             pricing_review_required = FALSE,
             availability_reason = NULL,
             updated_at = now()
@@ -453,6 +458,16 @@ export async function adminSaveShopProductAction(formData: FormData): Promise<vo
             includes = $5::jsonb, usage_notes = $6::jsonb,
             customer_notice = $7, refund_policy = $8,
             price_micros = CASE WHEN $9 > 0 THEN $9 ELSE price_micros END,
+            -- An explicit price change is a deliberate decision: keep it
+            -- through future supply syncs until the operator resets it.
+            price_locked = CASE
+              WHEN $9 > 0 AND $9 <> price_micros THEN TRUE
+              ELSE price_locked
+            END,
+            price_locked_at = CASE
+              WHEN $9 > 0 AND $9 <> price_micros THEN now()
+              ELSE price_locked_at
+            END,
             eta_min_minutes = $10, eta_max_minutes = $11,
             warranty_type = $12, warranty_days = $13, warranty_note = $14,
             copy_ready = $15,
@@ -496,4 +511,46 @@ export async function adminSaveShopProductAction(formData: FormData): Promise<vo
   revalidatePath(`/admin/shop/products/${productId}`);
   revalidatePath("/shop");
   redirect(`/admin/shop/products/${productId}?saved=1`);
+}
+
+/**
+ * Drop a manual price and go back to the supplier-derived retail price.
+ * Uses the current supplier cost so the operator sees the same number the next
+ * scheduled sync would have written.
+ */
+export async function adminResetShopPriceAction(formData: FormData): Promise<void> {
+  await requireAdmin();
+  const productId = text(formData, "productId");
+  const exists = await query(`SELECT 1 FROM shop_products WHERE id = $1`, [productId]);
+  if (!exists.rowCount) redirect("/admin/shop/products?error=商品不存在");
+
+  const costRow = (
+    await query<{ cost: string | number | null }>(
+      `SELECT MAX(supplier_cost_micros) AS cost
+         FROM shop_product_sources
+        WHERE product_id = $1 AND active = TRUE`,
+      [productId],
+    )
+  ).rows[0];
+  const cost = Math.max(0, Number(costRow?.cost || 0));
+  if (cost <= 0) {
+    redirect(
+      `/admin/shop/products/${productId}?error=${encodeURIComponent(
+        "没有可用的供货商成本，无法恢复自动定价",
+      )}`,
+    );
+  }
+
+  const retail = suggestRetailPrice(cost, config.shopImportTargetMarginBps);
+  await query(
+    `UPDATE shop_products
+        SET price_micros = $2, price_locked = FALSE, price_locked_at = NULL,
+            updated_at = now()
+      WHERE id = $1`,
+    [productId, retail],
+  );
+  revalidatePath("/admin/shop/products");
+  revalidatePath(`/admin/shop/products/${productId}`);
+  revalidatePath("/shop");
+  redirect(`/admin/shop/products/${productId}?saved=1&price=auto`);
 }
