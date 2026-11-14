@@ -7,7 +7,6 @@ import {
   BookOpen,
   ClipboardList,
   CreditCard,
-  Gauge,
   KeyRound,
   LayoutDashboard,
   Megaphone,
@@ -15,7 +14,6 @@ import {
   ReceiptText,
   ShieldCheck,
   ShoppingBag,
-  SlidersHorizontal,
   UserRound,
   Users,
   Wallet,
@@ -31,25 +29,23 @@ const userItems = [
   { href: "/docs", label: "接入教程", icon: BookOpen },
 ];
 
+// The shop owns the day-to-day operations now. Legacy API recharge pages
+// (overview / gateway / plans / pricing) stay reachable by URL for rollback,
+// but they are no longer part of the operator's navigation.
 const adminItems = [
-  { href: "/admin", label: "概览", icon: LayoutDashboard },
-  // Gateway and security stay near the overview on purpose: they are the
-  // first stops during an incident, and they must remain inside the initial
-  // viewport (the mobile nav scrolls horizontally, so trailing items are
-  // effectively hidden).
-  { href: "/admin/gateway", label: "网关", icon: Gauge },
+  { href: "/admin/shop", label: "小店概览", icon: LayoutDashboard },
+  // Security stays near the overview on purpose: it is the first stop during
+  // an incident, and it must remain inside the initial viewport (the mobile
+  // nav scrolls horizontally, so trailing items are effectively hidden).
   { href: "/admin/security", label: "安全", icon: ShieldCheck },
-  { href: "/admin/orders", label: "订单", icon: ReceiptText },
+  { href: "/admin/shop/orders", label: "订单", icon: ReceiptText },
   { href: "/admin/payments", label: "收款设置", icon: CreditCard },
-  { href: "/admin/shop", label: "小店", icon: ShoppingBag },
   { href: "/admin/shop/queue", label: "采购队列", icon: ClipboardList },
   { href: "/admin/shop/deposits", label: "USDT 到账", icon: Wallet },
   { href: "/admin/shop/sources", label: "货源", icon: PackageSearch },
   { href: "/admin/users", label: "用户", icon: Users },
   { href: "/admin/announcements", label: "公告", icon: Megaphone },
   { href: "/admin/help", label: "帮助中心", icon: BookOpen },
-  { href: "/admin/plans", label: "充值包", icon: CreditCard },
-  { href: "/admin/pricing", label: "定价", icon: SlidersHorizontal },
 ];
 
 function isActive(href: string, pathname: string): boolean {

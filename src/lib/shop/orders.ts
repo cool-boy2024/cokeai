@@ -43,6 +43,9 @@ export type ShopOrderSummary = {
   delivered_at_item: string | null;
   customer_input_encrypted: string | null;
   customer_input_purged_at: string | null;
+  /** Latest manual Alipay report from the customer, if any. */
+  reported_reference: string | null;
+  reported_at: string | null;
 };
 
 export type ShopOrderDetail = ShopOrderSummary & {
@@ -76,7 +79,17 @@ const ORDER_SELECT = `
          i.procurement_status, i.delivery_kind, i.delivered_at AS delivered_at_item,
          i.customer_input_encrypted, i.customer_input_purged_at,
          i.supplier_title_snapshot, i.supplier_cost_micros, i.supplier_offer_id,
-         i.supplier_order_ref, i.delivery_note, i.revealed_at, i.reveal_count
+         i.supplier_order_ref, i.delivery_note, i.revealed_at, i.reveal_count,
+         (
+           SELECT p.reported_reference FROM manual_alipay_payments p
+            WHERE p.order_id = o.id AND p.order_kind = 'shop'
+            ORDER BY p.reported_at DESC NULLS LAST LIMIT 1
+         ) AS reported_reference,
+         (
+           SELECT p.reported_at FROM manual_alipay_payments p
+            WHERE p.order_id = o.id AND p.order_kind = 'shop'
+            ORDER BY p.reported_at DESC NULLS LAST LIMIT 1
+         ) AS reported_at
     FROM shop_orders o
     JOIN shop_order_items i ON i.order_id = o.id
 `;
@@ -113,6 +126,8 @@ function mapOrder(row: Record<string, unknown>): ShopOrderDetail {
     customer_input_purged_at: row.customer_input_purged_at
       ? String(row.customer_input_purged_at)
       : null,
+    reported_reference: row.reported_reference ? String(row.reported_reference) : null,
+    reported_at: row.reported_at ? String(row.reported_at) : null,
     user_id: String(row.user_id),
     customer_note: String(row.customer_note || ""),
     admin_note: String(row.admin_note || ""),
@@ -339,7 +354,13 @@ export async function listAdminShopOrders(filter?: {
 }): Promise<ShopOrderDetail[]> {
   const values: unknown[] = [];
   let condition = "TRUE";
-  if (filter?.status && filter.status !== "all") {
+  if (filter?.status === "reported") {
+    condition += ` AND o.status = 'pending_payment'
+      AND EXISTS (
+        SELECT 1 FROM manual_alipay_payments p
+         WHERE p.order_id = o.id AND p.order_kind = 'shop' AND p.reported_at IS NOT NULL
+      )`;
+  } else if (filter?.status && filter.status !== "all") {
     values.push(filter.status);
     condition += ` AND o.status = $${values.length}`;
   }
@@ -359,9 +380,10 @@ export async function listAdminShopOrders(filter?: {
 
 export async function getAdminShopOrder(id: string): Promise<ShopOrderDetail | null> {
   const result = await query<Record<string, unknown>>(
-    `${ORDER_SELECT}
-      JOIN users u ON u.id = o.user_id
-     WHERE o.id = $1 LIMIT 1`,
+    `SELECT q.*, u.email, u.name
+       FROM (${ORDER_SELECT}) q
+       JOIN users u ON u.id = q.user_id
+      WHERE q.id = $1 LIMIT 1`,
     [id],
   );
   const row = result.rows[0];

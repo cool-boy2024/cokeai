@@ -21,12 +21,21 @@ export default async function AdminLayout({
   const user = await requireAdmin();
 
   // Counts that stay in reach from every admin page: paid orders still need a
-  // trip to the supplier, unpaid ones need watching before they expire.
-  const counts = await query<{ pending: string; to_buy: string }>(
+  // trip to the supplier, unpaid ones need watching before they expire, and
+  // reported payments are waiting for a human to check the bank record.
+  const counts = await query<{ pending: string; to_buy: string; reported: string }>(
     `SELECT COUNT(*) FILTER (
               WHERE status = 'pending_payment' AND expires_at > now()
             )::text AS pending,
-            COUNT(*) FILTER (WHERE status IN ('paid', 'procuring'))::text AS to_buy
+            COUNT(*) FILTER (WHERE status IN ('paid', 'procuring'))::text AS to_buy,
+            COUNT(*) FILTER (
+              WHERE status = 'pending_payment' AND EXISTS (
+                SELECT 1 FROM manual_alipay_payments p
+                 WHERE p.order_id = shop_orders.id
+                   AND p.order_kind = 'shop'
+                   AND p.reported_at IS NOT NULL
+              )
+            )::text AS reported
        FROM shop_orders`,
   );
   const shopCounts = counts.rows[0];
@@ -37,6 +46,7 @@ export default async function AdminLayout({
         user={user}
         admin
         badges={{
+          "/admin/shop/orders": Number(shopCounts?.reported || 0),
           "/admin/shop": Number(shopCounts?.pending || 0),
           "/admin/shop/queue": Number(shopCounts?.to_buy || 0),
         }}

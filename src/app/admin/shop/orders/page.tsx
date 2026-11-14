@@ -11,6 +11,7 @@ export const dynamic = "force-dynamic";
 
 const FILTERS = [
   { key: "all", label: "全部" },
+  { key: "reported", label: "待确认到账" },
   { key: "pending_payment", label: "待支付" },
   { key: "paid", label: "待采购" },
   { key: "procuring", label: "采购中" },
@@ -34,7 +35,7 @@ export default async function AdminShopOrdersPage({
       <div className="page-head">
         <div>
           <h1>小店订单</h1>
-          <p>付款后去供货商下单，回填采购信息，再上传交付内容。</p>
+          <p>客户上报付款后先核对收款账单确认到账，再去供货商下单并上传交付。</p>
         </div>
       </div>
 
@@ -109,9 +110,20 @@ export default async function AdminShopOrdersPage({
                               : "人工"}
                       </td>
                       <td>
-                        <span className={`shop-status shop-status-${order.status}`}>
-                          {SHOP_COPY.orderStatus[order.status]}
-                        </span>
+                        {order.status === "pending_payment" && order.reported_at ? (
+                          <>
+                            <span className="shop-status shop-status-payment_reported">
+                              待确认到账
+                            </span>
+                            <div className="muted small">
+                              上报 {formatDateTime(order.reported_at)}
+                            </div>
+                          </>
+                        ) : (
+                          <span className={`shop-status shop-status-${order.status}`}>
+                            {SHOP_COPY.orderStatus[order.status]}
+                          </span>
+                        )}
                       </td>
                       <td className="nowrap muted">{formatDateTime(order.created_at)}</td>
                       <td className="text-right">

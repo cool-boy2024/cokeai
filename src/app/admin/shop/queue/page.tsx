@@ -85,7 +85,11 @@ export default async function AdminShopQueuePage() {
                 <div className="shop-queue-head">
                   <div>
                     <span className="mono">{order.order_no}</span>
-                    <h2>{order.product_name}</h2>
+                    <h2>
+                      <Link href={`/admin/shop/orders/${order.id}#procurement`}>
+                        {order.product_name}
+                      </Link>
+                    </h2>
                   </div>
                   <span className={`shop-status shop-status-${order.status}`}>
                     {SHOP_COPY.orderStatus[order.status as keyof typeof SHOP_COPY.orderStatus] ||
@@ -126,15 +130,25 @@ export default async function AdminShopQueuePage() {
                 ) : null}
 
                 <div className="shop-queue-actions">
-                  <ProcurementCopy text={text} />
-                  {order.url ? (
-                    <a className="btn btn-dark btn-sm" href={order.url} target="_blank" rel="noreferrer">
-                      去供货商下单 <ExternalLink size={13} />
-                    </a>
-                  ) : null}
-                  <Link className="btn btn-ghost btn-sm" href={`/admin/shop/orders/${order.id}`}>
-                    回填 / 交付
+                  <Link
+                    className="btn btn-dark btn-sm"
+                    href={`/admin/shop/orders/${order.id}#procurement`}
+                  >
+                    去采购并回填
                   </Link>
+                  {order.url ? (
+                    <a className="btn btn-light btn-sm" href={order.url} target="_blank" rel="noreferrer">
+                      打开供货商页面 <ExternalLink size={13} />
+                    </a>
+                  ) : (
+                    <Link
+                      className="btn btn-light btn-sm"
+                      href={`/admin/shop/orders/${order.id}#procurement`}
+                    >
+                      未绑定货源，去处理
+                    </Link>
+                  )}
+                  <ProcurementCopy text={text} />
                 </div>
               </article>
             );

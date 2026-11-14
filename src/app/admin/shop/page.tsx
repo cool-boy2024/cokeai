@@ -18,6 +18,7 @@ type ShopStats = {
   delivered_today: string;
   refund_count: string;
   pending_count: string;
+  reported_count: string;
   active_products: string;
   paused_products: string;
   draft_products: string;
@@ -26,16 +27,18 @@ type ShopStats = {
 type QueueOrder = {
   id: string;
   order_no: string;
-  status: "paid" | "procuring" | "refund_pending";
+  status: "paid" | "procuring" | "refund_pending" | "payment_reported";
   amount_micros: string;
   created_at: string;
   paid_at: string | null;
+  reported_at: string | null;
   email: string;
   product_name: string;
 };
 
 /** What the operator does next for each state in the queue. */
 const QUEUE_ACTIONS = {
+  payment_reported: { label: "待确认到账", action: "核对到账" },
   paid: { label: "待采购", action: "去采购" },
   procuring: { label: "采购中", action: "回填交付" },
   refund_pending: { label: "待退款", action: "处理退款" },
@@ -57,6 +60,14 @@ export default async function AdminShopPage() {
          COUNT(*) FILTER (
            WHERE status = 'pending_payment' AND expires_at > now()
          )::text AS pending_count,
+         COUNT(*) FILTER (
+           WHERE status = 'pending_payment' AND EXISTS (
+             SELECT 1 FROM manual_alipay_payments p
+              WHERE p.order_id = shop_orders.id
+                AND p.order_kind = 'shop'
+                AND p.reported_at IS NOT NULL
+           )
+         )::text AS reported_count,
          (SELECT COUNT(*) FROM shop_products WHERE status = 'active' AND availability IN ('in_stock','low_stock'))::text AS active_products,
          (SELECT COUNT(*) FROM shop_products WHERE pricing_review_required = TRUE)::text AS paused_products,
          (SELECT COUNT(*) FROM shop_products WHERE status = 'draft')::text AS draft_products
@@ -81,8 +92,13 @@ export default async function AdminShopPage() {
         ORDER BY r.started_at DESC LIMIT 1`,
     ),
     query<QueueOrder>(
-      `SELECT o.id, o.order_no, o.status, o.amount_micros,
-              o.created_at, o.paid_at, u.email,
+      `SELECT o.id, o.order_no, o.amount_micros,
+              o.created_at, o.paid_at, rep.reported_at, u.email,
+              CASE
+                WHEN o.status = 'pending_payment' AND rep.reported_at IS NOT NULL
+                  THEN 'payment_reported'
+                ELSE o.status
+              END AS status,
               COALESCE((
                 SELECT string_agg(i.product_name, '、' ORDER BY i.created_at)
                   FROM shop_order_items i
@@ -90,13 +106,24 @@ export default async function AdminShopPage() {
               ), '') AS product_name
          FROM shop_orders o
          JOIN users u ON u.id = o.user_id
+         LEFT JOIN LATERAL (
+           SELECT p.reported_at
+             FROM manual_alipay_payments p
+            WHERE p.order_id = o.id
+              AND p.order_kind = 'shop'
+              AND p.reported_at IS NOT NULL
+            ORDER BY p.reported_at DESC
+            LIMIT 1
+         ) rep ON TRUE
         WHERE o.status IN ('paid', 'procuring', 'refund_pending')
-        ORDER BY CASE o.status
-                   WHEN 'refund_pending' THEN 0
-                   WHEN 'paid' THEN 1
-                   ELSE 2
+           OR (o.status = 'pending_payment' AND rep.reported_at IS NOT NULL)
+        ORDER BY CASE
+                   WHEN o.status = 'refund_pending' THEN 0
+                   WHEN o.status = 'pending_payment' THEN 1
+                   WHEN o.status = 'paid' THEN 2
+                   ELSE 3
                  END,
-                 COALESCE(o.paid_at, o.created_at) ASC
+                 COALESCE(rep.reported_at, o.paid_at, o.created_at) ASC
         LIMIT 6`,
     ),
   ]);
@@ -109,6 +136,7 @@ export default async function AdminShopPage() {
   const refunds = Number(stats?.refund_count || 0);
   const deliveredToday = Number(stats?.delivered_today || 0);
   const pendingPayment = Number(stats?.pending_count || 0);
+  const reported = Number(stats?.reported_count || 0);
   const activeProducts = Number(stats?.active_products || 0);
   const pausedProducts = Number(stats?.paused_products || 0);
   const draftProducts = Number(stats?.draft_products || 0);
@@ -116,6 +144,7 @@ export default async function AdminShopPage() {
   // The page's one line: what needs a person today. Counts are the same
   // figures the strip and the queue below show.
   const attention = [
+    reported > 0 ? `${reported} 单客户已上报付款，等待确认到账` : "",
     refunds > 0 ? `${refunds} 单等待退款` : "",
     paid > 0 ? `${paid} 单等待去供货商下单` : "",
     procuring > 0 ? `${procuring} 单采购中` : "",
@@ -139,12 +168,31 @@ export default async function AdminShopPage() {
           ) : null}
           <Link
             className="btn btn-dark btn-sm"
-            href={paid > 0 ? "/admin/shop/orders?status=paid" : "/admin/shop/orders"}
+            href={
+              reported > 0
+                ? "/admin/shop/orders?status=reported"
+                : paid > 0
+                  ? "/admin/shop/orders?status=paid"
+                  : "/admin/shop/orders"
+            }
           >
-            {paid > 0 ? `去采购 ${paid} 单` : "全部订单"} <ArrowUpRight size={14} />
+            {reported > 0
+              ? `核对到账 ${reported} 单`
+              : paid > 0
+                ? `去采购 ${paid} 单`
+                : "全部订单"}{" "}
+            <ArrowUpRight size={14} />
           </Link>
         </div>
       </div>
+
+      {reported > 0 ? (
+        <Link className="shop-attention" href="/admin/shop/orders?status=reported">
+          <strong>{reported} 单客户已上报支付宝付款</strong>
+          <span>核对收款账单后确认到账，订单才会进入采购队列。</span>
+          <ArrowUpRight size={15} />
+        </Link>
+      ) : null}
 
       <section className="shop-kpis" aria-label="小店概要">
         <Link className="shop-kpi" href="/admin/shop/orders?status=paid">
@@ -205,9 +253,11 @@ export default async function AdminShopPage() {
                         <span className="mono">{order.order_no}</span>
                         <span>{order.email}</span>
                         <span>
-                          {order.paid_at
-                            ? `付款于 ${formatDateTime(order.paid_at)}`
-                            : `下单于 ${formatDateTime(order.created_at)}`}
+                          {order.status === "payment_reported" && order.reported_at
+                            ? `上报于 ${formatDateTime(order.reported_at)}`
+                            : order.paid_at
+                              ? `付款于 ${formatDateTime(order.paid_at)}`
+                              : `下单于 ${formatDateTime(order.created_at)}`}
                         </span>
                       </div>
                     </div>

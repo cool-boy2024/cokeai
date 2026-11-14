@@ -104,6 +104,11 @@ export async function adminDeliverShopAction(formData: FormData): Promise<void> 
   Object.keys(payload).forEach((key) => {
     if (!payload[key]) delete payload[key];
   });
+  if (Object.keys(payload).length === 0) {
+    redirect(
+      `/admin/shop/orders/${orderId}?error=${encodeURIComponent("请先填写交付内容")}`,
+    );
+  }
 
   try {
     await deliverShopItem({

@@ -325,11 +325,16 @@ export async function sendAlert(
       content: { text: text.slice(0, 3000) },
     });
   }
+  // Shop notifications reuse this channel but must not masquerade as security
+  // alerts: different webhook source, different mail subject.
+  const event = typeof extra.event === "string" ? extra.event : "";
+  const isShop = event.startsWith("shop_");
+
   if (config.channel === "webhook") {
     return postJson(config.webhookUrl, {
       text,
       content: text,
-      source: "cokeai-security",
+      source: isShop ? "cokeai-shop" : "cokeai-security",
       ...extra,
     });
   }
@@ -339,6 +344,10 @@ export async function sendAlert(
       ? "CokeAI 应急防护通知"
       : extra.attack
         ? "CokeAI 安全攻击告警"
-        : "CokeAI 安全告警";
+        : event === "shop_manual_payment_reported"
+          ? "CokeAI 小店：客户已上报支付宝付款"
+          : isShop
+            ? "CokeAI 小店订单提醒"
+            : "CokeAI 安全告警";
   return sendEmail(config.smtp, text, subject);
 }
