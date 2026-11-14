@@ -82,6 +82,19 @@ export default async function ShopOrderPage({
                 </div>
               )}
 
+              {order.status === "refund_pending" ? (
+                <div className="shop-refund-notice">
+                  <strong>退款协商中</strong>
+                  <p>
+                    请在客服会话中发送你的支付宝收款码（需与实名一致）和收款姓名。运营核对订单与金额后按协商结果退款，
+                    退款后可退款金额为 {formatCny(order.amount_micros)}，完成前请不要重复申请。
+                  </p>
+                  <a className="text-link" href={`mailto:${config.shopSupportEmail}`}>
+                    联系售后（{config.shopSupportEmail}）
+                  </a>
+                </div>
+              ) : null}
+
               {order.delivery_note ? (
                 <p className="shop-order-note">{order.delivery_note}</p>
               ) : null}

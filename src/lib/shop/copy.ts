@@ -42,6 +42,17 @@ export const SHOP_COPY = {
     auto: "自动发货",
   } as const satisfies Record<ShopDeliveryMethod, string>,
 
+  /**
+   * Storefront wording for supplier preorders (库存不足，可预订). It must not
+   * promise a stock position or a delivery time: the supplier ships in
+   * reservation order and the ETA fields are not meaningful for these items.
+   */
+  preorder: {
+    availability: "预定",
+    delivery: "人工处理",
+    eta: "按预定顺序发货",
+  },
+
   sections: {
     includes: "你将收到",
     description: "商品说明",
@@ -71,7 +82,11 @@ export const SHOP_COPY = {
   } as const,
 };
 
-export function availabilityLabel(value: ShopAvailability | string | null | undefined): string {
+export function availabilityLabel(
+  value: ShopAvailability | string | null | undefined,
+  preorder = false,
+): string {
+  if (preorder) return SHOP_COPY.preorder.availability;
   if (!value) return SHOP_COPY.availability.out_of_stock;
   return SHOP_COPY.availability[value as ShopAvailability] || SHOP_COPY.availability.out_of_stock;
 }
@@ -115,7 +130,11 @@ export function syncStatusLabel(value: string | null | undefined): string {
   return SYNC_STATUS_LABELS[value] || value;
 }
 
-export function deliveryLabel(value: ShopDeliveryMethod | string | null | undefined): string {
+export function deliveryLabel(
+  value: ShopDeliveryMethod | string | null | undefined,
+  preorder = false,
+): string {
+  if (preorder) return SHOP_COPY.preorder.delivery;
   return value === "auto" ? SHOP_COPY.delivery.auto : SHOP_COPY.delivery.manual;
 }
 
@@ -149,7 +168,10 @@ export function warrantyShortLabel(
   return head && head.length <= 12 ? head : "按商品说明";
 }
 
-export function etaLabel(minMinutes: number, maxMinutes: number): string {
+export function etaLabel(minMinutes: number, maxMinutes: number, preorder = false): string {
+  // The supplier's ETA is a stock-based estimate. For a preorder it would
+  // read as a delivery promise we cannot keep, so show the queue wording.
+  if (preorder) return SHOP_COPY.preorder.eta;
   const min = Math.max(0, Number(minMinutes) || 0);
   const max = Math.max(min, Number(maxMinutes) || 0);
   if (max === 0) return "尽快发货";

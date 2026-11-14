@@ -447,8 +447,18 @@ export async function markShopOrderPaid(input: {
     }
     if (input.paidAmountMicros !== undefined) {
       const expected = toNumber(order.amount_micros);
-      if (expected !== input.paidAmountMicros) {
-        throw new Error("AMOUNT_MISMATCH");
+      // Manual Alipay transfers are made in whole cents, and legacy order
+      // prices can carry sub-cent micros (e.g. 107.142858 shown as ¥107.14).
+      // Compare those at the precision the customer can actually pay.
+      const manual = ["manual", "alipay_manual"].includes(input.provider);
+      const cents = (micros: number) => Math.round(micros / 10_000);
+      const matches = manual
+        ? cents(expected) === cents(input.paidAmountMicros)
+        : expected === input.paidAmountMicros;
+      if (!matches) {
+        throw new Error(
+          `AMOUNT_MISMATCH：订单应付 ¥${(expected / 1_000_000).toFixed(2)}，与填写金额不一致`,
+        );
       }
     }
 
@@ -605,6 +615,45 @@ export async function markShopItemOutOfStock(input: {
       `INSERT INTO shop_order_events (order_id, actor_type, actor_id, event, note)
        VALUES ($1, 'admin', $2, 'out_of_stock', $3)`,
       [input.orderId, input.adminId, input.reason.slice(0, 1000)],
+    );
+  });
+}
+
+/**
+ * Moves a paid order into negotiated refund. The operator agrees the refund
+ * with the customer first (Alipay QR code / name), then pays manually and
+ * records it with refundShopOrder. Nothing is refunded automatically.
+ */
+export async function requestShopRefund(input: {
+  orderId: string;
+  adminId: string;
+  reason?: string;
+}): Promise<void> {
+  await withTransaction(async (client) => {
+    const order = await client.query<{ status: string }>(
+      `SELECT status FROM shop_orders WHERE id = $1 FOR UPDATE`,
+      [input.orderId],
+    );
+    const row = order.rows[0];
+    if (!row) throw new Error("订单不存在");
+    if (row.status === "refund_pending") return;
+    if (!["paid", "procuring"].includes(row.status)) {
+      throw new Error("只有已支付、处理中的订单可以转退款协商");
+    }
+    await client.query(
+      `UPDATE shop_orders SET status = 'refund_pending', updated_at = now() WHERE id = $1`,
+      [input.orderId],
+    );
+    await client.query(
+      `UPDATE shop_order_items
+          SET procurement_status = 'out_of_stock', updated_at = now()
+        WHERE order_id = $1 AND procurement_status NOT IN ('delivered', 'refunded')`,
+      [input.orderId],
+    );
+    await client.query(
+      `INSERT INTO shop_order_events (order_id, actor_type, actor_id, event, note)
+       VALUES ($1, 'admin', $2, 'refund_requested', $3)`,
+      [input.orderId, input.adminId, (input.reason || "协商退款").slice(0, 1000)],
     );
   });
 }

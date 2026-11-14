@@ -21,8 +21,20 @@ export type ShopIntroFact = {
 export function buildShopFacts(product: PublicShopProduct): ShopIntroFact[] {
   return [
     { label: "商品类型", value: TYPE_LABELS[product.product_type] || "数字商品" },
-    { label: "交付方式", value: deliveryLabel(product.delivery_method) },
-    { label: "预计发货", value: etaLabel(product.eta_min_minutes, product.eta_max_minutes) },
+    {
+      label: "交付方式",
+      value: deliveryLabel(product.delivery_method, product.preorder),
+    },
+    {
+      // A preorder has no stock-based ETA, so the label itself changes rather
+      // than promising a time we cannot keep.
+      label: product.preorder ? "发货安排" : "预计发货",
+      value: etaLabel(
+        product.eta_min_minutes,
+        product.eta_max_minutes,
+        product.preorder,
+      ),
+    },
     {
       label: "售后质保",
       value: warrantyLabel(

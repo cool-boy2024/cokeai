@@ -18,6 +18,7 @@ import {
 } from "@/lib/shop/categories";
 import { getShopTargetMarginBps } from "@/lib/shop/settings";
 import { offerAvailabilityLabel, validateProductCopy } from "@/lib/shop/copy";
+import { PREORDER_MARKER } from "@/lib/shop/preorder";
 
 export const metadata: Metadata = { title: "编辑小店商品" };
 export const dynamic = "force-dynamic";
@@ -117,7 +118,11 @@ export default async function AdminShopProductEditPage({
         <div className="notice notice-red">
           <AlertTriangle size={16} />
           <div>
-            毛利熔断：{product.availability_reason || "需要确认售价"}。商品当前不会出现在公开页。
+            毛利熔断：
+            {product.availability_reason && product.availability_reason !== PREORDER_MARKER
+              ? product.availability_reason
+              : "需要确认售价"}
+            。商品当前不会出现在公开页。
           </div>
         </div>
       ) : null}

@@ -3429,6 +3429,29 @@ tbody tr:hover {
   font-size: 11px;
 }
 
+.shop-refund-notice {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 18px 20px;
+  border: 1px solid #e9d8b4;
+  border-radius: var(--radius-md);
+  background: #fdf8ec;
+  color: var(--ink-soft);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.shop-refund-notice strong {
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.shop-refund-notice p {
+  margin: 0;
+}
+
 .shop-delivery {
   display: flex;
   flex-direction: column;

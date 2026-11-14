@@ -14,6 +14,7 @@ import {
   markShopItemOutOfStock,
   markShopOrderPaid,
   refundShopOrder,
+  requestShopRefund,
   startShopProcurement,
 } from "@/lib/shop/orders";
 import { syncShopFeed } from "@/lib/shop/sync";
@@ -196,16 +197,39 @@ export async function adminOutOfStockShopAction(formData: FormData): Promise<voi
   redirect(`/admin/shop/orders/${orderId}?saved=1`);
 }
 
+export async function adminRequestShopRefundAction(formData: FormData): Promise<void> {
+  const admin = await requireAdmin();
+  const orderId = text(formData, "orderId");
+  try {
+    await requestShopRefund({
+      orderId,
+      adminId: admin.id,
+      reason: text(formData, "reason") || "协商退款",
+    });
+  } catch (error) {
+    redirect(
+      `/admin/shop/orders/${orderId}?error=${encodeURIComponent(
+        error instanceof Error ? error.message : "转退款失败",
+      )}`,
+    );
+  }
+  revalidatePath(`/admin/shop/orders/${orderId}`);
+  redirect(`/admin/shop/orders/${orderId}?saved=1`);
+}
+
 export async function adminRefundShopAction(formData: FormData): Promise<void> {
   const admin = await requireAdmin();
   const orderId = text(formData, "orderId");
   const amountYuan = Number(formData.get("amount") || 0);
+  const customerAccount = text(formData, "customerAccount");
   try {
     await refundShopOrder({
       orderId,
       adminId: admin.id,
       amountMicros: Math.round(amountYuan * 1_000_000),
-      reason: text(formData, "reason") || "运营退款",
+      reason: [text(formData, "reason") || "运营退款", customerAccount ? `收款账户：${customerAccount}` : ""]
+        .filter(Boolean)
+        .join("；"),
       providerRef: text(formData, "providerRef"),
     });
   } catch (error) {

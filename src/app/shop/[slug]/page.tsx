@@ -104,9 +104,19 @@ export default async function ShopProductPage({
                   <p>{product.subtitle}</p>
                 </div>
                 <div className="shop-detail-badges">
-                  <AvailabilityBadge availability={product.availability} />
-                  <DeliveryBadge method={product.delivery_method} />
-                  <EtaBadge min={product.eta_min_minutes} max={product.eta_max_minutes} />
+                  <AvailabilityBadge
+                    availability={product.availability}
+                    preorder={product.preorder}
+                  />
+                  <DeliveryBadge
+                    method={product.delivery_method}
+                    preorder={product.preorder}
+                  />
+                  <EtaBadge
+                    min={product.eta_min_minutes}
+                    max={product.eta_max_minutes}
+                    preorder={product.preorder}
+                  />
                   <WarrantyBadge
                     type={product.warranty_type}
                     days={product.warranty_days}
@@ -134,7 +144,11 @@ export default async function ShopProductPage({
                   <div className="shop-step">
                     <span>02</span>
                     <strong>人工处理</strong>
-                    <p>按商品说明处理，进度可在订单页查看。</p>
+                    <p>
+                      {product.preorder
+                        ? "按预定顺序处理，进度可在订单页查看。"
+                        : "按商品说明处理，进度可在订单页查看。"}
+                    </p>
                   </div>
                   <div className="shop-step">
                     <span>03</span>

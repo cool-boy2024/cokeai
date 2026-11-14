@@ -3,6 +3,11 @@ import { suggestRetailPrice } from "@/lib/shop/catalog";
 import { normalizeDisplayCategory } from "@/lib/shop/categories";
 import { getShopTargetMarginBps } from "@/lib/shop/settings";
 import { replaceProductImages } from "@/lib/shop/images";
+import {
+  PREORDER_MARKER,
+  hasActiveReservationNotice,
+  isPreorderStock,
+} from "@/lib/shop/preorder";
 import { extractReadableText } from "@/lib/shop/readable";
 import { buildRichDescriptionHtml } from "@/lib/shop/rich-description";
 import { sanitizeSupplierCopy } from "@/lib/shop/sanitize";
@@ -35,6 +40,11 @@ export type ZyanaiItem = {
   category_id?: number;
   category?: { id?: number; name?: string } | null;
   delivery_way?: number;
+  /** Detail-page JSON; absent on list rows and on soft-404 pages. */
+  stock_raw?: unknown;
+  is_stock?: unknown;
+  stock_state?: unknown;
+  reservation_enabled?: unknown;
 };
 
 export type ZyanaiProduct = {
@@ -42,6 +52,8 @@ export type ZyanaiProduct = {
   title: string;
   costMicros: number;
   availability: "in_stock" | "low_stock" | "out_of_stock";
+  /** Supplier sells this listing as a preorder (库存不足，可预订). */
+  preorder: boolean;
   url: string;
   description: string;
   /** Original description markup, mirrored and scrubbed before it is stored. */
@@ -163,6 +175,8 @@ export function parseItemPage(html: string): {
   descriptionHtml: string;
   imageUrls: string[];
   helpArticleIds: string[];
+  /** The page actually renders the reservation banner as active. */
+  reservationActive: boolean;
 } {
   const item = scanJson(html, 'setVar("_var_item"') as ZyanaiItem | null;
   // The class list varies between themes, so anchor on the token rather than
@@ -182,6 +196,7 @@ export function parseItemPage(html: string): {
     descriptionHtml,
     imageUrls: extractImageUrls(descriptionHtml),
     helpArticleIds: extractHelpArticleIds(html),
+    reservationActive: hasActiveReservationNotice(html),
   };
 }
 
@@ -349,9 +364,15 @@ function imageAlt(url: string): string {
 export function toProduct(
   item: ZyanaiItem,
   descriptionHtml: string,
-  extras?: { imageUrls?: string[]; helpArticleIds?: string[] },
+  extras?: {
+    imageUrls?: string[];
+    helpArticleIds?: string[];
+    /** Overrides the JSON-derived decision with the rendered page state. */
+    preorder?: boolean;
+  },
 ): ZyanaiProduct {
   const title = cleanTitle(item.name || "");
+  const preorder = extras?.preorder ?? isPreorderStock(item);
   const rawDescription = scrubZyanaiCopy(extractReadableText(descriptionHtml));
   // Some listings ship almost no copy; a short but useful note beats an empty
   // section on the product page.
@@ -374,7 +395,12 @@ export function toProduct(
     externalId: `zyanai:${item.id}`,
     title,
     costMicros: Math.max(0, Math.round(Number(item.price || "0") * 1_000_000)),
-    availability: availabilityOf(item.stock),
+    // A preorder is still purchasable: the supplier accepts the order and
+    // ships in reservation order. Marking it low_stock keeps our order flow
+    // (which only checks isPurchasable) working, while the preorder flag
+    // replaces every "现货 / N 分钟发货" label on the storefront.
+    availability: preorder ? "low_stock" : availabilityOf(item.stock),
+    preorder,
     url: `${BASE}/item/${item.id}`,
     description,
     descriptionHtml: descriptionHtml.slice(0, 80_000),
@@ -445,6 +471,9 @@ export async function syncZyanaiProducts(options?: {
         const product = toProduct(merged, parsed.descriptionHtml, {
           imageUrls: parsed.imageUrls,
           helpArticleIds: parsed.helpArticleIds,
+          // The rendered banner is the supplier's own UI truth; the JSON
+          // fields cover pages whose theme no longer emits the class.
+          preorder: parsed.reservationActive || isPreorderStock(merged),
         });
         if (!product.title || product.costMicros <= 0) {
           result.skipped.push({ id: item.id, reason: "标题或价格为空" });
@@ -529,9 +558,10 @@ async function persistProduct(supplierId: string, product: ZyanaiProduct): Promi
          (slug, brand, category, product_type, name, subtitle, description, cover_variant,
           price_micros, delivery_method, eta_min_minutes, eta_max_minutes,
           warranty_type, warranty_days, warranty_note, help_article_ids,
-          display_category, status, availability, copy_ready, sort_order, published_at)
-       VALUES ($1,$2,$3,$3,$4,$5,$6,$2,$7,'manual',15,60,$8,$9,$10,$13::jsonb,$14,'active',$11,TRUE,$12,
-               CASE WHEN $11 = 'out_of_stock' THEN NULL ELSE now() END)
+          display_category, status, availability, availability_reason,
+          copy_ready, sort_order, published_at)
+       VALUES ($1,$2,$3,$3,$4,$5,$6,$2,$7,'manual',15,60,$8,$9,$10,$13::jsonb,$14,'active',$11,$15,
+               TRUE,$12, CASE WHEN $11 = 'out_of_stock' THEN NULL ELSE now() END)
        ON CONFLICT (slug) DO UPDATE
          SET name = EXCLUDED.name, subtitle = EXCLUDED.subtitle,
              description = EXCLUDED.description,
@@ -547,6 +577,16 @@ async function persistProduct(supplierId: string, product: ZyanaiProduct): Promi
              help_article_ids = EXCLUDED.help_article_ids,
              display_category = EXCLUDED.display_category,
              availability = EXCLUDED.availability,
+             -- Refresh the preorder marker every sync. Do not clobber an
+             -- operator's pricing-review reason with NULL; only clear the
+             -- marker itself when the supplier is back in stock.
+             availability_reason = CASE
+               WHEN EXCLUDED.availability_reason IS NOT NULL
+                 THEN EXCLUDED.availability_reason
+               WHEN shop_products.availability_reason = '${PREORDER_MARKER}'
+                 THEN NULL
+               ELSE shop_products.availability_reason
+             END,
              -- Operators pause or archive a product on purpose. A scheduled
              -- supply sync may refresh copy and price, but it must never put
              -- a product they took down back on sale.
@@ -568,6 +608,7 @@ async function persistProduct(supplierId: string, product: ZyanaiProduct): Promi
         900 + Math.round(Number(product.externalId.split(":")[1] || 0) / 1000),
         JSON.stringify(product.helpArticleIds),
         product.displayCategory,
+        product.preorder ? PREORDER_MARKER : null,
       ],
     );
     const productId = shopProduct.rows[0].id;
