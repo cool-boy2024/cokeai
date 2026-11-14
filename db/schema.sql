@@ -846,3 +846,30 @@ ALTER TABLE shop_products ADD COLUMN IF NOT EXISTS price_locked_at TIMESTAMPTZ;
 -- while the supplier shows stock. Kept in its own column so scheduled syncs can
 -- refresh availability and the supplier marker without clearing this switch.
 ALTER TABLE shop_products ADD COLUMN IF NOT EXISTS preorder_manual BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- ============================================================================
+-- Support tickets: customer-submitted issues with an operator reply thread.
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS support_tickets (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  order_id UUID REFERENCES shop_orders(id) ON DELETE SET NULL,
+  subject TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'closed')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS support_tickets_user_idx
+  ON support_tickets(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS support_tickets_status_idx
+  ON support_tickets(status, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS support_ticket_messages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  ticket_id UUID NOT NULL REFERENCES support_tickets(id) ON DELETE CASCADE,
+  author TEXT NOT NULL CHECK (author IN ('customer', 'admin')),
+  body TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS support_ticket_messages_ticket_idx
+  ON support_ticket_messages(ticket_id, created_at ASC);
