@@ -45,4 +45,5 @@ tools/supplier-scraper/*.jsonl
 .claude/
 
 # Bundled maintenance scripts (built in Docker, not committed)
+zyanai-sync.cjs
 zyanai-sync.mjs

@@ -28,8 +28,10 @@ COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/db ./db
 COPY --from=builder --chown=nextjs:nodejs /app/scripts ./scripts
 # Standalone bundle for the zyanai mirror; run it inside the app container when
-# the supplier catalogue needs a refresh.
-COPY --from=builder --chown=nextjs:nodejs /app/zyanai-sync.mjs ./zyanai-sync.mjs
+# the supplier catalogue needs a refresh. It is a CJS bundle with dependencies
+# inlined: the standalone runner image only keeps Next-traced packages, and
+# that copy of sanitize-html is incomplete.
+COPY --from=builder --chown=nextjs:nodejs /app/zyanai-sync.cjs ./zyanai-sync.cjs
 # Next bundles most deps; seed scripts still need bcryptjs on disk.
 COPY --from=deps --chown=nextjs:nodejs /app/node_modules/bcryptjs ./node_modules/bcryptjs
 
