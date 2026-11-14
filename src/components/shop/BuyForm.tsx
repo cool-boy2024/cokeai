@@ -50,7 +50,9 @@ export function BuyForm({
   const [state, action, pending] = useActionState(createShopCheckoutAction, initial);
   const router = useRouter();
   const [step, setStep] = useState<"idle" | "method">("idle");
+  const [preorderOpen, setPreorderOpen] = useState(false);
   const [qty, setQty] = useState(1);
+  const preorderConfirmRef = useRef<HTMLButtonElement>(null);
   // The first captcha is rendered with the page, so opening the payment step is
   // instant. Refreshes are only needed when it expires, the code is wrong, or
   // the buyer asks for a new one.
@@ -95,6 +97,22 @@ export function BuyForm({
     if (captchaVersion === 0) return;
     void refreshCaptcha();
   }, [captchaVersion, refreshCaptcha]);
+
+  useEffect(() => {
+    if (!preorderOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setPreorderOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    const focusTimer = window.setTimeout(() => preorderConfirmRef.current?.focus(), 0);
+    return () => {
+      window.clearTimeout(focusTimer);
+      window.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [preorderOpen]);
 
   useEffect(() => {
     if (state.error?.includes("验证码")) {
@@ -142,42 +160,135 @@ export function BuyForm({
 
   if (step === "idle") {
     return (
-      <div className="shop-buy-panel">
-        <div className="shop-buy-price">
-          <strong>{productPriceLabel(product.price_micros)}</strong>
-          <span>
+      <>
+        <div className="shop-buy-panel">
+          <div className="shop-buy-price">
+            <strong>{productPriceLabel(product.price_micros)}</strong>
+            <span>
+              {product.preorder
+                ? SHOP_COPY.preorder.eta
+                : available
+                  ? "含人工服务"
+                  : "补货中"}
+            </span>
+          </div>
+          {product.preorder ? (
+            <div className="shop-preorder-reminder">
+              <strong>预定单提醒</strong>
+              <p>
+                当前无现货，付款后按预定顺序采购，发货可能延迟。取消与退款可联系售后；退款可选择转入
+                CokeAI 账户余额继续使用，退回原支付方式按渠道实际手续费协商。
+              </p>
+            </div>
+          ) : null}
+          <button
+            className="btn btn-primary btn-block"
+            type="button"
+            disabled={!available || methods.length === 0}
+            onClick={() => {
+              if (product.preorder) {
+                setPreorderOpen(true);
+                return;
+              }
+              setStep("method");
+            }}
+          >
+            {!available
+              ? SHOP_COPY.buy.outOfStock
+              : methods.length === 0
+                ? "支付通道配置中"
+                : "购买"}
+          </button>
+          {methods.length === 0 ? (
+            <div className="shop-form-error">收款通道配置中，暂不可下单。</div>
+          ) : null}
+          <p className="shop-buy-fine">
+            <ShieldCheck size={13} />{" "}
             {product.preorder
-              ? SHOP_COPY.preorder.eta
-              : available
-                ? "含人工服务"
-                : "补货中"}
-          </span>
+              ? "数字商品，预定单。付款后按预定顺序采购，进度可在订单页查看。"
+              : "数字商品，人工交付。付款后可在订单页查看进度。"}
+          </p>
+          <p className="shop-buy-fine">
+            <LockSimple size={13} /> 账号类信息加密保存，交付完成后 7 天自动清除。
+          </p>
         </div>
-        <button
-          className="btn btn-primary btn-block"
-          type="button"
-          disabled={!available || methods.length === 0}
-          onClick={() => setStep("method")}
-        >
-          {!available
-            ? SHOP_COPY.buy.outOfStock
-            : methods.length === 0
-              ? "支付通道配置中"
-              : "购买"}
-        </button>
-        {methods.length === 0 ? (
-          <div className="shop-form-error">收款通道配置中，暂不可下单。</div>
+
+        {preorderOpen ? (
+          <div
+            className="announcement-modal-overlay"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) setPreorderOpen(false);
+            }}
+          >
+            <div
+              className="announcement-modal shop-preorder-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="shop-preorder-modal-title"
+              aria-describedby="shop-preorder-modal-desc"
+            >
+              <div className="announcement-modal-head">
+                <span className="announcement-modal-eyebrow">预订购买确认</span>
+                <button
+                  className="announcement-modal-close"
+                  type="button"
+                  aria-label="关闭"
+                  onClick={() => setPreorderOpen(false)}
+                >
+                  ×
+                </button>
+              </div>
+              <div className="announcement-modal-scroll">
+                <h2 id="shop-preorder-modal-title">预订购买确认</h2>
+                <p id="shop-preorder-modal-desc" className="announcement-modal-body">
+                  当前商品为预订购买商品，下单后需要等待采购，请确认已知晓以下事项。
+                </p>
+                <ul className="shop-preorder-points">
+                  <li>
+                    <strong>当前无现货</strong>
+                    <span>本商品为预定单，付款后按预约顺序采购、发货，可能晚于现货商品。</span>
+                  </li>
+                  <li>
+                    <strong>发货可能延迟</strong>
+                    <span>到货时间受供货方影响，不承诺固定发货日期；进度可在订单页查看。</span>
+                  </li>
+                  <li>
+                    <strong>取消与余额</strong>
+                    <span>
+                      预定单可联系售后申请取消。退款可选择转入 CokeAI
+                      账户余额继续使用；退回原支付方式需按渠道实际手续费协商。
+                    </span>
+                  </li>
+                  <li>
+                    <strong>购买提醒</strong>
+                    <span>请确认您已知晓并接受预定单可能延迟发货，再继续预订。</span>
+                  </li>
+                </ul>
+              </div>
+              <div className="announcement-modal-foot">
+                <button
+                  className="btn btn-light"
+                  type="button"
+                  onClick={() => setPreorderOpen(false)}
+                >
+                  取消
+                </button>
+                <button
+                  ref={preorderConfirmRef}
+                  className="btn btn-primary"
+                  type="button"
+                  onClick={() => {
+                    setPreorderOpen(false);
+                    setStep("method");
+                  }}
+                >
+                  我知道了，继续预订
+                </button>
+              </div>
+            </div>
+          </div>
         ) : null}
-        <p className="shop-buy-fine">
-          <ShieldCheck size={13} />{" "}
-          {product.preorder
-            ? "数字商品，预定单。付款后按预定顺序采购，进度可在订单页查看。"
-            : "数字商品，人工交付。付款后可在订单页查看进度。"}
-        </p>
-        <p className="shop-buy-fine">
-          <LockSimple size={13} /> 账号类信息加密保存，交付完成后 7 天自动清除。
-        </p>
-      </div>
+      </>
     );
   }
 
@@ -191,9 +302,11 @@ export function BuyForm({
         <span>
           {qty > 1
             ? `单价 ${productPriceLabel(product.price_micros)} · ${qty} 件`
-            : available
-              ? "含人工服务"
-              : "补货中"}
+            : product.preorder
+              ? SHOP_COPY.preorder.eta
+              : available
+                ? "含人工服务"
+                : "补货中"}
         </span>
       </div>
 
@@ -203,6 +316,12 @@ export function BuyForm({
           返回
         </button>
       </div>
+
+      {product.preorder ? (
+        <p className="shop-preorder-inline">
+          预定单：付款后按预约顺序采购，发货可能延迟；取消与退款可联系售后，退款可转入账户余额继续使用。
+        </p>
+      ) : null}
 
       <label className="shop-field">
         <span>

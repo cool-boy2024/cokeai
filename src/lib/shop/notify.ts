@@ -3,6 +3,7 @@ import { sendAlert } from "@/lib/alerts";
 import { query, toNumber } from "@/lib/db";
 import { formatCny } from "@/lib/money";
 import { USDT_NETWORKS, type UsdtNetwork } from "@/lib/payments/networks";
+import { preorderSql } from "@/lib/shop/preorder";
 
 const PROVIDER_LABELS: Record<string, string> = {
   alipay_easypay: "支付宝",
@@ -33,14 +34,17 @@ export async function notifyShopOrderCreated(
       qty: number;
       email: string;
       has_customer_input: boolean;
+      preorder: boolean;
       created_at: Date;
     }>(
       `SELECT o.order_no, o.amount_micros, o.payment_provider, o.created_at,
               i.product_name, i.qty, u.email,
-              (i.customer_input_encrypted IS NOT NULL) AS has_customer_input
+              (i.customer_input_encrypted IS NOT NULL) AS has_customer_input,
+              COALESCE(${preorderSql("p.")}, FALSE) AS preorder
          FROM shop_orders o
          JOIN shop_order_items i ON i.order_id = o.id
          JOIN users u ON u.id = o.user_id
+         LEFT JOIN shop_products p ON p.id = i.product_id
         WHERE o.id = $1
         LIMIT 1`,
       [orderId],
@@ -52,6 +56,7 @@ export async function notifyShopOrderCreated(
       "【CokeAI 小店】客户已下单（待付款）",
       `订单号：${row.order_no}`,
       `商品：${row.product_name} × ${Number(row.qty)}`,
+      row.preorder ? "类型：预定单（按预定顺序采购，可能延迟发货）" : "类型：现货/常规商品",
       `金额：${formatCny(toNumber(row.amount_micros))}`,
       `客户账号：${row.email}`,
       contactEmail ? `联系邮箱：${contactEmail}` : null,
@@ -98,12 +103,15 @@ export async function notifyShopOrderPaid(orderId: string): Promise<void> {
       product_name: string;
       qty: number;
       email: string;
+      preorder: boolean;
     }>(
       `SELECT o.order_no, o.amount_micros, o.payment_provider,
-              i.product_name, i.qty, u.email
+              i.product_name, i.qty, u.email,
+              COALESCE(${preorderSql("p.")}, FALSE) AS preorder
          FROM shop_orders o
          JOIN shop_order_items i ON i.order_id = o.id
          JOIN users u ON u.id = o.user_id
+         LEFT JOIN shop_products p ON p.id = i.product_id
         WHERE o.id = $1
         LIMIT 1`,
       [orderId],
@@ -115,11 +123,14 @@ export async function notifyShopOrderPaid(orderId: string): Promise<void> {
       "【CokeAI 小店】新订单已付款",
       `订单号：${row.order_no}`,
       `商品：${row.product_name} × ${Number(row.qty)}`,
+      row.preorder ? "类型：预定单（按预定顺序采购，可能延迟发货）" : "类型：现货/常规商品",
       `金额：${formatCny(toNumber(row.amount_micros))}`,
       `客户：${row.email}`,
       `渠道：${PROVIDER_LABELS[row.payment_provider] || row.payment_provider}`,
       `后台：${config.appUrl}/admin/shop/orders/${orderId}`,
-      "下一步：去供货商下单，回填采购信息。",
+      row.preorder
+        ? "下一步：按预定顺序向供货商下单，回填采购信息；发货可能延迟。"
+        : "下一步：去供货商下单，回填采购信息。",
     ].join("\n");
 
     const sent = await sendAlert(text, {

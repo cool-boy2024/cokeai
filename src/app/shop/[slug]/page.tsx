@@ -125,6 +125,26 @@ export default async function ShopProductPage({
                 </div>
               </div>
 
+              {product.preorder ? (
+                <section
+                  className="shop-preorder-banner"
+                  aria-labelledby="shop-preorder-banner-title"
+                >
+                  <div className="shop-preorder-banner-head">
+                    <span>购买提醒</span>
+                    <h2 id="shop-preorder-banner-title">当前商品为预定单</h2>
+                  </div>
+                  <ul>
+                    <li>当前无现货，付款后按预约顺序采购、发货，可能晚于现货商品。</li>
+                    <li>到货时间受供货方影响，不承诺固定发货日期；进度可在订单页查看。</li>
+                    <li>
+                      预定单可联系售后申请取消。退款可选择转入 CokeAI
+                      账户余额继续使用；退回原支付方式需按渠道实际手续费协商。
+                    </li>
+                  </ul>
+                </section>
+              ) : null}
+
               <ProductIntro product={product} />
 
               <ProductHelpLinks articles={helpArticles} />

@@ -10,15 +10,32 @@ import {
   isPurchasable,
 } from "../src/lib/shop/copy";
 import {
+  PREORDER_BRANDS,
   PREORDER_MARKER,
   hasActiveReservationNotice,
+  isPreorderBrand,
   isPreorderStock,
+  preorderSql,
 } from "../src/lib/shop/preorder";
 import { parseItemPage, toProduct, type ZyanaiItem } from "../src/lib/shop/zyanai";
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`ASSERT: ${message}`);
 }
+
+// --- Operated brands are always preorder ----------------------------------
+
+assert(PREORDER_BRANDS.includes("muse"), "muse is an operated preorder brand");
+assert(isPreorderBrand("muse"), "muse brand is a preorder");
+assert(isPreorderBrand(" Muse "), "brand matching is trimmed and case-insensitive");
+assert(!isPreorderBrand("chatgpt"), "chatgpt is not forced into preorder");
+assert(!isPreorderBrand(null), "missing brand is not a preorder brand");
+assert(
+  preorderSql("p.").includes("p.availability_reason") &&
+    preorderSql("p.").includes("p.brand") &&
+    preorderSql("p.").includes("'muse'"),
+  "SQL predicate covers the supplier marker and Muse brand",
+);
 
 // --- Stock signal rule -----------------------------------------------------
 

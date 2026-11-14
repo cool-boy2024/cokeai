@@ -5486,3 +5486,137 @@ body {
     font-size: 10px;
   }
 }
+
+/* Preorder (预定单) reminder and confirm dialog. The banner is the permanent
+   reminder on the product page; the dialog interrupts the first click on
+   「购买」 so nobody mistakes a reservation for in-stock delivery. */
+.public-main .shop-preorder-banner {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  gap: 24px;
+  margin: 0 0 8px;
+  padding: 20px 22px;
+  border: 1px solid #e6d3ae;
+  border-radius: 20px;
+  background: linear-gradient(135deg, #fffaf0, #fcf2dc);
+}
+
+.public-main .shop-preorder-banner-head span {
+  color: #8a5a0a;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.public-main .shop-preorder-banner-head h2 {
+  margin: 6px 0 0;
+  font-size: 22px;
+  line-height: 1.25;
+  letter-spacing: -0.03em;
+}
+
+.public-main .shop-preorder-banner ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.public-main .shop-preorder-banner li {
+  position: relative;
+  padding-left: 16px;
+  color: var(--ink-soft);
+  font-size: 14px;
+  line-height: 22px;
+}
+
+.public-main .shop-preorder-banner li::before {
+  position: absolute;
+  top: 9px;
+  left: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: #b9842c;
+  content: "";
+}
+
+.public-main .shop-preorder-reminder {
+  display: grid;
+  gap: 5px;
+  padding: 12px 14px;
+  border: 1px solid #ecd8b6;
+  border-radius: 12px;
+  background: #fff8ea;
+}
+
+.public-main .shop-preorder-reminder strong {
+  color: #7b4e05;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.public-main .shop-preorder-reminder p,
+.shop-preorder-inline {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.shop-preorder-inline {
+  padding: 10px 12px;
+  border: 1px solid #ecd8b6;
+  border-radius: 10px;
+  background: #fff8ea;
+}
+
+.announcement-modal.shop-preorder-modal {
+  width: min(560px, 100%);
+}
+
+.shop-preorder-points {
+  display: grid;
+  gap: 14px;
+  margin: 20px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.shop-preorder-points li {
+  display: grid;
+  gap: 3px;
+  padding-left: 14px;
+  border-left: 2px solid #d9b97d;
+}
+
+.shop-preorder-points strong {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.shop-preorder-points span {
+  color: var(--ink-soft);
+  font-size: 14px;
+  line-height: 22px;
+}
+
+@media (max-width: 720px) {
+  .public-main .shop-preorder-banner {
+    grid-template-columns: 1fr;
+    gap: 12px;
+    padding: 18px;
+  }
+
+  .public-main .shop-preorder-banner-head h2 {
+    font-size: 20px;
+  }
+
+  .announcement-modal-foot .btn {
+    min-width: 0;
+  }
+}
