@@ -49,6 +49,22 @@ export default async function AdminShopOrderDetailPage({
       ).rows[0]
     : null;
   const customerInput = decryptCustomerInput(order.customer_input_encrypted);
+  const manualClaim =
+    order.payment_provider === "alipay_manual"
+      ? (
+          await query<{
+            reported_reference: string | null;
+            payer_note: string | null;
+            reported_at: string | Date | null;
+          }>(
+            `SELECT reported_reference, payer_note, reported_at
+               FROM manual_alipay_payments
+              WHERE order_id = $1 AND order_kind = 'shop'
+              LIMIT 1`,
+            [order.id],
+          )
+        ).rows[0] ?? null
+      : null;
   const canProcure = order.status === "paid" || order.status === "procuring";
   const canPay = order.status === "pending_payment" && ["manual", "alipay_manual"].includes(order.payment_provider);
   const procurementText = [
@@ -254,11 +270,27 @@ export default async function AdminShopOrderDetailPage({
             <section className="panel">
               <h2>确认到账</h2>
               <p className="shop-muted">仅用于人工到账或已核实的线下付款。</p>
+              {order.payment_provider === "alipay_manual" ? (
+                manualClaim?.reported_at ? (
+                  <div className="notice">
+                    <strong>客户已上报付款</strong>
+                    <p>交易号：{manualClaim.reported_reference || "未填写"}</p>
+                    {manualClaim.payer_note ? (
+                      <p>客户备注：{manualClaim.payer_note}</p>
+                    ) : null}
+                    <p>上报时间：{formatDateTime(manualClaim.reported_at)}</p>
+                  </div>
+                ) : (
+                  <p className="shop-muted">
+                    客户尚未上报交易号，请以支付宝账单实际到账为准。
+                  </p>
+                )
+              ) : null}
               <form action={adminMarkShopPaidAction} className="shop-admin-form">
                 <input type="hidden" name="orderId" value={order.id} />
                 <input type="hidden" name="orderNo" value={order.order_no} />
-                <label className="shop-field"><span>收款账单中的完整交易号</span><input name="receiptRef" minLength={8} maxLength={80} required autoComplete="off" /></label>
-                <label className="shop-field"><span>实际到账金额（元）</span><input name="amountYuan" inputMode="decimal" required autoComplete="off" /></label>
+                <label className="shop-field"><span>收款账单中的完整交易号</span><input name="receiptRef" defaultValue={manualClaim?.reported_reference || ""} minLength={8} maxLength={80} required autoComplete="off" /></label>
+                <label className="shop-field"><span>实际到账金额（元）</span><input name="amountYuan" defaultValue={(Number(order.amount_micros) / 1_000_000).toFixed(2)} inputMode="decimal" required autoComplete="off" /></label>
                 <label className="payment-check"><input type="checkbox" name="checked" required />我已在自己的收款账单核实实际到账及订单归属</label>
                 <label className="shop-field">
                   <span>备注</span>
