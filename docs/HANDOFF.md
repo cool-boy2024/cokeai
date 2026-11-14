@@ -1,6 +1,6 @@
 # 交接说明
 
-最后核对：2026-11-14 09:12 CST（服务器 + 仓库实测）。之后线上可能已经变化，动手前请按本文的“验证”一节重新核对。
+最后核对：2026-11-14（`cc7a485` 发布后，服务器 + 仓库实测）。之后线上可能已经变化，动手前请按本文的“验证”一节重新核对。
 
 这份文档写给接手的伙伴，以及帮伙伴读项目的 AI。目标是让你在不碰生产的前提下，先搞清楚现在是什么状态、哪些不能动、下一步该做什么。
 
@@ -16,11 +16,11 @@
 
 CokeAI（https://cokeai.cc.cd）现在对外是一家**数字商品小店**：Muse 成品号、Codex 单次接码、ChatGPT/Claude 卡密与代充。原有的 AI API 中转业务**暂时不在公开页面销售**，但后端、`/v1` 网关和后台模型管理仍在，随时可以用一个开关恢复展示。
 
-## 当前线上状态（2026-11-14 09:12 CST）
+## 当前线上状态（2026-11-14）
 
 | 项 | 状态 |
 |---|---|
-| 生产应用代码 | `c49d5b0`（2026-11-14 发布，含商品图片/原文镜像、分类栏、帮助中心视频镜像、zyanai 同步脚本） |
+| 生产应用代码 | `cc7a485`（2026-11-14 发布，含 #81/#82/#83：CI 构建发布、货源巡检节奏与 `INCOMPLETE` 语义、防护状态只在后台显示、安全入口移到侧栏首屏） |
 | 生产目录 | `/home/deploy/cokeai`，SSH：`ssh -i ~/.ssh/cokeai_deploy deploy@47.83.178.22` |
 | 容器 | app、postgres、redis、backup、sub2api、sub2api-postgres、sub2api-redis、edge、cloudflared、n8n、aiclient2api；app 启动后 healthy |
 | 自动备份 | `backup` 容器每天导出 `cokeai`/`n8n` 到 `/home/deploy/cokeai/backups`（目录 0700、文件 0600，保留 14 天） |
@@ -32,7 +32,7 @@ CokeAI（https://cokeai.cc.cd）现在对外是一家**数字商品小店**：Mu
 | AI 上架 | 后台货源页可单条/批量“AI 上架”，任务入队后后台执行，完成后自动打开审核页；n8n 每 2 分钟兜底。`SHOP_IMPORT_AI_*` 未配置，当前走规则提取 |
 | 商品 | active 14 个、archived 1 个（旧 Muse 商品）、草稿约 50 个 |
 | 订单 | 只有 2 笔过期测试单，无真实成交 |
-| 回滚镜像 | Deploy 工作流每次自动打 `cokeai-app:pre-<时间戳>` 并保留最近两个；更早的 `pre-audit-fixes`、`pre-hero-copy`、`pre-publicpause`、`pre-muse-tiers` 视磁盘情况在 |
+| 回滚镜像 | CI 的 Deploy 工作流每次部署前自动把当前 `cokeai-app:local` 打成 `cokeai-app:pre-<时间戳>`，只保留最近两个；本次发布前的生产快照已加语义标签 `cokeai-app:pre-hide-security-status`（与时间戳标签并存，磁盘紧张时可能被清理）。更早的 `pre-audit-fixes`、`pre-hero-copy`、`pre-publicpause`、`pre-muse-tiers` 视磁盘情况在 |
 
 active 的 14 个商品：
 
@@ -76,7 +76,7 @@ active 的 14 个商品：
 
 `main` 只接受 PR，CI 必须过 `build`、`e2e`、`compose-smoke`，用 Squash and merge，然后本地 `git switch main && git pull --ff-only`。
 
-生产发布**走 GitHub Actions 的 Deploy 工作流**，不要在 VPS 上构建：
+**合并 PR 不等于发布。** 生产发布由仓库管理员手动触发 GitHub Actions 的 `Deploy` 工作流（`workflow_dispatch`，工作流里按 actor 限制；协作伙伴可以合并代码，但不能触发部署）：
 
 ```bash
 gh workflow run deploy.yml --ref main   # 等价于 npm run deploy:prod
@@ -84,18 +84,24 @@ gh run list --workflow deploy.yml --limit 1
 gh run watch <run-id>
 ```
 
-工作流会：在 GitHub runner 上 `docker build` → `docker save` 成 tar.gz → rsync 代码和镜像到服务器 → 服务器 `docker load`、把旧镜像存成 `cokeai-app:pre-<时间戳>`、`docker compose up -d --no-build app` → 健康检查，失败自动回滚 → 只保留最近两个 `pre-*` 镜像 → 从外部再验 `/api/health`。
+工作流全部在 CI 里完成：
+
+1. 在 GitHub runner 上 `docker build`，`docker save` 成 tar.gz；
+2. rsync 代码和镜像 tar 到服务器；
+3. 服务器只 `docker load` 新镜像，把旧 `cokeai-app:local` 存成 `cokeai-app:pre-<时间戳>`，再 `docker compose up -d --no-build app`；
+4. 容器内 `/api/health` 健康检查，失败自动回滚到 `pre-*`；成功后再从外部验一次 `https://cokeai.cc.cd/api/health`；
+5. 只保留最近两个 `cokeai-app:pre-*` 镜像。
 
 **不要在服务器上运行 `docker compose build` / `up -d --build`。** 这台机器只有 2 vCPU / 3.6 GB 内存，Next.js 构建会把 Docker 内置 DNS 和 cloudflared 一起拖死：2026-11-14 10:45–10:57 CST 就是这样出现约 10 分钟的 Cloudflare 502（`lookup app on 127.0.0.11:53: i/o timeout`），同期 SSH 在 banner exchange 阶段超时。构建放到 runner 后，服务器只做 `docker load` + 重启，几秒完成。
 
-回滚：
+回滚（保留）：
 
 ```bash
 ssh -i ~/.ssh/cokeai_deploy deploy@47.83.178.22 \
   'cd /home/deploy/cokeai && docker tag cokeai-app:pre-<时间戳> cokeai-app:local && docker compose up -d --no-build app'
 ```
 
-可用快照：`docker images cokeai-app`。自动保留最近两个 `pre-*`；更早的若还在也可 `docker tag` 恢复，被清理后只能重发旧代码。
+可用快照：`docker images cokeai-app`。自动保留最近两个 `pre-*`；语义标签（如 `pre-hide-security-status`）和时间戳标签一样受保留策略影响，更早的若还在也可 `docker tag` 恢复，被清理后只能重发旧代码。
 
 可用性监控：`.github/workflows/uptime.yml` 每小时从 GitHub 外部探测 `/api/health` 与 `/shop`，连续失败会开一个带 `uptime-watch` 标记的 issue（GitHub 会发邮件），恢复后自动评论并关闭。它和站点不在同一台机器，主机整体失联时仍然有效。小时级偏慢；若需要分钟级告警，在 Cloudflare 面板给 `cokeai.cc.cd` 配 Health Check + 通知渠道。
 
@@ -120,6 +126,7 @@ curl -s -o /dev/null -w "health %{http_code}\n" http://127.0.0.1:3000/api/health
 - `/pricing`、`/docs` 应为 307（API 销售关闭期间）。
 - 首页不应出现“按量计费 / 创建 Key / 模型与价格 / 充值包 / 接入教程”。
 - 商品页不应出现外部域名、`货源`、供货商店名。
+- 货源巡检：`node scripts/audit-supplier-leaks.mjs https://cokeai.cc.cd`（只读）。默认每页 600ms，遇 429 按 `Retry-After` 退避；有页面读不到时输出 `INCOMPLETE` 并以 1 退出，只有全部发现的页面都检查过才报 `OK`。2026-11-14 对生产跑通：66 个公开页面全部检查，无泄露。细则见 `docs/SECURITY.md` 第 10.2 节。
 - 界面改动要在 1440 和 390 两个宽度检查无横向滚动；小店保持两步购买（先“购买”，再出现支付方式）。
 - 本机直连 Cloudflare 经常很慢甚至超时，是本地到边缘的网络问题，不代表生产故障；以服务器回源为准。
 
@@ -141,6 +148,7 @@ curl -s -o /dev/null -w "health %{http_code}\n" http://127.0.0.1:3000/api/health
   `Referrer-Policy`、`Permissions-Policy`；CSP 目前是 `Content-Security-Policy-Report-Only`，
   观察无报错后再切强制模式。站内跳转只允许同源路径；帮助中心同步正文经过 HTML 清洗。
 - 当前真正生效的只有应用层防护：`src/proxy.ts` 的扫描拦截，登录/注册/小店/API/Server Action 按 IP 限流；事件写 Redis，管理员页 `/admin/security`；n8n 每 5 分钟拉取摘要，应用把告警发到后台配置的通道。
+- **防护状态与拦截计数只对管理员展示**：完整计数、告警和应急开关都在 `/admin/security`；公开页面（包括页脚）不再出现“应用层防护已开启/今日拦截”等状态。后台侧栏的“安全”入口已移到“概览”之后，首屏可见。
 - **Cloudflare Tunnel 仍指向 `app:3000`**，边缘 Caddy 限流不在公网链路上；CrowdSec、Anubis、WAF 均未启用。`ops/edge/` 的限流预案默认关闭，启用前必须单独审批并验证回滚。
 - 告警阈值默认 60 次 / 15 分钟（`SECURITY_ATTACK_THRESHOLD`），冷却 30 分钟（`SECURITY_ALERT_COOLDOWN_MINUTES`）。管理员页可“测试告警”“把当前摘要发到告警通道”，也可临时收紧限流（`sec:strict`，默认 60 分钟自动恢复）。
 - **一键应急防护**在 `/admin/security` 右上角：点击后应用层限速立即减半（`sec:defense` + `sec:strict`，24 小时自动恢复），并向告警通道发送边缘切换三步命令；不会自动改 Tunnel 或重建容器。关闭同理，恢复限流并提示把 Tunnel 改回 `app:3000`。
