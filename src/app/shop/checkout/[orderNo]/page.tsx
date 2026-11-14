@@ -27,17 +27,33 @@ import {
 } from "@/lib/shop/usdt";
 import { query } from "@/lib/db";
 import { ManualPaymentClaimForm } from "@/components/ManualPaymentClaimForm";
+import { retryShopBalancePaymentAction } from "@/app/actions/shop";
+
+const BALANCE_PAYMENT_MESSAGES: Record<string, string> = {
+  insufficient: "账户余额不足，订单仍保留为待支付。充值后可重新尝试余额支付。",
+  processing: "余额支付处理中，请勿重复付款。页面会自动刷新。",
+  failed: "余额支付未完成，订单仍保留为待支付；可以重新尝试。",
+  closed: "订单已关闭，无法使用余额支付。",
+  reversal_failed: "余额扣款需要人工核对，请勿重复付款，并联系客服处理。",
+  rate: "操作过于频繁，请稍后再试。",
+};
 
 export const metadata: Metadata = { title: "订单支付", robots: { index: false } };
 export const dynamic = "force-dynamic";
 
 export default async function ShopCheckoutPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ orderNo: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const user = await getCurrentUser();
   const { orderNo } = await params;
+  const queryParams = await searchParams;
+  const balanceCode = Array.isArray(queryParams.balance)
+    ? queryParams.balance[0]
+    : queryParams.balance;
   if (!user) redirect(`/login?next=/shop/checkout/${orderNo}`);
 
   const order = await findShopOrderByNo(orderNo, user.id);
@@ -113,9 +129,11 @@ export default async function ShopCheckoutPage({
                       ? "支付宝（易支付）"
                       : order.payment_provider === "alipay_manual"
                         ? "支付宝（人工核实）"
-                        : usdtMeta
-                          ? usdtMeta.label
-                          : "人工到账"}
+                        : order.payment_provider === "balance"
+                          ? "账户余额"
+                          : usdtMeta
+                            ? usdtMeta.label
+                            : "人工到账"}
                   </dd>
                 </div>
                 <div>
@@ -130,6 +148,36 @@ export default async function ShopCheckoutPage({
             </section>
 
             <section className="shop-panel shop-pay-panel">
+              {order.payment_provider === "balance" ? (
+                <div className="payment-form">
+                  <h2>账户余额支付</h2>
+                  <p>
+                    应付 <strong>{formatCny(order.amount_micros)}</strong>
+                    ，从 CokeAI 账户余额中扣除。
+                  </p>
+                  <div className="notice">
+                    <ShieldCheck size={16} />
+                    <div>
+                      {BALANCE_PAYMENT_MESSAGES[balanceCode || ""] ||
+                        "余额支付尚未完成。订单仍为待支付，重新尝试不会重复扣款。"}
+                    </div>
+                  </div>
+                  <form action={retryShopBalancePaymentAction}>
+                    <input type="hidden" name="orderNo" value={order.order_no} />
+                    <button className="btn btn-primary btn-block" type="submit">
+                      重新尝试余额支付
+                    </button>
+                  </form>
+                  <a className="btn btn-light btn-block" href="/dashboard/billing">
+                    去充值
+                  </a>
+                  <p className="shop-muted">
+                    <Clock size={14} /> 如果刚刚已经扣款，请先刷新订单页；
+                    系统按订单号幂等处理，不会重复扣款。
+                  </p>
+                  <AutoRefresh seconds={20} />
+                </div>
+              ) : null}
               {personal ? <div className="payment-form">
                 <h2>支付宝扫码付款</h2>
                 <p>应付 <strong>{formatCny(order.amount_micros)}</strong> · 收款人：{personal.payee}</p>

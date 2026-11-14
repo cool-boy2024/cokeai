@@ -27,6 +27,8 @@ export async function saveAlertSettingsAction(formData: FormData): Promise<void>
       smtpPass: String(formData.get("smtpPass") || ""),
       smtpFrom: String(formData.get("smtpFrom") || ""),
       smtpTo: String(formData.get("smtpTo") || ""),
+      smtpReplyTo: String(formData.get("smtpReplyTo") || ""),
+      emailCopy: String(formData.get("emailCopy") || ""),
     },
     current,
   );

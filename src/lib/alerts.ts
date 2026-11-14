@@ -18,12 +18,19 @@ export type SmtpSettings = {
   pass: string;
   from: string;
   to: string;
+  /** Replies from the operator go here; defaults to the From mailbox. */
+  replyTo: string;
 };
 
 export type AlertConfig = {
   channel: AlertChannel;
   webhookUrl: string;
   smtp: SmtpSettings;
+  /**
+   * Send an email copy to the partner even when the primary alert channel is
+   * WeCom/Feishu/webhook. Shop events always get the copy when SMTP is ready.
+   */
+  emailCopy: boolean;
 };
 
 export type AlertResult = { ok: boolean; error?: string };
@@ -53,10 +60,16 @@ const EMPTY_SMTP: SmtpSettings = {
   pass: "",
   from: "",
   to: "",
+  replyTo: "",
 };
 
 function emptyConfig(): AlertConfig {
-  return { channel: "off", webhookUrl: "", smtp: { ...EMPTY_SMTP } };
+  return {
+    channel: "off",
+    webhookUrl: "",
+    smtp: { ...EMPTY_SMTP },
+    emailCopy: false,
+  };
 }
 
 function normalize(input: Partial<AlertConfig> | null): AlertConfig {
@@ -79,7 +92,10 @@ function normalize(input: Partial<AlertConfig> | null): AlertConfig {
       pass: typeof smtp.pass === "string" ? smtp.pass : "",
       from: typeof smtp.from === "string" ? smtp.from : "",
       to: typeof smtp.to === "string" ? smtp.to : "",
+      replyTo: typeof smtp.replyTo === "string" ? smtp.replyTo : "",
     },
+    emailCopy:
+      typeof input.emailCopy === "boolean" ? input.emailCopy : channel === "email",
   };
 }
 
@@ -128,19 +144,17 @@ export function alertConfigTarget(config: AlertConfig): string {
   }
 }
 
+function smtpReady(smtp: SmtpSettings): boolean {
+  return Boolean(smtp.host && smtp.user && smtp.pass && smtp.from && smtp.to);
+}
+
 export async function isAlertConfigured(): Promise<boolean> {
   const config = await getAlertConfig();
   if (config.channel === "off") return false;
-  if (config.channel === "email") {
-    return Boolean(
-      config.smtp.host &&
-        config.smtp.user &&
-        config.smtp.pass &&
-        config.smtp.from &&
-        config.smtp.to,
-    );
-  }
-  return Boolean(config.webhookUrl);
+  if (config.channel === "email") return smtpReady(config.smtp);
+  // Shop notifications always go to the partner's mailbox, so every active
+  // channel needs SMTP as well as its webhook.
+  return Boolean(config.webhookUrl) && smtpReady(config.smtp);
 }
 
 function isEmail(value: string): boolean {
@@ -169,6 +183,8 @@ export type AlertConfigInput = {
   smtpPass?: string;
   smtpFrom?: string;
   smtpTo?: string;
+  smtpReplyTo?: string;
+  emailCopy?: string;
 };
 
 /**
@@ -187,40 +203,67 @@ export function buildAlertConfig(
     return { config: { ...emptyConfig(), channel: "off" } };
   }
 
-  if (channel === "email") {
-    const host = (input.smtpHost || current.smtp.host || "").trim();
-    const port = Number(input.smtpPort || current.smtp.port || 465);
-    const user = (input.smtpUser || current.smtp.user || "").trim();
-    const pass = (input.smtpPass || current.smtp.pass || "").trim();
-    const from = (input.smtpFrom || current.smtp.from || "").trim();
-    const to = (input.smtpTo || current.smtp.to || "").trim();
-    if (!host) return { error: "请填写 SMTP 服务器" };
+  const emailCopy =
+    channel === "email"
+      ? true
+      : input.emailCopy === undefined
+        ? current.emailCopy
+        : ["1", "true", "on", "yes"].includes(
+            String(input.emailCopy).trim().toLowerCase(),
+          );
+
+  const host = (input.smtpHost || current.smtp.host || "").trim();
+  const port = Number(input.smtpPort || current.smtp.port || 465);
+  const user = (input.smtpUser || current.smtp.user || "").trim();
+  const pass = (input.smtpPass || current.smtp.pass || "").trim();
+  const from = (input.smtpFrom || current.smtp.from || "").trim();
+  const to = (input.smtpTo || current.smtp.to || "").trim();
+  // Email is mandatory for every active channel: shop events are always
+  // delivered to the partner's mailbox even when WeCom/Feishu is primary.
+  const needsSmtp = true; // "off" already returned above
+  // The Reply-To field is shown whenever SMTP is in use, so an empty value
+  // there means "reply to the sender" rather than "keep the old mailbox".
+  const replyTo = needsSmtp
+    ? (input.smtpReplyTo || "").trim()
+    : current.smtp.replyTo.trim();
+
+  if (needsSmtp) {
+    if (!host) return { error: "请填写 SMTP 服务器（伙伴邮件通知需要）" };
     if (!Number.isFinite(port) || port <= 0 || port > 65535) {
       return { error: "SMTP 端口不正确" };
     }
     if (!isEmail(user)) return { error: "SMTP 账号需要是邮箱地址" };
     if (!pass) return { error: "请填写 SMTP 授权码或密码" };
     if (!isEmail(from)) return { error: "发件人需要是邮箱地址" };
+    if (replyTo && !isEmail(replyTo)) {
+      return { error: "回复邮箱需要是有效邮箱地址，留空则回到发件人" };
+    }
     const recipients = to
       .split(/[,;\s]+/)
       .map((item) => item.trim())
       .filter(Boolean);
     if (recipients.length === 0 || !recipients.every(isEmail)) {
-      return { error: "收件人需要是邮箱地址，多个用逗号分隔" };
+      return { error: "伙伴邮箱需要是有效邮箱地址，多个用逗号分隔" };
+    }
+    const smtp = {
+      host,
+      port: Math.trunc(port),
+      user,
+      pass,
+      from,
+      to: recipients.join(","),
+      replyTo: replyTo || from,
+    };
+    if (channel === "email") {
+      return { config: { channel, webhookUrl: "", smtp, emailCopy: true } };
+    }
+    const url = (input.webhookUrl || current.webhookUrl || "").trim();
+    if (!url) return { error: "请填写机器人 Webhook 地址" };
+    if (!validWebhookUrl(url)) {
+      return { error: "Webhook 必须是 https 地址（本地调试允许 localhost）" };
     }
     return {
-      config: {
-        channel: "email",
-        webhookUrl: "",
-        smtp: {
-          host,
-          port: Math.trunc(port),
-          user,
-          pass,
-          from,
-          to: recipients.join(","),
-        },
-      },
+      config: { channel, webhookUrl: url, smtp, emailCopy },
     };
   }
 
@@ -233,7 +276,8 @@ export function buildAlertConfig(
     config: {
       channel,
       webhookUrl: url,
-      smtp: { ...EMPTY_SMTP },
+      smtp: { ...current.smtp, replyTo: replyTo || current.smtp.replyTo },
+      emailCopy: false,
     },
   };
 }
@@ -289,11 +333,15 @@ async function sendEmail(
       greetingTimeout: 8_000,
       socketTimeout: 12_000,
     });
+    const replyTo = smtp.replyTo.trim() || smtp.from;
     await transport.sendMail({
       from: smtp.from,
       to: smtp.to,
+      replyTo: replyTo || undefined,
       subject,
-      text,
+      text: replyTo
+        ? `${text}\n\n---\n直接回复本邮件即可联系 CokeAI 运营负责人。`
+        : text,
     });
     transport.close();
     return { ok: true };
@@ -313,32 +361,11 @@ export async function sendAlert(
   const config = await getAlertConfig();
   if (config.channel === "off") return { ok: false, error: "未配置告警通道" };
 
-  if (config.channel === "wecom") {
-    return postJson(config.webhookUrl, {
-      msgtype: "text",
-      text: { content: text.slice(0, 1500) },
-    });
-  }
-  if (config.channel === "feishu") {
-    return postJson(config.webhookUrl, {
-      msg_type: "text",
-      content: { text: text.slice(0, 3000) },
-    });
-  }
   // Shop notifications reuse this channel but must not masquerade as security
   // alerts: different webhook source, different mail subject.
   const event = typeof extra.event === "string" ? extra.event : "";
-  const isShop = event.startsWith("shop_");
-
-  if (config.channel === "webhook") {
-    return postJson(config.webhookUrl, {
-      text,
-      content: text,
-      source: isShop ? "cokeai-shop" : "cokeai-security",
-      ...extra,
-    });
-  }
-
+  // Shop events use `shop_...`; maintenance alerts use `shop-...`.
+  const isShop = event.startsWith("shop_") || event.startsWith("shop-");
   const subject =
     extra.emergency_defense === "on" || extra.emergency_defense === "off"
       ? "CokeAI 应急防护通知"
@@ -351,5 +378,39 @@ export async function sendAlert(
             : isShop
               ? "CokeAI 小店订单提醒"
               : "CokeAI 安全告警";
-  return sendEmail(config.smtp, text, subject);
+
+  let primary: AlertResult;
+  if (config.channel === "wecom") {
+    primary = await postJson(config.webhookUrl, {
+      msgtype: "text",
+      text: { content: text.slice(0, 1500) },
+    });
+  } else if (config.channel === "feishu") {
+    primary = await postJson(config.webhookUrl, {
+      msg_type: "text",
+      content: { text: text.slice(0, 3000) },
+    });
+  } else if (config.channel === "webhook") {
+    primary = await postJson(config.webhookUrl, {
+      text,
+      content: text,
+      source: isShop ? "cokeai-shop" : "cokeai-security",
+      ...extra,
+    });
+  } else {
+    return sendEmail(config.smtp, text, subject);
+  }
+
+  // The partner can be on WeCom/Feishu and still wants an email record. Shop
+  // events always get the copy; other alerts follow the admin toggle.
+  const wantsEmailCopy = config.emailCopy || isShop;
+  if (wantsEmailCopy && smtpReady(config.smtp)) {
+    const copy = await sendEmail(config.smtp, text, subject);
+    if (!copy.ok) {
+      console.warn("[alerts] email copy not delivered:", copy.error);
+      if (isShop) return copy;
+    }
+    return primary.ok ? primary : copy.ok ? copy : primary;
+  }
+  return primary;
 }

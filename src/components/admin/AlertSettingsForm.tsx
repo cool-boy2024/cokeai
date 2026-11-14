@@ -49,8 +49,10 @@ export type AlertFormValues = {
     user: string;
     from: string;
     to: string;
+    replyTo: string;
     passwordConfigured: boolean;
   };
+  emailCopy: boolean;
 };
 
 export function AlertSettingsForm({ current }: { current: AlertFormValues }) {
@@ -63,10 +65,16 @@ export function AlertSettingsForm({ current }: { current: AlertFormValues }) {
   });
   const [host, setHost] = useState(current.smtp.host || "smtp.qq.com");
   const [port, setPort] = useState(current.smtp.port || 465);
+  const [emailCopy, setEmailCopy] = useState(
+    current.channel === "email" || current.emailCopy,
+  );
 
   const active = CHANNELS.find((item) => item.value === channel)!;
   const needsWebhook =
     channel === "wecom" || channel === "feishu" || channel === "webhook";
+  // Shop events always email the partner, so SMTP is required for every
+  // active channel, not only when the email copy box is checked.
+  const showSmtp = channel !== "off";
 
   const applyPreset = (value: string) => {
     setPreset(value);
@@ -119,7 +127,25 @@ export function AlertSettingsForm({ current }: { current: AlertFormValues }) {
         </div>
       ) : null}
 
-      {channel === "email" ? (
+      {channel !== "email" ? (
+        <label className="field checkbox-field">
+          <span>
+            <strong>其他告警也发送邮件副本</strong>
+            <small className="hint">
+              小店下单、付款和异常提醒始终发到下面的伙伴邮箱；勾选后，安全摘要等其他告警也会发邮件。
+            </small>
+          </span>
+          <input
+            type="checkbox"
+            name="emailCopy"
+            value="1"
+            checked={emailCopy}
+            onChange={(event) => setEmailCopy(event.target.checked)}
+          />
+        </label>
+      ) : null}
+
+      {showSmtp ? (
         <>
           <div className="form-row">
             <div className="field">
@@ -208,19 +234,34 @@ export function AlertSettingsForm({ current }: { current: AlertFormValues }) {
               />
             </div>
             <div className="field">
-              <label htmlFor="smtp-to">收件人</label>
+              <label htmlFor="smtp-to">伙伴邮箱（收件人）</label>
               <input
                 id="smtp-to"
                 className="input"
                 name="smtpTo"
                 defaultValue={current.smtp.to}
-                placeholder="admin@example.com，多个用逗号分隔"
-                required
+                placeholder="partner@example.com，多个用逗号分隔"
+                required={showSmtp}
               />
             </div>
           </div>
+          <div className="field">
+            <label htmlFor="smtp-reply-to">伙伴回复邮箱（Reply-To）</label>
+            <input
+              id="smtp-reply-to"
+              className="input"
+              name="smtpReplyTo"
+              type="email"
+              defaultValue={current.smtp.replyTo || current.smtp.from}
+              placeholder="留空则回复到发件人邮箱"
+            />
+            <small className="hint">
+              伙伴在邮件里点“回复”会直接发到这个邮箱，形成双向联系；双方都不需要另开聊天工具。
+            </small>
+          </div>
           <small className="hint">
-            密码/授权码加密存储，页面不会回显；留空表示沿用已保存的值。
+            小店通知必须走邮箱，所以任何告警渠道都要填写 SMTP。密码/授权码加密存储，
+            页面不会回显；留空表示沿用已保存的值。
           </small>
         </>
       ) : null}

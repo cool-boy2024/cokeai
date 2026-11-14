@@ -30,6 +30,7 @@ const PAYMENT_PROVIDER_LABELS: Record<string, string> = {
   usdt_bsc: "USDT BSC",
   usdt_polygon: "USDT Polygon",
   manual: "人工确认",
+  balance: "账户余额",
 };
 
 export default async function AdminShopOrderDetailPage({
