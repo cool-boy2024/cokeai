@@ -90,7 +90,7 @@ docs(collab): document the pull request flow
 ## 部署
 
 - 合并到 `main` 不等于自动上线。
-- 生产部署只由所有者执行；GitHub Actions 的 `Deploy` 工作流也限制为所有者账号触发。
+- 两位维护者都可以在 `main` 合并后用 `npm run deploy:prod` 触发部署；生产密钥仍只在仓库 Secrets，只允许 `main`，不在 VPS 上构建。
 - 上线前备份数据库和当前镜像，上线后做健康检查和关键页面验证。
 - 数据库迁移必须单独说明回滚方式。
 
