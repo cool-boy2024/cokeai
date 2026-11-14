@@ -7,6 +7,7 @@ import { requireAdmin } from "@/lib/auth";
 import { config } from "@/lib/config";
 import { query } from "@/lib/db";
 import { suggestRetailPrice } from "@/lib/shop/catalog";
+import { SHOP_PRODUCT_CATEGORIES } from "@/lib/shop/categories";
 import { createImportJob, drainQueuedJobs, runImportJob } from "@/lib/shop/import";
 import {
   deliverShopItem,
@@ -490,6 +491,11 @@ export async function adminSaveShopProductAction(formData: FormData): Promise<vo
   const warrantyDays = Number(formData.get("warrantyDays") || 0);
   const warrantyNote = text(formData, "warrantyNote");
   const status = text(formData, "status") || "draft";
+  const displayCategoryValue = text(formData, "displayCategory");
+  // Only canonical labels are stored; anything else means "let the brand
+  // decide", so the public rail never receives a supplier's raw category name.
+  const displayCategory =
+    SHOP_PRODUCT_CATEGORIES.find((item) => item.label === displayCategoryValue)?.label || "";
   const complianceAck = formData.get("complianceAck") === "1";
 
   const copyReady =
@@ -522,6 +528,7 @@ export async function adminSaveShopProductAction(formData: FormData): Promise<vo
             eta_min_minutes = $10, eta_max_minutes = $11,
             warranty_type = $12, warranty_days = $13, warranty_note = $14,
             copy_ready = $15,
+            display_category = $19,
             status = $16,
             compliance_ack_at = CASE
               WHEN $16 = 'active' AND $17 = TRUE THEN COALESCE(compliance_ack_at, now())
@@ -556,6 +563,7 @@ export async function adminSaveShopProductAction(formData: FormData): Promise<vo
       finalStatus,
       complianceAck,
       admin.id,
+      displayCategory,
     ],
   );
   revalidatePath("/admin/shop/products");

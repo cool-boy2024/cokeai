@@ -375,8 +375,12 @@ export async function syncHelpArticles(): Promise<HelpSyncResult> {
   }
 
   // Articles that disappeared from the index are hidden, never deleted.
+  // Only mirrored `article.*` rows belong to the upstream index; first-party
+  // `guide.*` tutorials are seeded from scripts/guides.mjs and stay visible.
   const liveIds = new Set(entries.map((entry) => entry.id));
-  const stale = existing.rows.filter((row) => !liveIds.has(row.id) && row.visible);
+  const stale = existing.rows.filter(
+    (row) => row.id.startsWith("article.") && !liveIds.has(row.id) && row.visible,
+  );
   if (stale.length > 0) {
     await query("UPDATE help_articles SET visible = FALSE WHERE id = ANY($1::text[])", [
       stale.map((row) => row.id),

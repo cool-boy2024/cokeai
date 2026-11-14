@@ -14,7 +14,7 @@ import { Reveal } from "@/components/Reveal";
 import { ProductCard } from "@/components/shop/ProductCard";
 import { AvailabilityLegend } from "@/components/shop/ShopBadges";
 import { config } from "@/lib/config";
-import { listPublicProducts, SHOP_BRANDS } from "@/lib/shop/catalog";
+import { listPublicProducts } from "@/lib/shop/catalog";
 import {
   filterProductsByCategory,
   isShopCategorySlug,
@@ -25,17 +25,14 @@ import {
 
 export const metadata: Metadata = {
   title: "CokeAI 小店",
-  description: "ChatGPT、Claude、Gemini、Grok、Muse 订阅、代充与成品号，人工发货，订单可追踪。",
+  description:
+    "ChatGPT、Claude、Gemini、Grok、Muse 订阅与成品号，以及邮箱、接码等数字商品，人工处理，订单可追踪。",
 };
 
 export const dynamic = "force-dynamic";
 
-function shopHref(brand: string, category: ShopCategorySlug): string {
-  const search = new URLSearchParams();
-  if (brand !== "all") search.set("brand", brand);
-  if (category !== "all") search.set("category", category);
-  const query = search.toString();
-  return query ? `/shop?${query}` : "/shop";
+function shopHref(category: ShopCategorySlug): string {
+  return category === "all" ? "/shop" : `/shop?category=${category}`;
 }
 
 export default async function ShopPage({
@@ -46,31 +43,26 @@ export default async function ShopPage({
   if (!config.shopEnabled) notFound();
 
   const params = await searchParams;
-  const brand = SHOP_BRANDS.some((item) => item.key === params.brand)
-    ? params.brand || "all"
-    : "all";
+  // Categories are a single public facet. An old ?brand= link is ignored
+  // rather than rejected, so bookmarks keep working after the rail change.
   const category: ShopCategorySlug = isShopCategorySlug(params.category)
     ? params.category
     : "all";
 
-  // Brand filtering stays in SQL, exactly as before. Category counts and the
-  // category filter run on that brand-filtered result so both facets agree.
-  const brandProducts = await listPublicProducts({ brand });
+  const allProducts = await listPublicProducts();
   const categoryCounts = new Map<ShopCategorySlug, number>(
     SHOP_CATEGORY_RAIL.map((item) => [item.slug, 0]),
   );
-  for (const product of brandProducts) {
+  for (const product of allProducts) {
     const slug = productCategorySlug(product);
     categoryCounts.set(slug, (categoryCounts.get(slug) || 0) + 1);
   }
-  const visibleCategories = SHOP_CATEGORY_RAIL.filter(
-    (item) =>
-      item.slug === "all" ||
-      (categoryCounts.get(item.slug) || 0) > 0 ||
-      item.slug === category,
-  );
-  const products = filterProductsByCategory(brandProducts, category);
-  const showFeatured = brand === "all" && products.length >= 3;
+  categoryCounts.set("all", allProducts.length);
+  // Every category stays visible, including empty ones, so the structure does
+  // not change shape as stock comes and goes.
+  const visibleCategories = SHOP_CATEGORY_RAIL;
+  const products = filterProductsByCategory(allProducts, category);
+  const showFeatured = category === "all" && products.length >= 3;
 
   return (
     <>
@@ -90,8 +82,8 @@ export default async function ShopPage({
                   <em>在这里一次买齐。</em>
                 </h1>
                 <p>
-                  ChatGPT、Claude、Gemini、Grok、Muse。下单后人工处理，订单进度随时可查，
-                  完成后在订单页领取交付内容。
+                  ChatGPT、Claude、Gemini、Grok、Muse，以及邮箱、接码等数字商品。
+                  下单后人工处理，订单进度随时可查，完成后在订单页领取交付内容。
                 </p>
               </div>
               <div className="shop-hero-points">
@@ -118,7 +110,7 @@ export default async function ShopPage({
                   return (
                     <Link
                       key={item.slug}
-                      href={shopHref(brand, item.slug)}
+                      href={shopHref(item.slug)}
                       className={`shop-category-link${active ? " active" : ""}`}
                       aria-current={active ? "page" : undefined}
                     >
@@ -130,18 +122,6 @@ export default async function ShopPage({
                   );
                 })}
               </nav>
-              <div className="shop-filters" aria-label="按品牌筛选">
-                {SHOP_BRANDS.map((item) => (
-                  <Link
-                    key={item.key}
-                    href={shopHref(item.key, category)}
-                    className={`shop-filter${brand === item.key ? " active" : ""}`}
-                    aria-current={brand === item.key ? "page" : undefined}
-                  >
-                    {item.label}
-                  </Link>
-                ))}
-              </div>
             </div>
             <AvailabilityLegend />
           </div>

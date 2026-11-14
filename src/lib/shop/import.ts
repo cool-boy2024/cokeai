@@ -238,21 +238,30 @@ function inferBrand(title: string): string {
   return "other";
 }
 
-function categoryFor(title: string): { category: string; productType: string } {
+function categoryFor(title: string): {
+  category: string;
+  productType: string;
+  displayCategory: string;
+} {
   const { category } = classifyOffer(title);
+  // Only the two rail categories that cannot be inferred from brand get an
+  // explicit display_category; everything else falls back to the brand.
+  const displayCategory =
+    category === "sms" ? "接码" : category === "email" ? "邮箱" : "";
   switch (category) {
     case "sms":
     case "code":
-      return { category: "giftcard", productType: "giftcard" };
+      return { category: "giftcard", productType: "giftcard", displayCategory };
+    case "email":
     case "account":
-      return { category: "account", productType: "account" };
+      return { category: "account", productType: "account", displayCategory };
     case "subscription":
-      return { category: "subscription", productType: "subscription" };
+      return { category: "subscription", productType: "subscription", displayCategory };
     case "topup":
     case "api":
-      return { category: "topup", productType: "topup" };
+      return { category: "topup", productType: "topup", displayCategory };
     default:
-      return { category: "other", productType: "account" };
+      return { category: "other", productType: "account", displayCategory };
   }
 }
 
@@ -626,7 +635,7 @@ export async function runImportJob(
     copy = scrubCopy(copy, offer);
 
     const brand = inferBrand(offer.source_title);
-    const { category, productType } = categoryFor(offer.source_title);
+    const { category, productType, displayCategory } = categoryFor(offer.source_title);
     const price = priceFor(offer, await getShopTargetMarginBps());
     const availability =
       offer.availability === "in_stock" || offer.availability === "low_stock"
@@ -655,9 +664,9 @@ export async function runImportJob(
             cover_variant, price_micros, delivery_method, eta_min_minutes,
             eta_max_minutes, warranty_type, warranty_days, warranty_note,
             includes, usage_notes, customer_notice, refund_policy,
-            status, availability, copy_ready, sort_order)
+            display_category, status, availability, copy_ready, sort_order)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'manual',15,120,$10,$11,$12,
-                 $13::jsonb,$14::jsonb,$15,$16,'draft',$17,$18,$19)
+                 $13::jsonb,$14::jsonb,$15,$16,$20,'draft',$17,$18,$19)
          RETURNING id`,
         [
           slug,
@@ -679,6 +688,7 @@ export async function runImportJob(
           availability,
           copyReady,
           sortOrder,
+          displayCategory,
         ],
       );
       const id = inserted.rows[0].id;
