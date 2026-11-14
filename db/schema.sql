@@ -856,6 +856,8 @@ CREATE TABLE IF NOT EXISTS support_tickets (
   order_id UUID REFERENCES shop_orders(id) ON DELETE SET NULL,
   subject TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'closed')),
+  unread_by_customer BOOLEAN NOT NULL DEFAULT FALSE,
+  unread_by_admin BOOLEAN NOT NULL DEFAULT FALSE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -873,6 +875,10 @@ CREATE TABLE IF NOT EXISTS support_ticket_messages (
 );
 CREATE INDEX IF NOT EXISTS support_ticket_messages_ticket_idx
   ON support_ticket_messages(ticket_id, created_at ASC);
+
+-- Unread flags so each side sees when the other has replied.
+ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS unread_by_customer BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS unread_by_admin BOOLEAN NOT NULL DEFAULT FALSE;
 
 -- ============================================================================
 -- 商品规格（宝贝类型）：同一个商品页可选多个档位，各档有自己的售价、质保、
