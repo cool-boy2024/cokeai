@@ -8,6 +8,7 @@ import {
   ClipboardList,
   CreditCard,
   Crown,
+  Headphones,
   LayoutDashboard,
   Megaphone,
   PackageSearch,
@@ -27,6 +28,7 @@ const userItems = [
   { href: "/dashboard/billing", label: "充值", icon: CreditCard },
   { href: "/dashboard/membership", label: "会员", icon: Crown },
   { href: "/dashboard/shop", label: "我的订单", icon: ShoppingBag },
+  { href: "/dashboard/support", label: "售后工单", icon: Headphones },
   { href: "/shop", label: "小店", icon: Store },
   { href: "/dashboard/settings", label: "设置", icon: UserRound },
 ];
@@ -42,6 +44,7 @@ const adminItems = [
   // nav scrolls horizontally, so trailing items are effectively hidden).
   { href: "/admin/security", label: "安全", icon: ShieldCheck },
   { href: "/admin/shop/orders", label: "订单", icon: ReceiptText },
+  { href: "/admin/support", label: "工单", icon: Headphones },
   { href: "/admin/payments", label: "收款设置", icon: CreditCard },
   { href: "/admin/shop/queue", label: "采购队列", icon: ClipboardList },
   { href: "/admin/shop/deposits", label: "USDT 到账", icon: Wallet },

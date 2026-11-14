@@ -1,9 +1,11 @@
 import { config } from "@/lib/config";
+import { getCurrentUser } from "@/lib/auth";
 import { listCatalogModels } from "@/lib/model-catalog";
 import { getManualAlipaySettings } from "@/lib/payments/settings";
 import { PUBLIC_API_SALES_ENABLED } from "@/lib/public-features";
 import { fixedWindowLimit } from "@/lib/rate-limit";
 import { recordSecurityEventOnce } from "@/lib/security";
+import { listUserShopOrders } from "@/lib/shop/orders";
 import { getGatewayModel, getUpstreamKey, upstreamChatUrl } from "@/lib/upstream";
 
 export const runtime = "nodejs";
@@ -14,6 +16,17 @@ const SUPPORT_MODEL = "deepseek-flash";
 const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || "support@cokeai.cc.cd";
 const MAX_HISTORY = 8;
 const MAX_CONTENT = 600;
+
+const ORDER_STATUS_LABEL: Record<string, string> = {
+  pending_payment: "待支付",
+  paid: "已支付待采购",
+  procuring: "采购中",
+  delivered: "已发货",
+  cancelled: "已取消",
+  expired: "已过期",
+  refund_pending: "退款处理中",
+  refunded: "已退款",
+};
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
 
@@ -55,7 +68,7 @@ function offlineReply(): Response {
   });
 }
 
-async function systemPrompt(): Promise<string> {
+async function systemPrompt(userContext?: string): Promise<string> {
   const [models, manualAlipay] = await Promise.all([
     listCatalogModels().catch(() => []),
     getManualAlipaySettings().catch(() => null),
@@ -84,6 +97,7 @@ async function systemPrompt(): Promise<string> {
     "你是 CokeAI 的在线客服。只回答与 CokeAI 有关的问题，用简体中文，语气自然，一般 2 到 4 句。",
     `站点：${config.appUrl}`,
     ...apiLines,
+    ...(userContext ? [userContext] : []),
     `充值：支持 USDT 链上转账（可选网络以下单页面实际开通为准），链上确认后自动到账${manualAlipayEnabled ? "；也可选择支付宝人工收款，商家核实到账后入账" : ""}，入口在 ${config.appUrl}/dashboard/billing。`,
     manualAlipayEnabled
       ? "小店：结算页可选择「支付宝（人工核实）」，扫码付款后在页面上报交易号，商家核实到账后安排交付，不是即时到账。"
@@ -146,6 +160,29 @@ export async function POST(request: Request): Promise<Response> {
     return json({ error: "请提供要咨询的问题。" }, 400);
   }
 
+  // Inject the logged-in user's recent orders so the AI can answer
+  // order-status questions directly. Anonymous / lookup failures degrade
+  // gracefully to no context.
+  let userContext = "";
+  try {
+    const user = await getCurrentUser();
+    if (user) {
+      const orders = await listUserShopOrders(user.id);
+      const recent = orders.slice(0, 5);
+      if (recent.length > 0) {
+        const lines = recent.map(
+          (order) =>
+            `${order.order_no}（${ORDER_STATUS_LABEL[order.status] || order.status}，${order.product_name}）`,
+        );
+        userContext = `当前登录用户 ${user.email} 的最近订单：${lines.join("；")}。回答订单问题时优先依据这些状态，不要编造。`;
+      } else {
+        userContext = `当前登录用户 ${user.email}，暂无订单。`;
+      }
+    }
+  } catch {
+    // Keep userContext empty.
+  }
+
   const model = await getGatewayModel(SUPPORT_MODEL);
   if (
     !model ||
@@ -166,7 +203,7 @@ export async function POST(request: Request): Promise<Response> {
       body: JSON.stringify({
         model: model.upstream_model,
         messages: [
-          { role: "system", content: await systemPrompt() },
+          { role: "system", content: await systemPrompt(userContext || undefined) },
           ...messages,
         ],
         temperature: 0.2,
