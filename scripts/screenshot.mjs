@@ -48,9 +48,8 @@ try {
 
   for (const [path, name] of [
     ["/dashboard", "dashboard"],
-    ["/dashboard/keys", "keys"],
-    ["/dashboard/usage", "usage"],
     ["/dashboard/billing", "billing"],
+    ["/dashboard/shop", "shop-orders"],
     ["/dashboard/settings", "settings"],
     ["/admin", "admin"],
     ["/admin/orders", "admin-orders"],
@@ -66,7 +65,7 @@ try {
   for (const [path, name] of [
     ["/", "mobile-home"],
     ["/dashboard", "mobile-dashboard"],
-    ["/dashboard/keys", "mobile-keys"],
+    ["/dashboard/billing", "mobile-billing"],
   ]) {
     await capture(authContext, path, name, { width: 390, height: 844 });
   }

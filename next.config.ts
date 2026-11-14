@@ -18,6 +18,22 @@ const nextConfig: NextConfig = {
     staleTimes: { dynamic: 15 },
     dynamicOnHover: true,
   },
+  async redirects() {
+    // The customer console no longer exposes API key or usage pages. Keep old
+    // bookmarks and inbound links working instead of returning a 404.
+    return [
+      {
+        source: "/dashboard/keys",
+        destination: "/dashboard",
+        permanent: false,
+      },
+      {
+        source: "/dashboard/usage",
+        destination: "/dashboard",
+        permanent: false,
+      },
+    ];
+  },
   async headers() {
     return [
       {

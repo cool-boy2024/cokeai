@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { BookOpen, ExternalLink, LogOut, Plus } from "lucide-react";
+import { ExternalLink, LogOut, Plus } from "lucide-react";
 import { logoutAction } from "@/app/actions/auth";
 import { requireUser } from "@/lib/auth";
 import { AppSidebar } from "@/components/AppSidebar";
@@ -34,9 +34,6 @@ export default async function DashboardLayout({
             <span className="mono">余额 {formatCny(liveBalance.balance * 1_000_000)}</span>
             <Link className="btn btn-primary btn-sm" href="/dashboard/billing">
               <Plus size={13} /> 充值
-            </Link>
-            <Link href="/docs" className="topbar-link">
-              <BookOpen size={13} /> 教程
             </Link>
             {user.role === "admin" ? (
               <Link href="/admin" className="topbar-link">

@@ -1,6 +1,7 @@
 import { config } from "@/lib/config";
 import { listCatalogModels } from "@/lib/model-catalog";
 import { getManualAlipaySettings } from "@/lib/payments/settings";
+import { PUBLIC_API_SALES_ENABLED } from "@/lib/public-features";
 import { fixedWindowLimit } from "@/lib/rate-limit";
 import { recordSecurityEventOnce } from "@/lib/security";
 import { getGatewayModel, getUpstreamKey, upstreamChatUrl } from "@/lib/upstream";
@@ -71,12 +72,18 @@ async function systemPrompt(): Promise<string> {
     )
     .join("；");
 
+  const apiLines = PUBLIC_API_SALES_ENABLED
+    ? [
+        `API：兼容 OpenAI Chat Completions，Base URL 为 ${config.appUrl}/v1，接入文档在 ${config.appUrl}/docs。`,
+        "计费：人民币按量计费，1 元 = 1 额度，余额不过期。",
+        priceLines ? `当前可售模型与价格：${priceLines}。` : "当前没有可售模型。",
+      ]
+    : [];
+
   return [
     "你是 CokeAI 的在线客服。只回答与 CokeAI 有关的问题，用简体中文，语气自然，一般 2 到 4 句。",
     `站点：${config.appUrl}`,
-    `API：兼容 OpenAI Chat Completions，Base URL 为 ${config.appUrl}/v1，接入文档在 ${config.appUrl}/docs。`,
-    "计费：人民币按量计费，1 元 = 1 额度，余额不过期。",
-    priceLines ? `当前可售模型与价格：${priceLines}。` : "当前没有可售模型。",
+    ...apiLines,
     `充值：支持 USDT 链上转账（可选网络以下单页面实际开通为准），链上确认后自动到账${manualAlipayEnabled ? "；也可选择支付宝人工收款，商家核实到账后入账" : ""}，入口在 ${config.appUrl}/dashboard/billing。`,
     manualAlipayEnabled
       ? "小店：结算页可选择「支付宝（人工核实）」，扫码付款后在页面上报交易号，商家核实到账后安排交付，不是即时到账。"

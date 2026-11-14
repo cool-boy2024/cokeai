@@ -40,14 +40,14 @@ export default async function RegisterPage({
       <main id="main-content" className="auth-main">
         <div className="auth-stage">
           <aside className="auth-intro" aria-label="CokeAI 介绍">
-            <p className="auth-kicker">CokeAI · AI 生态</p>
+            <p className="auth-kicker">CokeAI · 数字小店</p>
             <p className="auth-display">
               欢迎来到
               <span className="auth-display-brand">CokeAI</span>
             </p>
             <p className="auth-intro-foot">
               <span className="auth-intro-dot" />
-              AI API · 数字商品
+              数字商品 · 人工发货
             </p>
           </aside>
           <section className="auth-card" aria-labelledby="auth-title">
@@ -57,7 +57,7 @@ export default async function RegisterPage({
               </p>
               <p className="auth-eyebrow">安全入口 · AUTH</p>
               <h1 id="auth-title">创建账户</h1>
-              <p className="auth-sub">注册后充值即可使用，余额不过期。</p>
+              <p className="auth-sub">注册后充值即可在小店下单，余额不过期。</p>
             </div>
             <AuthForm mode="register" refCode={refCode} />
             <p className="auth-switch">
