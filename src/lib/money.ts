@@ -22,6 +22,23 @@ export function formatCny(micros: string | number | bigint, decimals = 2): strin
   })}`;
 }
 
+/**
+ * Short ¥ label for chart axes and dense cards. Exact amounts stay available
+ * via formatCny; this is only a display shortcut.
+ */
+export function formatCnyCompact(micros: string | number | bigint): string {
+  const yuan = number(micros) / 1_000_000;
+  const abs = Math.abs(yuan);
+  if (abs >= 100_000_000) return `¥${(yuan / 100_000_000).toFixed(2)}亿`;
+  if (abs >= 10_000) {
+    const digits = abs >= 100_000 ? 0 : 1;
+    return `¥${(yuan / 10_000).toFixed(digits)}万`;
+  }
+  if (abs >= 1_000) return `¥${(yuan / 1_000).toFixed(1)}k`;
+  if (abs >= 10) return `¥${yuan.toFixed(0)}`;
+  return `¥${yuan.toFixed(2)}`;
+}
+
 export function formatCnyPrecise(micros: string | number | bigint): string {
   const value = number(micros);
   if (value === 0) return "¥0.00";

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  BarChart3,
   BookOpen,
   ClipboardList,
   CreditCard,
@@ -33,6 +34,7 @@ const userItems = [
 // but they are no longer part of the operator's navigation.
 const adminItems = [
   { href: "/admin/shop", label: "小店概览", icon: LayoutDashboard },
+  { href: "/admin/shop/analytics", label: "经营看板", icon: BarChart3 },
   // Security stays near the overview on purpose: it is the first stop during
   // an incident, and it must remain inside the initial viewport (the mobile
   // nav scrolls horizontally, so trailing items are effectively hidden).
