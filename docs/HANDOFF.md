@@ -86,12 +86,12 @@ ssh -i ~/.ssh/cokeai_deploy deploy@47.83.178.22 \
 rsync -az --delete \
   --exclude '.git' --exclude '.next' --exclude 'node_modules' \
   --exclude '.env' --exclude '.env.*' --exclude '.local-data' \
-  --exclude '.taste-skill' --exclude '*.log' \
+  --exclude '.taste-skill' --exclude '*.log' --exclude 'backups' \
   -e "ssh -i ~/.ssh/cokeai_deploy" ./ deploy@47.83.178.22:/home/deploy/cokeai/
 
-# 2. 构建并重启
+# 2. 构建并重启（backups 目录必须先由 deploy 用户创建）
 ssh -i ~/.ssh/cokeai_deploy deploy@47.83.178.22 \
-  'cd /home/deploy/cokeai && docker compose build app && docker compose up -d app'
+  'cd /home/deploy/cokeai && mkdir -p backups && docker compose build app && docker compose up -d app'
 
 # 3. 等待 healthy，回源验证
 ssh -i ~/.ssh/cokeai_deploy deploy@47.83.178.22 \

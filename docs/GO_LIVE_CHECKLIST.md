@@ -44,6 +44,7 @@ GitHub Actions 首次运行前，服务器上必须先有代码和 `.env`：
 rsync -az --delete \
   --exclude=.git --exclude=.env --exclude=.env.* \
   --exclude=node_modules --exclude=.next \
+  --exclude=backups \
   -e "ssh -i ~/.ssh/cokeai_deploy" \
   ./ deploy@<VPS_IP>:/home/deploy/cokeai/
 
