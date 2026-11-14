@@ -1,3 +1,7 @@
+import { shopImageSrcSet, shopImageVariant } from "@/lib/shop/media-url";
+
+const COVER_WIDTHS = [320, 640, 960] as const;
+
 const COVER_LABELS: Record<string, string> = {
   chatgpt: "GPT",
   "chatgpt-pro": "GPT",
@@ -34,19 +38,30 @@ export function ProductCover({
   brand,
   imageUrl,
   className = "",
+  sizes = "(max-width: 680px) 46vw, 320px",
 }: {
   variant?: string | null;
   brand?: string | null;
   imageUrl?: string | null;
   className?: string;
+  sizes?: string;
 }) {
   if (imageUrl) {
+    const src = shopImageVariant(imageUrl, 640);
+    const srcSet = shopImageSrcSet(imageUrl, COVER_WIDTHS);
     return (
       <div
         className={`shop-cover shop-cover-image ${className}`.trim()}
         aria-hidden="true"
       >
-        <img src={imageUrl} alt="" loading="lazy" />
+        <img
+          src={src ?? imageUrl}
+          srcSet={srcSet}
+          sizes={sizes}
+          alt=""
+          loading="lazy"
+          decoding="async"
+        />
       </div>
     );
   }

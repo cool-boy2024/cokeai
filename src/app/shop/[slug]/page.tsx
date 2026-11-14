@@ -92,6 +92,7 @@ export default async function ShopProductPage({
                 brand={product.brand}
                 imageUrl={product.image_url}
                 className="shop-detail-cover"
+                sizes="(max-width: 680px) 92vw, 560px"
               />
 
               <div className="shop-detail-meta">

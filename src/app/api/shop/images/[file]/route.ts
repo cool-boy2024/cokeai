@@ -1,9 +1,26 @@
+import sharp from "sharp";
 import { query } from "@/lib/db";
+import { SHOP_IMAGE_WIDTHS } from "@/lib/shop/media-url";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const FILE_PATTERN = /^([a-f0-9]{64})\.(png|jpe?g|webp|gif)$/;
+const VARIANT_WIDTHS = new Set<number>(SHOP_IMAGE_WIDTHS);
+
+// Variants are deterministic for a given hash and width, so an in-process
+// cache avoids re-encoding the same cover for every edge cache miss. The cap
+// keeps a busy catalogue from growing the Node heap without bound.
+const VARIANT_CACHE_LIMIT = 160;
+const variantCache = new Map<string, { bytes: Buffer; mime: string }>();
+
+function rememberVariant(key: string, value: { bytes: Buffer; mime: string }) {
+  variantCache.set(key, value);
+  if (variantCache.size > VARIANT_CACHE_LIMIT) {
+    const oldest = variantCache.keys().next().value;
+    if (oldest) variantCache.delete(oldest);
+  }
+}
 
 /**
  * Public, unauthenticated image endpoint. Bytes are content-addressed by
@@ -35,7 +52,50 @@ export async function GET(
     });
   }
 
-  const etag = `"${hash}"`;
+  // `?w=` asks for a resized WebP variant. Only the fixed ladder is accepted,
+  // so an arbitrary width cannot turn this public endpoint into an encoder.
+  const requestedWidth = Number(new URL(request.url).searchParams.get("w"));
+  const variantWidth =
+    Number.isInteger(requestedWidth) && VARIANT_WIDTHS.has(requestedWidth)
+      ? requestedWidth
+      : null;
+  // Animated GIFs keep their original bytes; resizing frames is not supported.
+  const useVariant = variantWidth !== null && row.mime !== "image/gif";
+
+  let mime = row.mime;
+  let bytes = row.bytes;
+  let etag = `"${hash}"`;
+
+  if (useVariant) {
+    const key = `${hash}-w${variantWidth}`;
+    const cached = variantCache.get(key);
+    if (cached) {
+      mime = cached.mime;
+      bytes = cached.bytes;
+      etag = `"${key}"`;
+    } else {
+      try {
+        bytes = await sharp(row.bytes)
+          .resize({ width: variantWidth, withoutEnlargement: true })
+          .webp({ quality: 72 })
+          .toBuffer();
+        mime = "image/webp";
+        etag = `"${key}"`;
+        rememberVariant(key, { bytes, mime });
+      } catch (error) {
+        console.warn(
+          `[shop/images] 生成缩略图失败 ${hash} w=${variantWidth}:`,
+          error instanceof Error ? error.message : error,
+        );
+        // Fall back to the original bytes and original ETag. Never label
+        // original bytes with the variant ETag: a later successful encode
+        // would then reuse that ETag for different bytes.
+        mime = row.mime;
+        bytes = row.bytes;
+      }
+    }
+  }
+
   const cacheControl = "public, max-age=31536000, immutable";
   const ifNoneMatch = request.headers.get("if-none-match");
   const notModified =
@@ -50,12 +110,12 @@ export async function GET(
     });
   }
 
-  const bytes = new Uint8Array(row.bytes);
-  return new Response(bytes, {
+  const body = new Uint8Array(bytes);
+  return new Response(body, {
     status: 200,
     headers: {
-      "Content-Type": row.mime,
-      "Content-Length": String(bytes.byteLength),
+      "Content-Type": mime,
+      "Content-Length": String(body.byteLength),
       ETag: etag,
       "Cache-Control": cacheControl,
     },
