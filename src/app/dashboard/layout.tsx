@@ -6,7 +6,7 @@ import { requireUser } from "@/lib/auth";
 import { AppSidebar } from "@/components/AppSidebar";
 import { getGatewayBalanceForRequest } from "@/lib/gateway-credits";
 import { formatCny } from "@/lib/money";
-import { countUnreadTicketsForUser } from "@/lib/support";
+import { countUnreadMessagesForUser } from "@/lib/support";
 
 export const metadata: Metadata = {
   title: "控制台",
@@ -24,7 +24,7 @@ export default async function DashboardLayout({
   const liveBalance = await getGatewayBalanceForRequest(user.id).catch(() => ({
     balance: user.balance_micros / 1_000_000,
   }));
-  const unreadTickets = await countUnreadTicketsForUser(user.id);
+  const unreadTickets = await countUnreadMessagesForUser(user.id);
 
   return (
     <div className="app-shell">

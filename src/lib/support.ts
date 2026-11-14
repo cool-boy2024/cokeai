@@ -11,8 +11,7 @@ export type SupportTicket = {
   orderNo: string | null;
   subject: string;
   status: TicketStatus;
-  unreadByCustomer: boolean;
-  unreadByAdmin: boolean;
+  unreadCount: number;
   createdAt: string;
   updatedAt: string;
   lastMessage: string | null;
@@ -36,8 +35,7 @@ type TicketRow = {
   order_no: string | null;
   subject: string;
   status: string;
-  unread_by_customer: boolean;
-  unread_by_admin: boolean;
+  unread_count: string | number;
   created_at: string;
   updated_at: string;
   last_message: string | null;
@@ -55,8 +53,7 @@ function mapTicket(row: TicketRow): SupportTicket {
     orderNo: row.order_no,
     subject: row.subject,
     status: row.status as TicketStatus,
-    unreadByCustomer: Boolean(row.unread_by_customer),
-    unreadByAdmin: Boolean(row.unread_by_admin),
+    unreadCount: Number(row.unread_count || 0),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     lastMessage: row.last_message,
@@ -65,10 +62,22 @@ function mapTicket(row: TicketRow): SupportTicket {
   };
 }
 
-const TICKET_SELECT = `
+// Unread = messages written by the other party after this side last read the
+// ticket. `customer_read_at`/`admin_read_at` are the per-ticket read markers.
+const UNREAD_FOR_CUSTOMER = `(SELECT COUNT(*) FROM support_ticket_messages m
+  WHERE m.ticket_id = t.id AND m.author = 'admin'
+    AND (t.customer_read_at IS NULL OR m.created_at > t.customer_read_at))::int`;
+
+const UNREAD_FOR_ADMIN = `(SELECT COUNT(*) FROM support_ticket_messages m
+  WHERE m.ticket_id = t.id AND m.author = 'customer'
+    AND (t.admin_read_at IS NULL OR m.created_at > t.admin_read_at))::int`;
+
+function ticketSelect(unreadExpr: string): string {
+  return `
   SELECT t.id, t.user_id, u.email AS user_email, u.name AS user_name,
-         t.order_id, o.order_no, t.subject, t.status, t.unread_by_customer,
-         t.unread_by_admin, t.created_at, t.updated_at,
+         t.order_id, o.order_no, t.subject, t.status,
+         ${unreadExpr} AS unread_count,
+         t.created_at, t.updated_at,
          (SELECT m.body FROM support_ticket_messages m
            WHERE m.ticket_id = t.id ORDER BY m.created_at DESC LIMIT 1) AS last_message,
          (SELECT m.created_at FROM support_ticket_messages m
@@ -79,10 +88,11 @@ const TICKET_SELECT = `
     JOIN users u ON u.id = t.user_id
     LEFT JOIN shop_orders o ON o.id = t.order_id
 `;
+}
 
 export async function listUserTickets(userId: string): Promise<SupportTicket[]> {
   const result = await query<TicketRow>(
-    `${TICKET_SELECT} WHERE t.user_id = $1 ORDER BY t.updated_at DESC LIMIT 100`,
+    `${ticketSelect(UNREAD_FOR_CUSTOMER)} WHERE t.user_id = $1 ORDER BY t.updated_at DESC LIMIT 100`,
     [userId],
   );
   return result.rows.map(mapTicket);
@@ -90,7 +100,7 @@ export async function listUserTickets(userId: string): Promise<SupportTicket[]> 
 
 export async function listAllTickets(): Promise<SupportTicket[]> {
   const result = await query<TicketRow>(
-    `${TICKET_SELECT} ORDER BY (t.status = 'open') DESC, t.updated_at DESC LIMIT 200`,
+    `${ticketSelect(UNREAD_FOR_ADMIN)} ORDER BY (t.status = 'open') DESC, t.updated_at DESC LIMIT 200`,
   );
   return result.rows.map(mapTicket);
 }
@@ -123,7 +133,7 @@ export async function getTicketForUser(
   userId: string,
 ): Promise<SupportTicket | null> {
   const result = await query<TicketRow>(
-    `${TICKET_SELECT} WHERE t.id = $1 AND t.user_id = $2 LIMIT 1`,
+    `${ticketSelect(UNREAD_FOR_CUSTOMER)} WHERE t.id = $1 AND t.user_id = $2 LIMIT 1`,
     [ticketId, userId],
   );
   return result.rows[0] ? mapTicket(result.rows[0]) : null;
@@ -131,7 +141,7 @@ export async function getTicketForUser(
 
 export async function getTicket(ticketId: string): Promise<SupportTicket | null> {
   const result = await query<TicketRow>(
-    `${TICKET_SELECT} WHERE t.id = $1 LIMIT 1`,
+    `${ticketSelect(UNREAD_FOR_ADMIN)} WHERE t.id = $1 LIMIT 1`,
     [ticketId],
   );
   return result.rows[0] ? mapTicket(result.rows[0]) : null;
@@ -167,10 +177,9 @@ export async function addCustomerReply(input: {
      VALUES ($1, 'customer', $2)`,
     [input.ticketId, input.message],
   );
-  // A customer reply reopens a closed ticket and flags it for the operator.
+  // A customer reply reopens a closed ticket.
   await query(
-    `UPDATE support_tickets
-        SET status = 'open', unread_by_admin = TRUE, updated_at = now()
+    `UPDATE support_tickets SET status = 'open', updated_at = now()
       WHERE id = $1 AND user_id = $2`,
     [input.ticketId, input.userId],
   );
@@ -186,9 +195,7 @@ export async function addAdminReply(input: {
     [input.ticketId, input.message],
   );
   await query(
-    `UPDATE support_tickets
-        SET unread_by_customer = TRUE, updated_at = now()
-      WHERE id = $1`,
+    `UPDATE support_tickets SET updated_at = now() WHERE id = $1`,
     [input.ticketId],
   );
 }
@@ -215,7 +222,7 @@ export async function markTicketReadByCustomer(
   userId: string,
 ): Promise<void> {
   await query(
-    `UPDATE support_tickets SET unread_by_customer = FALSE
+    `UPDATE support_tickets SET customer_read_at = now()
       WHERE id = $1 AND user_id = $2`,
     [ticketId, userId],
   );
@@ -223,26 +230,31 @@ export async function markTicketReadByCustomer(
 
 export async function markTicketReadByAdmin(ticketId: string): Promise<void> {
   await query(
-    `UPDATE support_tickets SET unread_by_admin = FALSE WHERE id = $1`,
+    `UPDATE support_tickets SET admin_read_at = now() WHERE id = $1`,
     [ticketId],
   );
 }
 
-export async function countUnreadTicketsForUser(userId: string): Promise<number> {
+export async function countUnreadMessagesForUser(userId: string): Promise<number> {
   const result = await query<{ count: string }>(
     `SELECT COUNT(*)::text AS count
-       FROM support_tickets
-      WHERE user_id = $1 AND unread_by_customer = TRUE`,
+       FROM support_ticket_messages m
+       JOIN support_tickets t ON t.id = m.ticket_id
+      WHERE t.user_id = $1
+        AND m.author = 'admin'
+        AND (t.customer_read_at IS NULL OR m.created_at > t.customer_read_at)`,
     [userId],
   );
   return Number(result.rows[0]?.count || 0);
 }
 
-export async function countUnreadTicketsForAdmin(): Promise<number> {
+export async function countUnreadMessagesForAdmin(): Promise<number> {
   const result = await query<{ count: string }>(
     `SELECT COUNT(*)::text AS count
-       FROM support_tickets
-      WHERE unread_by_admin = TRUE`,
+       FROM support_ticket_messages m
+       JOIN support_tickets t ON t.id = m.ticket_id
+      WHERE m.author = 'customer'
+        AND (t.admin_read_at IS NULL OR m.created_at > t.admin_read_at)`,
   );
   return Number(result.rows[0]?.count || 0);
 }

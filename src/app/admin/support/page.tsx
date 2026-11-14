@@ -52,8 +52,8 @@ export default async function AdminSupportPage() {
                       <Link className="small" href={`/admin/support/${ticket.id}`}>
                         {ticket.subject}
                       </Link>
-                      {ticket.unreadByAdmin ? (
-                        <span className="badge badge-red">新回复</span>
+                      {ticket.unreadCount > 0 ? (
+                        <span className="badge badge-red">新回复 {ticket.unreadCount}</span>
                       ) : null}
                       {ticket.messageCount > 0 ? (
                         <div className="small muted">共 {ticket.messageCount} 条消息</div>

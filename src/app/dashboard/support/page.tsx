@@ -116,8 +116,8 @@ export default async function DashboardSupportPage({
                       <Link className="small" href={`/dashboard/support/${ticket.id}`}>
                         {ticket.subject}
                       </Link>
-                      {ticket.unreadByCustomer ? (
-                        <span className="badge badge-red">新回复</span>
+                      {ticket.unreadCount > 0 ? (
+                        <span className="badge badge-red">新回复 {ticket.unreadCount}</span>
                       ) : null}
                       {ticket.messageCount > 0 ? (
                         <div className="small muted">共 {ticket.messageCount} 条消息</div>
