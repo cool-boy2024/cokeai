@@ -99,11 +99,13 @@ export default async function ShopCheckoutPage({
                 <div>
                   <dt>支付方式</dt>
                   <dd>
-                    {["alipay_easypay", "alipay_manual"].includes(order.payment_provider)
-                      ? "支付宝"
-                      : usdtMeta
-                        ? usdtMeta.label
-                        : "人工到账"}
+                    {order.payment_provider === "alipay_easypay"
+                      ? "支付宝（易支付）"
+                      : order.payment_provider === "alipay_manual"
+                        ? "支付宝（人工核实）"
+                        : usdtMeta
+                          ? usdtMeta.label
+                          : "人工到账"}
                   </dd>
                 </div>
                 <div>
@@ -119,13 +121,24 @@ export default async function ShopCheckoutPage({
 
             <section className="shop-panel shop-pay-panel">
               {personal ? <div className="payment-form">
-                <h2>支付宝支付</h2>
+                <h2>支付宝扫码付款</h2>
                 <p>应付 <strong>{formatCny(order.amount_micros)}</strong> · 收款人：{personal.payee}</p>
                 {personal.reported_at ? <div className="notice">已提交付款信息，等待核实。请勿重复付款。</div> : null}
                 <img className="payment-qr" src={personal.qr_data_url} alt="支付宝收款二维码" />
-                <p className="small muted">请核对收款人和金额。付款备注填写订单号 {order.order_no}，到账核实后安排交付。</p>
+                <p className="small muted">请核对收款人和金额。付款备注填写订单号 {order.order_no}，商家核实到账后安排交付，非即时到账。</p>
                 <ManualPaymentClaimForm orderId={order.id} orderKind="shop" reference={personal.reported_reference || ""} note={personal.payer_note || ""} />
+                <AutoRefresh seconds={30} />
               </div> : null}
+              {order.payment_provider === "alipay_manual" && !personal ? (
+                <div className="notice notice-red">
+                  <Warning size={16} />
+                  <div>
+                    收款信息读取失败，请返回重新下单或
+                    <a href={`mailto:${config.shopSupportEmail}`}>联系客服</a>
+                    处理。
+                  </div>
+                </div>
+              ) : null}
               {order.payment_provider === "alipay_easypay" ? (
                 <>
                   <h2>支付宝支付</h2>

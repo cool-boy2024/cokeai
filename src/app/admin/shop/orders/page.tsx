@@ -101,10 +101,12 @@ export default async function AdminShopOrdersPage({
                       <td className={margin < 15 ? "text-red" : ""}>{margin.toFixed(1)}%</td>
                       <td className="nowrap">
                         {order.payment_provider === "alipay_easypay"
-                          ? "支付宝"
-                          : order.payment_provider.startsWith("usdt_")
-                            ? "USDT"
-                            : "人工"}
+                          ? "支付宝（易支付）"
+                          : order.payment_provider === "alipay_manual"
+                            ? "支付宝（人工）"
+                            : order.payment_provider.startsWith("usdt_")
+                              ? "USDT"
+                              : "人工"}
                       </td>
                       <td>
                         <span className={`shop-status shop-status-${order.status}`}>

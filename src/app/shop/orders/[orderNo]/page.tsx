@@ -14,7 +14,8 @@ import { decryptCustomerInput, findShopOrderByNo } from "@/lib/shop/orders";
 import { SHOP_COPY } from "@/lib/shop/copy";
 
 function paymentLabel(provider: string): string {
-  if (provider === "alipay_easypay" || provider === "alipay_manual") return "支付宝";
+  if (provider === "alipay_easypay") return "支付宝（易支付）";
+  if (provider === "alipay_manual") return "支付宝（人工核实）";
   const network = networkForProvider(provider);
   return network ? USDT_NETWORKS[network].label : "人工到账";
 }

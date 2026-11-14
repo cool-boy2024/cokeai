@@ -9,6 +9,7 @@ import {
   networkForProvider,
   providerForNetwork,
 } from "@/lib/payments/networks";
+import { getManualAlipaySettings } from "@/lib/payments/settings";
 import { isUsdtNetworkConfigured } from "@/lib/payments/usdt";
 import { query } from "@/lib/db";
 import { fixedWindowLimit } from "@/lib/rate-limit";
@@ -36,9 +37,9 @@ export async function createShopCheckoutAction(
   if (!Number.isFinite(expectedPriceMicros) || expectedPriceMicros <= 0) {
     return { error: "商品价格异常，请刷新后重试。" };
   }
-  // Personal Alipay QR and manual transfers stay disabled. The shop accepts
-  // USDT on the configured networks and, when configured, EasyPay.
-  if (!isUsdt && provider !== "alipay") {
+  // The shop accepts USDT on configured networks, EasyPay when configured,
+  // and the operator's personal Alipay QR when it is enabled.
+  if (!isUsdt && provider !== "alipay" && provider !== "alipay_manual") {
     return { error: "支付方式无效。" };
   }
 
@@ -85,10 +86,16 @@ export async function createShopCheckoutAction(
   }
   if (provider === "alipay") {
     if (!config.shopEasypayEnabled) {
-      return { error: "小店当前仅支持 USDT 支付。" };
+      return { error: "支付宝（易支付）暂不可用，请选择其他支付方式。" };
     }
     const error = easyPayConfigError();
     if (error) return { error };
+  }
+  if (provider === "alipay_manual") {
+    const settings = await getManualAlipaySettings();
+    if (!settings.enabled || !settings.qrDataUrl || !settings.payee) {
+      return { error: "支付宝收款暂未开放，请选择其他支付方式。" };
+    }
   }
   const product = await query<{ input_fields: Array<{ key?: string }>; name: string }>(
     `SELECT input_fields, name FROM shop_products
@@ -118,7 +125,11 @@ export async function createShopCheckoutAction(
       customerInput,
       note: String(formData.get("note") || ""),
       paymentProvider:
-        usdtNetwork !== null ? providerForNetwork(usdtNetwork) : "alipay_easypay",
+        usdtNetwork !== null
+          ? providerForNetwork(usdtNetwork)
+          : provider === "alipay_manual"
+            ? "alipay_manual"
+            : "alipay_easypay",
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "下单失败";
@@ -171,6 +182,12 @@ export async function createShopCheckoutAction(
     );
     revalidatePath("/dashboard/shop");
     redirect(checkoutUrl);
+  }
+
+  if (provider === "alipay_manual") {
+    // createShopOrder already stored the QR snapshot for this order.
+    revalidatePath("/dashboard/shop");
+    redirect(`/shop/checkout/${created.orderNo}`);
   }
 
   const { createShopUsdtDeposit } = await import("@/lib/shop/usdt");
