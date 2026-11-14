@@ -133,8 +133,8 @@ export default async function DashboardPage() {
           <section className="panel">
             <div className="panel-head">
               <div>
-                <h2>最近小店订单</h2>
-                <p>最近 5 笔</p>
+                <h2>我的最近订单</h2>
+                <p>仅显示当前账号的订单 · 最近 5 笔</p>
               </div>
               <Link className="text-link small" href="/dashboard/shop">
                 全部订单 →
