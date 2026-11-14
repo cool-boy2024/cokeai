@@ -43,6 +43,38 @@ export type SupplierIdentity = {
   url?: string | null;
 };
 
+/**
+ * Shop brands that show up inside aggregated-feed copy even when the offer's
+ * `source_store` says something else (a marketplace entry named after a city
+ * whose notice introduces the real shop, for example). Scrubbing only the
+ * store name left these on paid product pages, so keep a static list.
+ * Ordered longest-first so a brand and its tagline are replaced together.
+ */
+const SUPPLIER_BRAND_NAMES = [
+  "AI补给站·真低价",
+  "AI补给站",
+  "子砚的AI店铺",
+  "子砚",
+  "启航AI",
+  "AI小店",
+  "RedeemGPT",
+  "zyanai",
+  "wzyp",
+  "aibuji",
+  "ldxp",
+  "kapay",
+  "beibei",
+  "aisou",
+  "talkai",
+];
+
+/** Marketing phrases tied to a supplier shop front, not to the product. */
+const SUPPLIER_STORE_PHRASES: Array<[RegExp, string]> = [
+  [/真低价/g, "价格透明"],
+  [/站长本店客服/g, "本站客服"],
+  [/站长/g, "本站"],
+];
+
 function escapeRegExp(input: string): string {
   return input.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -118,6 +150,16 @@ export function sanitizeSupplierCopy(
       return urlHost && isAllowedHost(urlHost) ? value : SUPPLIER_PLACEHOLDER;
     },
   );
+
+  // Known shop brands and their taglines, regardless of the offer's store
+  // field. Runs after the URL pass so a brand that is also a domain
+  // ("zyanai.cc") is masked as a link instead of leaving "CokeAI 小店.cc".
+  for (const name of SUPPLIER_BRAND_NAMES) {
+    text = text.replace(new RegExp(escapeRegExp(name), "gi"), SHOP_COPY_NAME);
+  }
+  for (const [pattern, replacement] of SUPPLIER_STORE_PHRASES) {
+    text = text.replace(pattern, replacement);
+  }
 
   // Contact handles and mailboxes.
   text = text.replace(

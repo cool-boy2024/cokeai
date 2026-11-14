@@ -30,6 +30,7 @@
     "test:shop:manual": "tsx scripts/test-shop-manual-alipay.ts",
     "test:shop:categories": "tsx scripts/test-shop-categories.ts",
     "test:shop:preorder": "tsx scripts/test-shop-preorder.ts",
+    "test:shop:sanitize": "tsx scripts/test-shop-sanitize.ts",
     "test:shop:payments": "tsx scripts/test-shop-payments.ts",
     "test:shop:balance": "tsx scripts/test-shop-balance.ts",
     "test:shop:analytics": "tsx scripts/test-shop-analytics.ts",
