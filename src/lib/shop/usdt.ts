@@ -18,7 +18,7 @@ import {
   type UsdtNetwork,
 } from "@/lib/payments/networks";
 import { getUsdtNetworkSettings, getUsdtSettings } from "@/lib/payments/settings";
-import { notifyShopOrderPaid } from "./notify";
+import { notifyShopDepositAttention, notifyShopOrderPaid } from "./notify";
 import { markShopOrderPaid } from "./orders";
 
 export type ShopUsdtDeposit = {
@@ -271,40 +271,171 @@ export async function expireShopUsdtOrderForUser(
   return true;
 }
 
+type ShopDepositScanRow = ShopUsdtDeposit & {
+  order_amount_micros: string | number;
+  order_no: string;
+  order_status: string;
+};
+
+/**
+ * Books a confirmed on-chain payment against its shop order. The order write
+ * happens before the deposit row is moved to confirmed/overpaid, so a crash
+ * between the two leaves a state the next scan can retry instead of a deposit
+ * that looks settled while the order is still unpaid.
+ */
+async function settleConfirmedDeposit(
+  deposit: ShopDepositScanRow,
+  network: UsdtNetwork,
+  payment: {
+    txid: string | null;
+    blockNumber: number | null;
+    confirmations: number;
+    receivedUsdt: number;
+  },
+  status: "confirmed" | "overpaid" | "manual",
+): Promise<"paid" | "manual"> {
+  const { txid, receivedUsdt } = payment;
+  try {
+    await markShopOrderPaid({
+      orderNo: deposit.order_no,
+      provider: providerForNetwork(network),
+      providerRef: txid || `usdt:${deposit.order_id}`,
+      payTxid: txid || undefined,
+      paidAmountMicros: toNumber(deposit.order_amount_micros),
+      note:
+        status === "manual"
+          ? `USDT 补记账 ${receivedUsdt} USDT（订单已关闭）`
+          : `USDT 已确认 ${receivedUsdt} USDT（${status}）`,
+    });
+    return "paid";
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (message !== "ORDER_CLOSED") throw error;
+
+    const updated = await query<{ status: string }>(
+      `UPDATE shop_usdt_deposits
+          SET received_usdt = $2, txid = COALESCE($3, txid),
+              block_number = COALESCE($4, block_number), confirmations = $5,
+              status = 'manual', last_checked_at = now(), updated_at = now()
+        WHERE id = $1
+          AND status IN ('waiting', 'partial', 'confirming', 'expired', 'confirmed', 'overpaid')
+        RETURNING status`,
+      [
+        deposit.id,
+        payment.receivedUsdt,
+        payment.txid,
+        payment.blockNumber,
+        payment.confirmations,
+      ],
+    );
+    if (updated.rows[0]) {
+      void notifyShopDepositAttention({
+        orderId: deposit.order_id,
+        orderNo: deposit.order_no,
+        network,
+        status: "manual",
+        expectedUsdt: toNumber(deposit.expected_usdt),
+        receivedUsdt,
+        reason: "订单已关闭，链上仍有到账",
+      });
+    }
+    return "manual";
+  }
+}
+
 export async function scanShopUsdtDeposits(limit = 20): Promise<{
   checked: number;
   paid: number;
   partial: number;
+  manual: number;
   errors: number;
 }> {
   // Disabling a channel must not abandon deposits already quoted to customers.
-  const result = await query<ShopUsdtDeposit & { order_amount_micros: string | number }>(
+  // Closed orders stay in scope: funds can land after the quote expired, and
+  // those need a human, not silence. Confirmed deposits stay in scope so a
+  // settlement interrupted midway can be finished by the next run.
+  const result = await query<ShopDepositScanRow>(
     `SELECT d.id, d.order_id, d.network, d.address, d.derivation_index,
             d.expected_usdt, d.received_usdt, d.txid, d.block_number,
             d.confirmations, d.status, d.expires_at, d.last_checked_at,
             d.scan_from_block,
-            o.amount_micros AS order_amount_micros
+            o.amount_micros AS order_amount_micros,
+            o.order_no, o.status AS order_status
        FROM shop_usdt_deposits d
        JOIN shop_orders o ON o.id = d.order_id
-      WHERE d.status IN ('waiting', 'partial', 'confirming', 'expired')
-        AND d.expires_at > now() - ($2::int * interval '1 hour')
-        AND o.status = 'pending_payment'
+      WHERE d.status IN ('waiting', 'partial', 'confirming', 'expired', 'confirmed', 'overpaid')
+        AND (
+          d.expires_at > now() - ($2::int * interval '1 hour')
+          OR d.status IN ('confirmed', 'overpaid')
+        )
+        AND o.status IN ('pending_payment', 'expired', 'cancelled')
       ORDER BY d.created_at
       LIMIT $1`,
     [limit, config.shopUsdtGraceHours],
   );
-  if (result.rows.length === 0) return { checked: 0, paid: 0, partial: 0, errors: 0 };
+  if (result.rows.length === 0) {
+    return { checked: 0, paid: 0, partial: 0, manual: 0, errors: 0 };
+  }
 
   // Pace TRON requests so a keyless TronGrid does not rate-limit the scan.
   const usdtSettings = await getUsdtSettings();
   const throttleMs = usdtSettings.usdtTronGridApiKey ? 200 : 1_200;
   let paid = 0;
   let partial = 0;
+  let manual = 0;
   let errors = 0;
 
   for (const deposit of result.rows) {
     try {
       const network: UsdtNetwork = isUsdtNetwork(deposit.network) ? deposit.network : "trc20";
+
+      // A deposit already marked confirmed/overpaid but attached to an open
+      // order is the interrupted-settlement state. Finish it without touching
+      // the chain again; if the order closed meanwhile, book the funds for a
+      // human instead of leaving the deposit looking settled.
+      if (deposit.status === "confirmed" || deposit.status === "overpaid") {
+        if (deposit.order_status === "pending_payment") {
+          const outcome = await settleConfirmedDeposit(
+            deposit,
+            network,
+            {
+              txid: deposit.txid,
+              blockNumber: deposit.block_number ? Number(deposit.block_number) : null,
+              confirmations: deposit.confirmations,
+              receivedUsdt: toNumber(deposit.received_usdt),
+            },
+            deposit.status,
+          );
+          if (outcome === "paid") {
+            void notifyShopOrderPaid(deposit.order_id);
+            paid += 1;
+          } else {
+            manual += 1;
+          }
+        } else {
+          const updated = await query<{ status: string }>(
+            `UPDATE shop_usdt_deposits
+                SET status = 'manual', last_checked_at = now(), updated_at = now()
+              WHERE id = $1 AND status IN ('confirmed', 'overpaid')
+              RETURNING status`,
+            [deposit.id],
+          );
+          if (updated.rows[0]) {
+            manual += 1;
+            void notifyShopDepositAttention({
+              orderId: deposit.order_id,
+              orderNo: deposit.order_no,
+              network,
+              status: "manual",
+              expectedUsdt: toNumber(deposit.expected_usdt),
+              receivedUsdt: toNumber(deposit.received_usdt),
+              reason: "订单已关闭，链上仍有到账",
+            });
+          }
+        }
+        continue;
+      }
+
       // One chain failing must not stop the others; each row is isolated.
       const { received, latest, head } = await observeDeposit(deposit);
       const total = received;
@@ -320,6 +451,44 @@ export async function scanShopUsdtDeposits(limit = 20): Promise<{
         expiresAt: deposit.expires_at,
         toleranceUsdt: amountToleranceUsdt(expected),
       });
+
+      if (evaluation.status === "confirmed" || evaluation.status === "overpaid") {
+        // Book the order first. If this throws, the deposit stays in
+        // confirming/partial and the next scan retries it.
+        const outcome = await settleConfirmedDeposit(
+          deposit,
+          network,
+          {
+            txid: latest?.txid || deposit.txid,
+            blockNumber: latest?.block ?? null,
+            confirmations,
+            receivedUsdt: total,
+          },
+          evaluation.status,
+        );
+        if (outcome === "manual") {
+          manual += 1;
+          continue;
+        }
+        await query(
+          `UPDATE shop_usdt_deposits
+              SET received_usdt = $2, txid = COALESCE($3, txid),
+                  block_number = COALESCE($4, block_number), confirmations = $5,
+                  status = $6, last_checked_at = now(), updated_at = now()
+            WHERE id = $1 AND status IN ('waiting', 'partial', 'confirming', 'expired')`,
+          [
+            deposit.id,
+            total,
+            latest?.txid || null,
+            latest?.block ?? null,
+            confirmations,
+            evaluation.status,
+          ],
+        );
+        void notifyShopOrderPaid(deposit.order_id);
+        paid += 1;
+        continue;
+      }
 
       const updated = await query<{ status: string }>(
         `UPDATE shop_usdt_deposits
@@ -339,39 +508,35 @@ export async function scanShopUsdtDeposits(limit = 20): Promise<{
       );
       if (!updated.rows[0]) continue;
 
-      if (evaluation.status === "confirmed" || evaluation.status === "overpaid") {
-        try {
-          await markShopOrderPaid({
-            orderNo: (
-              await query<{ order_no: string }>(
-                "SELECT order_no FROM shop_orders WHERE id = $1 LIMIT 1",
-                [deposit.order_id],
-              )
-            ).rows[0].order_no,
-            provider: providerForNetwork(network),
-            providerRef: latest?.txid || `usdt:${deposit.order_id}`,
-            payTxid: latest?.txid || undefined,
-            paidAmountMicros: toNumber(deposit.order_amount_micros),
-            note: `USDT 已确认 ${total} USDT（${evaluation.status}）`,
-          });
-          void notifyShopOrderPaid(deposit.order_id);
-          paid += 1;
-        } catch (error) {
-          const message = error instanceof Error ? error.message : "";
-          if (message === "ORDER_CLOSED") {
-            await query(
-              `UPDATE shop_usdt_deposits
-                  SET status = 'manual', last_checked_at = now(), updated_at = now()
-                WHERE id = $1`,
-              [deposit.id],
-            );
-          } else {
-            errors += 1;
-            throw error;
-          }
-        }
-      } else if (evaluation.status === "partial") {
+      if (evaluation.status === "partial") {
         partial += 1;
+        if (deposit.status !== "partial") {
+          void notifyShopDepositAttention({
+            orderId: deposit.order_id,
+            orderNo: deposit.order_no,
+            network,
+            status: "partial",
+            expectedUsdt: expected,
+            receivedUsdt: total,
+            reason: "到账不足报价金额",
+          });
+        }
+      } else if (evaluation.status === "manual") {
+        manual += 1;
+        if (deposit.status !== "manual") {
+          void notifyShopDepositAttention({
+            orderId: deposit.order_id,
+            orderNo: deposit.order_no,
+            network,
+            status: "manual",
+            expectedUsdt: expected,
+            receivedUsdt: total,
+            reason:
+              deposit.order_status !== "pending_payment"
+                ? "订单已关闭，链上仍有到账"
+                : "到账时间晚于报价有效期",
+          });
+        }
       }
     } catch (error) {
       errors += 1;
@@ -390,5 +555,5 @@ export async function scanShopUsdtDeposits(limit = 20): Promise<{
     }
   }
 
-  return { checked: result.rows.length, paid, partial, errors };
+  return { checked: result.rows.length, paid, partial, manual, errors };
 }
