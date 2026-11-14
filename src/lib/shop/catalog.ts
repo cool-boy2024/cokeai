@@ -1,5 +1,6 @@
 import { query } from "@/lib/db";
 import { parseInputFields, parseStringList, type ShopInputField } from "./copy";
+import { sanitizeStoredRichHtml } from "./rich-description";
 import {
   sanitizeSupplierCopy,
   sanitizeSupplierLines,
@@ -17,6 +18,16 @@ export const SHOP_BRANDS = [
 
 export type ShopBrand = Exclude<(typeof SHOP_BRANDS)[number]["key"], "all"> | "other";
 
+export type ShopDescriptionImage = {
+  url: string;
+  alt: string;
+};
+
+export type ProductMedia = {
+  image_url: string | null;
+  description_images: ShopDescriptionImage[];
+};
+
 export type PublicShopProduct = {
   id: string;
   slug: string;
@@ -26,6 +37,7 @@ export type PublicShopProduct = {
   name: string;
   subtitle: string;
   description: string;
+  description_html: string;
   cover_variant: string;
   price_micros: number;
   delivery_method: string;
@@ -42,13 +54,42 @@ export type PublicShopProduct = {
   availability: string;
   featured: boolean;
   sort_order: number;
+  display_category: string;
+  image_url: string | null;
+  description_images: ShopDescriptionImage[];
+  help_article_ids: string[];
 };
 
-type RawProduct = Omit<PublicShopProduct, "includes" | "usage_notes" | "input_fields"> & {
+type RawProduct = Omit<
+  PublicShopProduct,
+  | "includes"
+  | "usage_notes"
+  | "input_fields"
+  | "help_article_ids"
+  | "image_url"
+  | "description_images"
+> & {
   includes: unknown;
   usage_notes: unknown;
   input_fields: unknown;
+  help_article_ids: unknown;
 };
+
+/** JSONB may arrive parsed (pg) or as the raw string from a manual SQL edit. */
+function parseHelpArticleIds(value: unknown): string[] {
+  let list: unknown = value;
+  if (typeof value === "string") {
+    try {
+      list = JSON.parse(value);
+    } catch {
+      list = null;
+    }
+  }
+  if (!Array.isArray(list)) return [];
+  return list
+    .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+    .map((item) => item.trim());
+}
 
 function hydrate(row: RawProduct): PublicShopProduct {
   return {
@@ -62,6 +103,11 @@ function hydrate(row: RawProduct): PublicShopProduct {
     includes: parseStringList(row.includes),
     usage_notes: parseStringList(row.usage_notes),
     input_fields: parseInputFields(row.input_fields),
+    help_article_ids: parseHelpArticleIds(row.help_article_ids),
+    display_category: String(row.display_category || ""),
+    description_html: String(row.description_html || ""),
+    image_url: null,
+    description_images: [],
   };
 }
 
@@ -97,6 +143,55 @@ async function loadProductIdentities(
   return grouped;
 }
 
+type ProductImageRow = {
+  product_id: string;
+  image_hash: string;
+  kind: string;
+  position: number;
+  ext: string;
+  alt: string | null;
+};
+
+/**
+ * Loads mirrored product images in one query. The image bytes stay in
+ * shop_images; the public URL points at /api/shop/images/<hash>.<ext>.
+ * Before the migration lands the table is absent, so a failed read must not
+ * take the whole catalog down: log once and fall back to no media.
+ */
+export async function loadProductMedia(productIds: string[]): Promise<Map<string, ProductMedia>> {
+  const media = new Map<string, ProductMedia>();
+  if (productIds.length === 0) return media;
+
+  try {
+    const rows = await query<ProductImageRow>(
+      `SELECT spi.product_id, spi.image_hash, spi.kind, spi.position,
+              si.ext, COALESCE(spi.alt, '') AS alt
+         FROM shop_product_images spi
+         JOIN shop_images si ON si.hash = spi.image_hash
+        WHERE spi.product_id = ANY($1::uuid[])
+        ORDER BY spi.kind ASC, spi.position ASC`,
+      [productIds],
+    );
+    for (const row of rows.rows) {
+      if (!row.image_hash || !row.ext) continue;
+      const url = `/api/shop/images/${row.image_hash}.${row.ext}`;
+      let entry = media.get(row.product_id);
+      if (!entry) {
+        entry = { image_url: null, description_images: [] };
+        media.set(row.product_id, entry);
+      }
+      if (row.kind === "cover") {
+        if (!entry.image_url) entry.image_url = url;
+      } else {
+        entry.description_images.push({ url, alt: row.alt || "" });
+      }
+    }
+  } catch (error) {
+    console.warn("shop product media unavailable:", error);
+  }
+  return media;
+}
+
 function sanitizePublicProduct(
   product: PublicShopProduct,
   identities: SupplierIdentity[],
@@ -117,6 +212,7 @@ function sanitizePublicProduct(
     name: clean(product.name),
     subtitle: clean(product.subtitle),
     description: clean(product.description),
+    description_html: sanitizeStoredRichHtml(product.description_html, identities),
     warranty_note: clean(product.warranty_note),
     includes: cleanLines(product.includes),
     usage_notes: cleanLines(product.usage_notes),
@@ -131,12 +227,38 @@ function sanitizePublicProduct(
   };
 }
 
+/**
+ * Mirrored image alt text comes from the supplier page too, so it is an
+ * output channel just like the description. Apply the same scrubber to it
+ * before the product reaches a public page.
+ */
+function sanitizeMediaEntry(
+  entry: ProductMedia | undefined,
+  identities: SupplierIdentity[],
+): ProductMedia {
+  if (!entry) return { image_url: null, description_images: [] };
+  const clean = (text: string): string => {
+    let out = sanitizeSupplierCopy(text);
+    for (const identity of identities) out = sanitizeSupplierCopy(out, identity);
+    return out;
+  };
+  return {
+    image_url: entry.image_url,
+    description_images: entry.description_images.map((image) => ({
+      ...image,
+      alt: clean(image.alt),
+    })),
+  };
+}
+
 const PUBLIC_COLUMNS = `
   id, slug, brand, category, product_type, name, subtitle, description,
   cover_variant, price_micros, delivery_method, eta_min_minutes, eta_max_minutes,
   warranty_type, warranty_days, warranty_note, includes, usage_notes, customer_notice,
-  refund_policy, input_fields, availability, featured, sort_order
+  refund_policy, input_fields, availability, featured, sort_order, help_article_ids,
+  display_category
 `;
+const DETAIL_COLUMNS = `${PUBLIC_COLUMNS}, description_html`;
 
 export async function listPublicProducts(filter?: {
   brand?: string;
@@ -158,23 +280,36 @@ export async function listPublicProducts(filter?: {
     conditions.push("availability IN ('in_stock', 'low_stock')");
   }
 
+  // List cards never render the article, so skip the (potentially large)
+  // rich text here and only load it on the detail page.
   const rows = await query<RawProduct>(
-    `SELECT ${PUBLIC_COLUMNS}
+    `SELECT ${PUBLIC_COLUMNS}, '' AS description_html
        FROM shop_products
       WHERE ${conditions.join(" AND ")}
       ORDER BY featured DESC, sort_order ASC, created_at ASC`,
     values,
   );
   const products = rows.rows.map(hydrate);
-  const identities = await loadProductIdentities(products.map((product) => product.id));
-  return products.map((product) =>
-    sanitizePublicProduct(product, identities.get(product.id) || []),
-  );
+  const productIds = products.map((product) => product.id);
+  const [identities, media] = await Promise.all([
+    loadProductIdentities(productIds),
+    loadProductMedia(productIds),
+  ]);
+  return products.map((product) => {
+    const productIdentities = identities.get(product.id) || [];
+    const clean = sanitizePublicProduct(product, productIdentities);
+    const mediaEntry = sanitizeMediaEntry(media.get(product.id), productIdentities);
+    return {
+      ...clean,
+      image_url: mediaEntry.image_url,
+      description_images: mediaEntry.description_images,
+    };
+  });
 }
 
 export async function getPublicProduct(slug: string): Promise<PublicShopProduct | null> {
   const rows = await query<RawProduct>(
-    `SELECT ${PUBLIC_COLUMNS}
+    `SELECT ${DETAIL_COLUMNS}
        FROM shop_products
       WHERE slug = $1 AND status = 'active' AND copy_ready = TRUE
       LIMIT 1`,
@@ -183,8 +318,18 @@ export async function getPublicProduct(slug: string): Promise<PublicShopProduct 
   const row = rows.rows[0];
   if (!row) return null;
   const product = hydrate(row);
-  const identities = await loadProductIdentities([product.id]);
-  return sanitizePublicProduct(product, identities.get(product.id) || []);
+  const [identities, media] = await Promise.all([
+    loadProductIdentities([product.id]),
+    loadProductMedia([product.id]),
+  ]);
+  const productIdentities = identities.get(product.id) || [];
+  const clean = sanitizePublicProduct(product, productIdentities);
+  const mediaEntry = sanitizeMediaEntry(media.get(product.id), productIdentities);
+  return {
+    ...clean,
+    image_url: mediaEntry.image_url,
+    description_images: mediaEntry.description_images,
+  };
 }
 
 export type AdminShopProduct = PublicShopProduct & {
@@ -200,7 +345,7 @@ export type AdminShopProduct = PublicShopProduct & {
 
 export async function listAdminProducts(): Promise<AdminShopProduct[]> {
   const rows = await query<RawProduct & Omit<AdminShopProduct, keyof RawProduct>>(
-    `SELECT ${PUBLIC_COLUMNS},
+    `SELECT ${DETAIL_COLUMNS},
             status, availability_reason, pricing_review_required, copy_ready,
             compliance_ack_at, published_at, created_at, updated_at
        FROM shop_products
@@ -221,7 +366,7 @@ export async function listAdminProducts(): Promise<AdminShopProduct[]> {
 
 export async function getAdminProduct(id: string): Promise<AdminShopProduct | null> {
   const rows = await query<RawProduct & Omit<AdminShopProduct, keyof RawProduct>>(
-    `SELECT ${PUBLIC_COLUMNS},
+    `SELECT ${DETAIL_COLUMNS},
             status, availability_reason, pricing_review_required, copy_ready,
             compliance_ack_at, published_at, created_at, updated_at
        FROM shop_products

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import sanitizeHtml from "sanitize-html";
 import { query } from "@/lib/db";
+import { sanitizeSupplierCopy } from "@/lib/shop/sanitize";
 
 /**
  * Mirrors the supplier's public help center into help_articles.
@@ -51,7 +52,9 @@ async function fetchPage(url: string): Promise<string> {
     cache: "no-store",
   });
   if (!response.ok) {
-    throw new Error(`${url} 返回 HTTP ${response.status}`);
+    // Never put the upstream URL in the message: it is surfaced in sync
+    // results and the admin UI.
+    throw new Error(`上游页面返回 HTTP ${response.status}`);
   }
   return response.text();
 }
@@ -285,9 +288,8 @@ export async function syncHelpArticles(): Promise<HelpSyncResult> {
   try {
     indexHtml = await fetchPage(INDEX_URL);
   } catch (error) {
-    errors.push(
-      `获取帮助中心列表失败：${error instanceof Error ? error.message : "未知错误"}`,
-    );
+    console.error("[help-sync] index fetch failed", error);
+    errors.push("获取帮助中心列表失败");
     return result;
   }
 
@@ -304,23 +306,25 @@ export async function syncHelpArticles(): Promise<HelpSyncResult> {
 
   for (const entry of entries) {
     const url = `${BASE_URL}/user/help/${entry.id}`;
+    // Titles come from the supplier and may contain its name; sync results are
+    // shown in the admin UI, so scrub before adding them to error text.
+    const safeTitle = sanitizeSupplierCopy(entry.title);
     let html: string;
     try {
       html = await fetchPage(url);
     } catch (error) {
-      errors.push(
-        `${entry.title}：${error instanceof Error ? error.message : "抓取失败"}`,
-      );
+      console.error("[help-sync] article fetch failed", entry.id, error);
+      errors.push(`${safeTitle}：抓取失败`);
       continue;
     }
     const rawBody = extractContainer(html, "help-article-content") ?? "";
     const bodyHtml = sanitize(rawBody);
     if (!bodyHtml) {
-      errors.push(`${entry.title}：正文为空，已跳过`);
+      errors.push(`${safeTitle}：正文为空，已跳过`);
       continue;
     }
     if (bodyHtml.length > 600_000) {
-      errors.push(`${entry.title}：正文超过 600 KB，已跳过`);
+      errors.push(`${safeTitle}：正文超过 600 KB，已跳过`);
       continue;
     }
 

@@ -15,6 +15,13 @@ import { ProductCard } from "@/components/shop/ProductCard";
 import { AvailabilityLegend } from "@/components/shop/ShopBadges";
 import { config } from "@/lib/config";
 import { listPublicProducts, SHOP_BRANDS } from "@/lib/shop/catalog";
+import {
+  filterProductsByCategory,
+  isShopCategorySlug,
+  productCategorySlug,
+  SHOP_CATEGORY_RAIL,
+  type ShopCategorySlug,
+} from "@/lib/shop/categories";
 
 export const metadata: Metadata = {
   title: "CokeAI 小店",
@@ -22,6 +29,14 @@ export const metadata: Metadata = {
 };
 
 export const dynamic = "force-dynamic";
+
+function shopHref(brand: string, category: ShopCategorySlug): string {
+  const search = new URLSearchParams();
+  if (brand !== "all") search.set("brand", brand);
+  if (category !== "all") search.set("category", category);
+  const query = search.toString();
+  return query ? `/shop?${query}` : "/shop";
+}
 
 export default async function ShopPage({
   searchParams,
@@ -34,7 +49,27 @@ export default async function ShopPage({
   const brand = SHOP_BRANDS.some((item) => item.key === params.brand)
     ? params.brand || "all"
     : "all";
-  const products = await listPublicProducts({ brand });
+  const category: ShopCategorySlug = isShopCategorySlug(params.category)
+    ? params.category
+    : "all";
+
+  // Brand filtering stays in SQL, exactly as before. Category counts and the
+  // category filter run on that brand-filtered result so both facets agree.
+  const brandProducts = await listPublicProducts({ brand });
+  const categoryCounts = new Map<ShopCategorySlug, number>(
+    SHOP_CATEGORY_RAIL.map((item) => [item.slug, 0]),
+  );
+  for (const product of brandProducts) {
+    const slug = productCategorySlug(product);
+    categoryCounts.set(slug, (categoryCounts.get(slug) || 0) + 1);
+  }
+  const visibleCategories = SHOP_CATEGORY_RAIL.filter(
+    (item) =>
+      item.slug === "all" ||
+      (categoryCounts.get(item.slug) || 0) > 0 ||
+      item.slug === category,
+  );
+  const products = filterProductsByCategory(brandProducts, category);
   const showFeatured = brand === "all" && products.length >= 3;
 
   return (
@@ -76,16 +111,37 @@ export default async function ShopPage({
 
         <section className="container shop-catalog">
           <div className="shop-catalog-head">
-            <div className="shop-filters" aria-label="商品分类">
-              {SHOP_BRANDS.map((item) => (
-                <Link
-                  key={item.key}
-                  href={item.key === "all" ? "/shop" : `/shop?brand=${item.key}`}
-                  className={`shop-filter${brand === item.key ? " active" : ""}`}
-                >
-                  {item.label}
-                </Link>
-              ))}
+            <div className="shop-catalog-filters">
+              <nav className="shop-category-rail" aria-label="商品分类">
+                {visibleCategories.map((item) => {
+                  const active = category === item.slug;
+                  return (
+                    <Link
+                      key={item.slug}
+                      href={shopHref(brand, item.slug)}
+                      className={`shop-category-link${active ? " active" : ""}`}
+                      aria-current={active ? "page" : undefined}
+                    >
+                      <span className="shop-category-label">{item.label}</span>
+                      <span className="shop-category-count">
+                        {categoryCounts.get(item.slug) || 0}
+                      </span>
+                    </Link>
+                  );
+                })}
+              </nav>
+              <div className="shop-filters" aria-label="按品牌筛选">
+                {SHOP_BRANDS.map((item) => (
+                  <Link
+                    key={item.key}
+                    href={shopHref(item.key, category)}
+                    className={`shop-filter${brand === item.key ? " active" : ""}`}
+                    aria-current={brand === item.key ? "page" : undefined}
+                  >
+                    {item.label}
+                  </Link>
+                ))}
+              </div>
             </div>
             <AvailabilityLegend />
           </div>

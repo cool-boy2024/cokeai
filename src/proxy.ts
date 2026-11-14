@@ -43,8 +43,12 @@ const POLICIES: Array<{ test: (pathname: string) => boolean; policy: Policy }> =
     policy: { type: "auth-page", limit: 60, windowSeconds: 60 },
   },
   {
+    // Public catalogue pages are the most attractive crawl target because
+    // supplier-derived copy and links live there. 120/min per IP still covers
+    // normal browsing (a page plus its images is well under this) while
+    // stopping bulk mirroring. Product images are counted by /api/shop/*.
     test: (pathname) => pathname === "/shop" || pathname.startsWith("/shop/"),
-    policy: { type: "shop-page", limit: 600, windowSeconds: 60 },
+    policy: { type: "shop-page", limit: 120, windowSeconds: 60 },
   },
   {
     test: (pathname) => pathname.startsWith("/dashboard/shop"),

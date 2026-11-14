@@ -6,9 +6,12 @@ import { SiteFooter } from "@/components/SiteFooter";
 import { SiteHeader } from "@/components/SiteHeader";
 import { BuyForm } from "@/components/shop/BuyForm";
 import { ProductCover } from "@/components/shop/ProductCover";
+import { ProductHelpLinks } from "@/components/shop/ProductHelpLinks";
 import { ProductIntro } from "@/components/shop/ProductIntro";
 import { ProductNotices } from "@/components/shop/ProductNotices";
 import { ProductTutorial } from "@/components/shop/ProductTutorial";
+import { getVisibleHelpArticlesByIds } from "@/lib/help/store";
+import { getProductHelpArticleIds } from "@/lib/shop/help-articles";
 import { getShopTutorial } from "@/lib/shop/tutorials";
 import {
   AvailabilityBadge,
@@ -55,6 +58,9 @@ export default async function ShopProductPage({
   ]);
   if (!product) notFound();
 
+  const helpArticles = await getVisibleHelpArticlesByIds(
+    getProductHelpArticleIds(product),
+  );
   const tutorial = getShopTutorial(product.slug);
   // Render the first captcha with the page so opening the payment step never
   // waits on a round trip. Refreshes still go through /api/shop/captcha. A
@@ -84,6 +90,7 @@ export default async function ShopProductPage({
               <ProductCover
                 variant={product.cover_variant}
                 brand={product.brand}
+                imageUrl={product.image_url}
                 className="shop-detail-cover"
               />
 
@@ -106,6 +113,8 @@ export default async function ShopProductPage({
               </div>
 
               <ProductIntro product={product} />
+
+              <ProductHelpLinks articles={helpArticles} />
 
               <ProductNotices product={product} image={tutorial?.image} />
 

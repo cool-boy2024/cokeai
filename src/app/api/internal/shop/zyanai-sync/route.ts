@@ -36,11 +36,9 @@ export async function POST(request: Request): Promise<Response> {
       },
     );
   } catch (error) {
+    console.error("[internal/shop/zyanai-sync]", error);
     return Response.json(
-      {
-        ok: false,
-        error: error instanceof Error ? error.message : "zyanai_sync_failed",
-      },
+      { ok: false, error: "zyanai_sync_failed" },
       { status: 500, headers: { "Cache-Control": "no-store" } },
     );
   }

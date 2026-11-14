@@ -17,7 +17,11 @@ export function ProductCard({
       href={`/shop/${product.slug}`}
       className={`shop-product-card${featured ? " is-featured" : ""}`}
     >
-      <ProductCover variant={product.cover_variant} brand={product.brand} />
+      <ProductCover
+        variant={product.cover_variant}
+        brand={product.brand}
+        imageUrl={product.image_url}
+      />
       <div className="shop-product-card-body">
         <div className="shop-product-card-top">
           <span className="shop-product-brand">{product.brand.toUpperCase()}</span>
