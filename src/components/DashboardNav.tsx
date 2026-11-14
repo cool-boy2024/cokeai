@@ -18,6 +18,7 @@ import {
   SlidersHorizontal,
   UserRound,
   Users,
+  Wallet,
 } from "lucide-react";
 
 const userItems = [
@@ -36,6 +37,7 @@ const adminItems = [
   { href: "/admin/payments", label: "收款设置", icon: CreditCard },
   { href: "/admin/shop", label: "小店", icon: ShoppingBag },
   { href: "/admin/shop/queue", label: "采购队列", icon: ClipboardList },
+  { href: "/admin/shop/deposits", label: "USDT 到账", icon: Wallet },
   { href: "/admin/shop/sources", label: "货源", icon: PackageSearch },
   { href: "/admin/users", label: "用户", icon: Users },
   { href: "/admin/announcements", label: "公告", icon: Megaphone },

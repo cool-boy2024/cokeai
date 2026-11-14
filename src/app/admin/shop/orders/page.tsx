@@ -48,6 +48,9 @@ export default async function AdminShopOrdersPage({
             {filter.label}
           </Link>
         ))}
+        <Link className="btn btn-sm btn-ghost" href="/admin/shop/deposits">
+          USDT 到账
+        </Link>
       </div>
 
       <section className="panel">

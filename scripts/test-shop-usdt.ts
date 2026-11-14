@@ -13,17 +13,6 @@ async function main() {
   const { createShopUsdtDeposit, getShopUsdtDeposit, isShopUsdtAvailable, scanShopUsdtDeposits } =
     await import("../src/lib/shop/usdt");
 
-  if (!(await isShopUsdtAvailable())) {
-    console.log(
-      JSON.stringify(
-        { ok: true, skipped: "USDT is not configured (xpub + TronGrid key required)" },
-        null,
-        2,
-      ),
-    );
-    return;
-  }
-
   const user = await query<{ id: string }>(
     `INSERT INTO users (email, password_hash, name, referral_code)
      VALUES ($1, $2, 'USDT Shop Test', $3) RETURNING id`,
@@ -56,6 +45,59 @@ async function main() {
       paymentProvider: "usdt_trc20",
       customerInput,
     });
+  }
+
+  // Settlement recovery never touches the chain: a confirmed deposit on an
+  // open order must still be booked, and one on a closed order must surface
+  // for a human instead of staying "confirmed" forever.
+  const interrupted = await newOrder();
+  const closed = await newOrder();
+  await query(`UPDATE shop_orders SET status = 'expired', updated_at = now() WHERE id = $1`, [
+    closed.id,
+  ]);
+  const stamp = Date.now();
+  await query(
+    `INSERT INTO shop_usdt_deposits
+       (order_id, network, address, derivation_index, expected_usdt, received_usdt,
+        txid, block_number, confirmations, status, expires_at, last_checked_at)
+     VALUES ($1, 'trc20', $2, $3, 1, 1, $4, 1, 20, 'confirmed', now() + interval '5 minutes', now())`,
+    [interrupted.id, `TRecovery${stamp}`, 900000 + (stamp % 100000), `recovery-${stamp}`],
+  );
+  await query(
+    `INSERT INTO shop_usdt_deposits
+       (order_id, network, address, derivation_index, expected_usdt, received_usdt,
+        txid, block_number, confirmations, status, expires_at, last_checked_at)
+     VALUES ($1, 'trc20', $2, $3, 1, 1, $4, 1, 20, 'confirmed', now() + interval '5 minutes', now())`,
+    [closed.id, `TClosed${stamp}`, 950000 + (stamp % 100000), `closed-${stamp}`],
+  );
+
+  const recoveryScan = await scanShopUsdtDeposits(50);
+  assert(recoveryScan.paid >= 1, "confirmed deposit was not booked onto the open order");
+  const recoveredOrder = await query<{ status: string }>(
+    `SELECT status FROM shop_orders WHERE id = $1`,
+    [interrupted.id],
+  );
+  assert(recoveredOrder.rows[0]?.status === "paid", "open order was not marked paid");
+  const closedDeposit = await query<{ status: string; received_usdt: string }>(
+    `SELECT status, received_usdt FROM shop_usdt_deposits WHERE order_id = $1`,
+    [closed.id],
+  );
+  assert(closedDeposit.rows[0]?.status === "manual", "closed-order funds were not flagged");
+  assert(Number(closedDeposit.rows[0]?.received_usdt) === 1, "closed-order amount was not kept");
+
+  if (!(await isShopUsdtAvailable())) {
+    console.log(
+      JSON.stringify(
+        {
+          ok: true,
+          settlement_recovery: "ok",
+          skipped: "USDT is not configured (xpub + TronGrid key required)",
+        },
+        null,
+        2,
+      ),
+    );
+    return;
   }
 
   const a = await newOrder();
