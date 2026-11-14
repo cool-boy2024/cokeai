@@ -4,7 +4,7 @@ import { requireAdmin } from "@/lib/auth";
 import { query } from "@/lib/db";
 import { formatCny } from "@/lib/money";
 import { availabilityLabel, productStatusLabel } from "@/lib/shop/copy";
-import { PREORDER_MARKER } from "@/lib/shop/preorder";
+import { preorderSql } from "@/lib/shop/preorder";
 
 export const metadata: Metadata = { title: "小店商品" };
 export const dynamic = "force-dynamic";
@@ -29,7 +29,7 @@ export default async function AdminShopProductsPage() {
   await requireAdmin();
   const result = await query<ProductRow>(
     `SELECT p.id, p.slug, p.name, p.brand, p.status, p.availability,
-            (p.availability_reason = '${PREORDER_MARKER}') AS preorder,
+            ${preorderSql("p.")} AS preorder,
             p.price_micros, p.copy_ready, p.pricing_review_required,
             p.updated_at,
             MIN(s.supplier_cost_micros)::text AS cost_micros,

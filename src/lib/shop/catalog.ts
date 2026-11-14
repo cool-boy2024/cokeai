@@ -1,6 +1,6 @@
 import { query } from "@/lib/db";
 import { parseInputFields, parseStringList, type ShopInputField } from "./copy";
-import { PREORDER_MARKER } from "./preorder";
+import { preorderSql } from "./preorder";
 import { sanitizeStoredRichHtml } from "./rich-description";
 import {
   sanitizeSupplierCopy,
@@ -262,8 +262,9 @@ const PUBLIC_COLUMNS = `
   refund_policy, input_fields, availability, featured, sort_order, help_article_ids,
   display_category,
   -- Preorder is stored as a marker in availability_reason so no shipment or
-  -- schema change is needed; only the derived boolean reaches public types.
-  (availability_reason = '${PREORDER_MARKER}') AS preorder
+  -- schema change is needed; Muse is always a preorder by operating policy.
+  -- Only the derived boolean reaches public types.
+  ${preorderSql()} AS preorder
 `;
 const DETAIL_COLUMNS = `${PUBLIC_COLUMNS}, description_html`;
 
