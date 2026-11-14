@@ -4,7 +4,11 @@ import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { formatDateTime } from "@/lib/format";
-import { getTicketForUser, listTicketMessages } from "@/lib/support";
+import {
+  getTicketForUser,
+  listTicketMessages,
+  markTicketReadByCustomer,
+} from "@/lib/support";
 import { replySupportTicketAction } from "@/app/actions/support";
 
 export const metadata: Metadata = { title: "工单详情" };
@@ -23,6 +27,7 @@ export default async function DashboardSupportTicketPage({
   const ticket = await getTicketForUser(id, user.id);
   if (!ticket) notFound();
   const messages = await listTicketMessages(id);
+  await markTicketReadByCustomer(id, user.id);
 
   return (
     <>

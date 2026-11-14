@@ -4,6 +4,7 @@ import { ArrowLeft, LayoutDashboard, LogOut, ShoppingBag } from "lucide-react";
 import { logoutAction } from "@/app/actions/auth";
 import { requireAdmin } from "@/lib/auth";
 import { query } from "@/lib/db";
+import { countUnreadTicketsForAdmin } from "@/lib/support";
 import { AppSidebar } from "@/components/AppSidebar";
 
 export const metadata: Metadata = {
@@ -39,6 +40,7 @@ export default async function AdminLayout({
        FROM shop_orders`,
   );
   const shopCounts = counts.rows[0];
+  const unreadTickets = await countUnreadTicketsForAdmin();
 
   return (
     <div className="app-shell">
@@ -49,6 +51,7 @@ export default async function AdminLayout({
           "/admin/shop/orders": Number(shopCounts?.reported || 0),
           "/admin/shop": Number(shopCounts?.pending || 0),
           "/admin/shop/queue": Number(shopCounts?.to_buy || 0),
+          "/admin/support": unreadTickets,
         }}
       />
       <main className="app-main">

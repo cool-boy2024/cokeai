@@ -4,7 +4,11 @@ import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { requireAdmin } from "@/lib/auth";
 import { formatDateTime } from "@/lib/format";
-import { getTicket, listTicketMessages } from "@/lib/support";
+import {
+  getTicket,
+  listTicketMessages,
+  markTicketReadByAdmin,
+} from "@/lib/support";
 import {
   adminReplyTicketAction,
   adminSetTicketStatusAction,
@@ -26,6 +30,7 @@ export default async function AdminSupportTicketPage({
   const ticket = await getTicket(id);
   if (!ticket) notFound();
   const messages = await listTicketMessages(id);
+  await markTicketReadByAdmin(id);
 
   return (
     <>
