@@ -467,7 +467,7 @@ export default async function AdminShopSourcesPage({
                 defaultValue={(targetMarginBps / 100).toString()}
               />
               <small className="hint">
-                上架定价使用：售价 ≈ 成本 × (1 + 毛利率)。默认 30%。
+                上架定价使用：售价 ≈ 成本 ÷ (1 − 毛利率)，即毛利率按售价计算。默认 30%。
               </small>
             </div>
             <div className="form-actions">
