@@ -14,6 +14,73 @@ const PROVIDER_LABELS: Record<string, string> = {
 };
 
 /**
+ * Tells the operators the moment a customer places an order, before payment.
+ * The partner should not have to watch the console to know demand arrived.
+ *
+ * The caller should not await this: a slow channel must never block checkout,
+ * and an unconfigured channel is not an error.
+ */
+export async function notifyShopOrderCreated(
+  orderId: string,
+  contactEmail?: string,
+): Promise<void> {
+  try {
+    const result = await query<{
+      order_no: string;
+      amount_micros: string | number;
+      payment_provider: string;
+      product_name: string;
+      qty: number;
+      email: string;
+      has_customer_input: boolean;
+      created_at: Date;
+    }>(
+      `SELECT o.order_no, o.amount_micros, o.payment_provider, o.created_at,
+              i.product_name, i.qty, u.email,
+              (i.customer_input_encrypted IS NOT NULL) AS has_customer_input
+         FROM shop_orders o
+         JOIN shop_order_items i ON i.order_id = o.id
+         JOIN users u ON u.id = o.user_id
+        WHERE o.id = $1
+        LIMIT 1`,
+      [orderId],
+    );
+    const row = result.rows[0];
+    if (!row) return;
+
+    const text = [
+      "【CokeAI 小店】客户已下单（待付款）",
+      `订单号：${row.order_no}`,
+      `商品：${row.product_name} × ${Number(row.qty)}`,
+      `金额：${formatCny(toNumber(row.amount_micros))}`,
+      `客户账号：${row.email}`,
+      contactEmail ? `联系邮箱：${contactEmail}` : null,
+      `渠道：${PROVIDER_LABELS[row.payment_provider] || row.payment_provider}`,
+      `下单时间：${new Date(row.created_at).toLocaleString("zh-CN")}`,
+      row.has_customer_input ? "客户已填写交付所需信息（后台可查看）。" : null,
+      `后台：${config.appUrl}/admin/shop/orders/${orderId}`,
+      `客户支付页：${config.appUrl}/shop/checkout/${row.order_no}`,
+      "下一步：等待客户付款；到账后核对金额与交易号再确认。",
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    const sent = await sendAlert(text, {
+      event: "shop_order_created",
+      orderNo: row.order_no,
+    });
+    if (!sent.ok) {
+      console.warn("[shop] created order alert not delivered:", sent.error);
+    }
+  } catch (error) {
+    console.warn(
+      "[shop] created order alert failed",
+      error instanceof Error ? error.message : error,
+    );
+  }
+}
+
+/**
  * Tells the operators that a customer paid and the order is ready to buy from
  * the supplier. The message goes to whichever channel is configured in
  * /admin/security/alerts, so the partner hears about a payment without
