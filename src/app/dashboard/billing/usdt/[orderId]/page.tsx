@@ -16,11 +16,14 @@ export const dynamic = "force-dynamic";
 
 export default async function UsdtPaymentPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ orderId: string }>;
+  searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const user = await requireUser();
   const { orderId } = await params;
+  const queryParams = await searchParams;
 
   const result = await query<{
     id: string;
@@ -28,6 +31,8 @@ export default async function UsdtPaymentPage({
     amount_micros: string;
     credits_micros: string;
     plan_name: string;
+    plan_kind: string;
+    duration_days: number;
     payment_provider: string;
     pay_amount: string | null;
     pay_address: string | null;
@@ -39,6 +44,7 @@ export default async function UsdtPaymentPage({
     credit_status: string | null;
   }>(
     `SELECT o.id, o.status, o.amount_micros, o.credits_micros, p.name AS plan_name,
+            p.kind AS plan_kind, o.duration_days,
             o.payment_provider, o.pay_amount, o.pay_address, o.pay_expires_at,
             d.status AS deposit_status, d.received_usdt, d.confirmations, d.txid,
             g.status AS credit_status
@@ -75,6 +81,11 @@ export default async function UsdtPaymentPage({
   const paid = orderStatus === "paid";
   const cancelled = orderStatus === "cancelled";
   const creditApplied = order.credit_status === "applied";
+  const membership = order.plan_kind === "membership";
+  const backHref =
+    queryParams.flow === "membership" || membership
+      ? "/dashboard/membership"
+      : "/dashboard/billing";
   const usdtNetwork = networkForProvider(order.payment_provider);
   const usdtMeta = USDT_NETWORKS[usdtNetwork || "trc20"];
   const requiredConfirmations = usdtMeta.requiredConfirmations;
@@ -88,8 +99,8 @@ export default async function UsdtPaymentPage({
     <>
       <div className="page-head">
         <div>
-          <Link className="btn btn-ghost btn-sm" href="/dashboard/billing">
-            <ArrowLeft size={14} /> 返回充值
+          <Link className="btn btn-ghost btn-sm" href={backHref}>
+            <ArrowLeft size={14} /> {membership ? "返回会员中心" : "返回充值"}
           </Link>
           <h1 style={{ marginTop: 16 }}>USDT 支付</h1>
           <p>
@@ -107,12 +118,18 @@ export default async function UsdtPaymentPage({
               <Clock3 size={40} style={{ color: "var(--warning, #b7791f)" }} />
             )}
             <h2 style={{ marginTop: 16 }}>
-              {creditApplied ? "支付成功" : "支付已确认"}
+              {membership
+                ? "会员已开通"
+                : creditApplied
+                  ? "支付成功"
+                  : "支付已确认"}
             </h2>
             <p className="muted">
-              {creditApplied
-                ? `${formatCny(Number(order.credits_micros))} 余额已到账。`
-                : "余额正在入账，通常几分钟内自动补齐。刷新页面可查看最新状态。"}
+              {membership
+                ? "会员已生效，小店下单自动使用会员价。"
+                : creditApplied
+                  ? `${formatCny(Number(order.credits_micros))} 余额已到账。`
+                  : "余额正在入账，通常几分钟内自动补齐。刷新页面可查看最新状态。"}
             </p>
             <Link className="btn btn-primary" href="/dashboard">
               返回概览
@@ -125,11 +142,12 @@ export default async function UsdtPaymentPage({
             <XCircle size={40} style={{ color: "var(--red)" }} />
             <h2 style={{ marginTop: 16 }}>订单已取消</h2>
             <p className="muted">
-              超过 {config.usdtQuoteMinutes} 分钟未到账，或订单已被关闭，余额未扣款。
+              超过 {config.usdtQuoteMinutes} 分钟未到账，或订单已被关闭，
+              {membership ? "会员未开通。" : "余额未扣款。"}
               如果你在截止时间前已经转账，请联系客服核对。
             </p>
-            <Link className="btn btn-primary" href="/dashboard/billing">
-              重新充值
+            <Link className="btn btn-primary" href={backHref}>
+              {membership ? "重新购买会员" : "重新充值"}
             </Link>
           </div>
         </section>
@@ -195,8 +213,10 @@ export default async function UsdtPaymentPage({
                 </div>
               </div>
               <div className="small muted" style={{ marginTop: 16 }}>
-                应付人民币：{formatCny(Number(order.amount_micros))} · 到账余额：
-                {formatCny(Number(order.credits_micros))}
+                应付人民币：{formatCny(Number(order.amount_micros))} ·{" "}
+                {membership
+                  ? `会员时长：${order.duration_days} 天`
+                  : `到账余额：${formatCny(Number(order.credits_micros))}`}
               </div>
             </div>
           </section>

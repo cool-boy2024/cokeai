@@ -215,26 +215,59 @@ export async function updatePlanAction(formData: FormData): Promise<void> {
   const name = String(formData.get("name") || "").trim();
   const tagline = String(formData.get("tagline") || "").trim();
   const priceMicros = yuanToMicros(formData.get("priceYuan"), "售价");
-  const creditsMicros = yuanToMicros(formData.get("creditsYuan"), "额度");
   const active = formData.get("active") === "on";
   const highlight = formData.get("highlight") === "on";
 
   if (!id || !name) fail("/admin/plans", "充值包信息不完整");
   if (priceMicros <= 0) fail("/admin/plans", "售价必须大于 0");
-  if (creditsMicros <= 0) fail("/admin/plans", "额度必须大于 0");
+  if (id === "custom") fail("/admin/plans", "自定义充值占位套餐不可编辑");
 
-  await query(
-    `UPDATE plans
-        SET name = $2, tagline = $3, tier = 0, duration_days = 36500,
-            price_micros = $4, credits_micros = $5, features = '[]'::jsonb,
-            active = $6, highlight = $7
-      WHERE id = $1`,
-    [id, name, tagline, priceMicros, creditsMicros, active, highlight],
+  const existing = await query<{ kind: string }>(
+    "SELECT kind FROM plans WHERE id = $1",
+    [id],
   );
+  const kind = existing.rows[0]?.kind;
+  if (!kind) fail("/admin/plans", "套餐不存在");
+
+  if (kind === "membership") {
+    const durationDays = Math.trunc(Number(formData.get("durationDays") || 365));
+    if (!Number.isInteger(durationDays) || durationDays < 1 || durationDays > 3650) {
+      fail("/admin/plans", "会员有效期需在 1 到 3650 天之间");
+    }
+    const discountPercent = Number(formData.get("discountPercent") || 0);
+    if (!Number.isFinite(discountPercent) || discountPercent < 0 || discountPercent > 90) {
+      fail("/admin/plans", "会员折扣需在 0 到 90 之间");
+    }
+    const discountBps = Math.round(discountPercent * 100);
+
+    await query(
+      `UPDATE plans
+          SET name = $2, tagline = $3, price_micros = $4, credits_micros = 0,
+              duration_days = $5, shop_discount_bps = $6,
+              active = $7, highlight = $8
+        WHERE id = $1`,
+      [id, name, tagline, priceMicros, durationDays, discountBps, active, highlight],
+    );
+  } else {
+    const creditsMicros = yuanToMicros(formData.get("creditsYuan"), "额度");
+    if (creditsMicros <= 0) fail("/admin/plans", "额度必须大于 0");
+
+    await query(
+      `UPDATE plans
+          SET name = $2, tagline = $3, tier = 0, duration_days = 36500,
+              price_micros = $4, credits_micros = $5, features = '[]'::jsonb,
+              active = $6, highlight = $7
+        WHERE id = $1`,
+      [id, name, tagline, priceMicros, creditsMicros, active, highlight],
+    );
+  }
+
   revalidatePath("/admin/plans");
   revalidatePath("/");
   revalidatePath("/pricing");
   revalidatePath("/dashboard/billing");
+  revalidatePath("/dashboard/membership");
+  revalidatePath("/shop");
   saved("/admin/plans");
 }
 

@@ -41,6 +41,8 @@ export type PublicShopProduct = {
   description_html: string;
   cover_variant: string;
   price_micros: number;
+  /** Retail price before an active member discount, when one was applied. */
+  list_price_micros?: number | null;
   delivery_method: string;
   eta_min_minutes: number;
   eta_max_minutes: number;

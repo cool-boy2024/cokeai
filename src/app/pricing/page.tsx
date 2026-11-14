@@ -38,7 +38,9 @@ export default async function PricingPage() {
     listCatalogModels(),
     query<Plan>(
       `SELECT id, name, tagline, price_micros, credits_micros, highlight
-         FROM plans WHERE active = TRUE ORDER BY sort_order`,
+         FROM plans
+        WHERE active = TRUE AND kind = 'topup' AND id <> 'custom'
+        ORDER BY sort_order`,
     ),
   ]);
 

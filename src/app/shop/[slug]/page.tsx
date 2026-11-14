@@ -27,6 +27,7 @@ import { USDT_NETWORKS } from "@/lib/payments/networks";
 import { getManualAlipaySettings } from "@/lib/payments/settings";
 import { configuredUsdtNetworks } from "@/lib/payments/usdt";
 import { getPublicProduct } from "@/lib/shop/catalog";
+import { applyMemberPricing } from "@/lib/shop/member-pricing";
 import { createShopCaptcha } from "@/lib/shop/captcha";
 import { SHOP_COPY } from "@/lib/shop/copy";
 
@@ -53,13 +54,14 @@ export default async function ShopProductPage({
 }) {
   if (!config.shopEnabled) notFound();
   const { slug } = await params;
-  const [product, user, usdtNetworkIds, manualAlipay] = await Promise.all([
+  const [catalogProduct, user, usdtNetworkIds, manualAlipay] = await Promise.all([
     getPublicProduct(slug),
     getCurrentUser(),
     configuredUsdtNetworks(),
     getManualAlipaySettings(),
   ]);
-  if (!product) notFound();
+  if (!catalogProduct) notFound();
+  const [product] = await applyMemberPricing([catalogProduct], user);
 
   const balance = user
     ? await getGatewayBalance(user.id).catch(() => ({

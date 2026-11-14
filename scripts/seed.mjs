@@ -31,6 +31,8 @@ const plans = [
     highlight: false,
     sort: 10,
     features: [],
+    kind: "topup",
+    discountBps: 0,
   },
   {
     id: "basic",
@@ -43,6 +45,8 @@ const plans = [
     highlight: true,
     sort: 20,
     features: [],
+    kind: "topup",
+    discountBps: 0,
   },
   {
     id: "pro",
@@ -55,6 +59,43 @@ const plans = [
     highlight: false,
     sort: 30,
     features: [],
+    kind: "topup",
+    discountBps: 0,
+  },
+  {
+    // Hidden placeholder used by the custom-amount form. orders.plan_id is a
+    // non-null foreign key, so every custom recharge still points at a row.
+    // It is never listed or purchasable as a fixed plan.
+    id: "custom",
+    name: "自定义充值",
+    tagline: "按需充值，1 元 = 1 元余额",
+    price: 0,
+    credits: 0,
+    days: 36500,
+    tier: 0,
+    highlight: false,
+    sort: 900,
+    features: [],
+    kind: "topup",
+    discountBps: 0,
+  },
+  {
+    // Membership is sold through /dashboard/membership and grants member
+    // prices in the shop while it is active. Price, duration and discount are
+    // editable in 运营后台 → 套餐会员. ON CONFLICT DO NOTHING means changing
+    // these defaults never overwrites a live operator setting.
+    id: "agent-annual",
+    name: "代理会员",
+    tagline: "一年会员价，适合长期拿货",
+    price: 199_000_000,
+    credits: 0,
+    days: 365,
+    tier: 1,
+    highlight: false,
+    sort: 100,
+    features: [],
+    kind: "membership",
+    discountBps: 1_500,
   },
 ];
 
@@ -162,8 +203,8 @@ try {
     for (const plan of plans) {
       await client.query(
         `INSERT INTO plans
-          (id, name, tagline, price_micros, credits_micros, duration_days, tier, features, highlight, active, sort_order)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, TRUE, $10)
+          (id, name, tagline, price_micros, credits_micros, duration_days, tier, features, highlight, active, sort_order, kind, shop_discount_bps)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, TRUE, $10, $11, $12)
          ON CONFLICT (id) DO NOTHING`,
         [
           plan.id,
@@ -176,6 +217,8 @@ try {
           JSON.stringify(plan.features),
           plan.highlight,
           plan.sort,
+          plan.kind,
+          plan.discountBps,
         ],
       );
     }

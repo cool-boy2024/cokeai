@@ -18,13 +18,16 @@ export async function fulfillOrder(orderId: string, manualReceipt?: ManualReceip
       user_id: string;
       plan_id: string;
       plan_name: string;
+      plan_kind: string;
+      duration_days: number;
       amount_micros: string;
       credits_micros: string;
       status: string;
       payment_provider: string;
       referred_by: string | null;
     }>(
-      `SELECT o.id, o.user_id, o.plan_id, p.name AS plan_name, o.amount_micros,
+      `SELECT o.id, o.user_id, o.plan_id, p.name AS plan_name, p.kind AS plan_kind,
+              o.duration_days, o.amount_micros,
               o.credits_micros, o.status, o.payment_provider, u.referred_by
          FROM orders o
          JOIN plans p ON p.id = o.plan_id
@@ -37,7 +40,21 @@ export async function fulfillOrder(orderId: string, manualReceipt?: ManualReceip
     const order = orderResult.rows[0];
     if (!order) throw new Error("订单不存在");
 
+    const isMembership = order.plan_kind === "membership";
+
     if (order.status === "paid") {
+      // Membership activation is local and finished in the same transaction,
+      // so a paid membership order has nothing left pending in the outbox.
+      if (isMembership) {
+        return {
+          fulfilled: false,
+          alreadyPaid: true,
+          userId: order.user_id,
+          planName: order.plan_name,
+          opId: null,
+          creditStatus: "applied" as const,
+        };
+      }
       const existing = await client.query<{ id: string; status: string }>(
         "SELECT id, status FROM gateway_balance_ops WHERE order_id = $1 LIMIT 1",
         [orderId],
@@ -88,13 +105,32 @@ export async function fulfillOrder(orderId: string, manualReceipt?: ManualReceip
       [orderId],
     );
 
+    // Membership is local state: the paid order activates the member price for
+    // one term. Buying again while active extends from the current expiry, so
+    // a renewal never loses the remaining days.
+    if (isMembership) {
+      const days = Math.max(1, Math.trunc(Number(order.duration_days) || 365));
+      await client.query(
+        `UPDATE users
+            SET plan_id = $2,
+                plan_expires_at = GREATEST(COALESCE(plan_expires_at, now()), now())
+                                  + make_interval(days => $3),
+                updated_at = now()
+          WHERE id = $1`,
+        [order.user_id, order.plan_id, days],
+      );
+    }
+
     // Credits are authoritative in Sub2API. Write one durable outbox row in the
-    // same transaction, then apply it outside the transaction.
-    const op = await enqueueTopup(client, {
-      userId: order.user_id,
-      orderId,
-      creditsMicros: Number(order.credits_micros),
-    });
+    // same transaction, then apply it outside the transaction. Membership has
+    // no balance side effect.
+    const op = isMembership
+      ? null
+      : await enqueueTopup(client, {
+          userId: order.user_id,
+          orderId,
+          creditsMicros: Number(order.credits_micros),
+        });
 
     if (order.referred_by && order.referred_by !== order.user_id) {
       const commissionMicros = Math.floor(
@@ -123,8 +159,8 @@ export async function fulfillOrder(orderId: string, manualReceipt?: ManualReceip
       alreadyPaid: false,
       userId: order.user_id,
       planName: order.plan_name,
-      opId: op.id,
-      creditStatus: "pending" as const,
+      opId: op?.id || null,
+      creditStatus: isMembership ? ("applied" as const) : ("pending" as const),
     };
   });
 

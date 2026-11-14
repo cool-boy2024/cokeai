@@ -32,7 +32,8 @@
     "test:shop:preorder": "tsx scripts/test-shop-preorder.ts",
     "test:shop:payments": "tsx scripts/test-shop-payments.ts",
     "test:shop:balance": "tsx scripts/test-shop-balance.ts",
-    "test:shop:analytics": "tsx scripts/test-shop-analytics.ts"
+    "test:shop:analytics": "tsx scripts/test-shop-analytics.ts",
+    "test:recharge-membership": "tsx scripts/test-recharge-membership.ts"
   },
   "dependencies": {
     "@noble/hashes": "^2.4.0",

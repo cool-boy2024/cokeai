@@ -245,6 +245,90 @@ async function main() {
   );
   assert(purgedRow.rows[0]?.customer_input_encrypted === null, "customer input not purged");
 
+  // Membership: a paid membership order activates member pricing, and the
+  // shop charges the recomputed member price rather than the browser's value.
+  const { fulfillOrder } = await import("../src/lib/orders");
+  await query(
+    `INSERT INTO plans
+       (id, name, tagline, price_micros, credits_micros, duration_days, tier,
+        features, kind, shop_discount_bps)
+     VALUES ('test-member', 'Test Member', '', 1000000, 0, 30, 0,
+             '[]'::jsonb, 'membership', 1500)
+     ON CONFLICT (id) DO UPDATE SET shop_discount_bps = 1500`,
+  );
+  const memberOrder = await query<{ id: string }>(
+    `INSERT INTO orders
+       (user_id, plan_id, amount_micros, credits_micros, duration_days,
+        payment_provider, status)
+     VALUES ($1, 'test-member', 1000000, 0, 30, 'manual', 'pending')
+     RETURNING id`,
+    [userId],
+  );
+  const memberFulfilled = await fulfillOrder(memberOrder.rows[0].id, {
+    adminId: userId,
+    reference: `member-test-${Date.now()}`,
+    amountMicros: "1000000",
+  });
+  assert(
+    memberFulfilled.creditStatus === "applied",
+    "membership order should be applied immediately",
+  );
+  const memberUser = await query<{
+    plan_id: string;
+    plan_expires_at: string;
+  }>("SELECT plan_id, plan_expires_at FROM users WHERE id = $1", [userId]);
+  assert(memberUser.rows[0]?.plan_id === "test-member", "membership plan not activated");
+
+  const memberPrice = Math.floor((price * 8_500) / 10_000);
+  const memberShopOrder = await createShopOrder({
+    userId,
+    productId: item.id,
+    expectedPriceMicros: memberPrice,
+    paymentProvider: "manual",
+  });
+  assert(
+    memberShopOrder.amountMicros === memberPrice,
+    "member price not applied to shop order",
+  );
+  let retailRejected = false;
+  try {
+    await createShopOrder({
+      userId,
+      productId: item.id,
+      expectedPriceMicros: price,
+      paymentProvider: "manual",
+    });
+  } catch (error) {
+    retailRejected = error instanceof Error && error.message === "PRICE_CHANGED";
+  }
+  assert(retailRejected, "retail price accepted for an active member");
+
+  // Renewing while active extends from the current expiry, not from now.
+  const firstExpiry = new Date(memberUser.rows[0].plan_expires_at).getTime();
+  const renewal = await query<{ id: string }>(
+    `INSERT INTO orders
+       (user_id, plan_id, amount_micros, credits_micros, duration_days,
+        payment_provider, status)
+     VALUES ($1, 'test-member', 1000000, 0, 30, 'manual', 'pending')
+     RETURNING id`,
+    [userId],
+  );
+  await fulfillOrder(renewal.rows[0].id, {
+    adminId: userId,
+    reference: `member-renew-${Date.now()}`,
+    amountMicros: "1000000",
+  });
+  const renewed = await query<{ plan_expires_at: string }>(
+    "SELECT plan_expires_at FROM users WHERE id = $1",
+    [userId],
+  );
+  const extendedBy =
+    new Date(renewed.rows[0].plan_expires_at).getTime() - firstExpiry;
+  assert(
+    extendedBy > 29 * 86_400_000 && extendedBy < 31 * 86_400_000,
+    "renewal did not extend the existing expiry",
+  );
+
   console.log(
     JSON.stringify(
       {
@@ -254,6 +338,7 @@ async function main() {
         refunded: order2.orderNo,
         expired: order3.orderNo,
         revealed: Object.keys(revealed.payload),
+        memberPrice,
       },
       null,
       2,

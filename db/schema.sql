@@ -18,6 +18,12 @@ CREATE TABLE IF NOT EXISTS plans (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- A plan is either a balance top-up ("topup") or a paid membership
+-- ("membership"). Membership plans carry the shop discount the member gets
+-- while the membership is active; their credits_micros value stays 0.
+ALTER TABLE plans ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'topup';
+ALTER TABLE plans ADD COLUMN IF NOT EXISTS shop_discount_bps INTEGER NOT NULL DEFAULT 0;
+
 CREATE TABLE IF NOT EXISTS upstreams (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,

@@ -7,6 +7,7 @@ import {
   BookOpen,
   ClipboardList,
   CreditCard,
+  Crown,
   LayoutDashboard,
   Megaphone,
   PackageSearch,
@@ -24,6 +25,7 @@ import {
 const userItems = [
   { href: "/dashboard", label: "概览", icon: LayoutDashboard },
   { href: "/dashboard/billing", label: "充值", icon: CreditCard },
+  { href: "/dashboard/membership", label: "会员", icon: Crown },
   { href: "/dashboard/shop", label: "我的订单", icon: ShoppingBag },
   { href: "/shop", label: "小店", icon: Store },
   { href: "/dashboard/settings", label: "设置", icon: UserRound },
