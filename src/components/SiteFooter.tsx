@@ -1,23 +1,12 @@
 import Link from "next/link";
-import { connection } from "next/server";
 import { PUBLIC_API_SALES_ENABLED } from "@/lib/public-features";
-import { getPublicSecurityStatus } from "@/lib/security";
 import { Logo } from "./Logo";
 
 const supportEmail = process.env.SUPPORT_EMAIL || "support@cokeai.cc.cd";
 
-export async function SiteFooter() {
-  // The footer shows live protection data; keep it out of the static cache.
-  await connection();
-  const security = await getPublicSecurityStatus();
-  // Do not publish that the guard is off; an absent line leaks less than a
-  // footer telling scanners the application layer is currently disabled.
-  const securityText = !security.guardEnabled
-    ? null
-    : security.available && security.todayTotal !== null
-      ? `应用层防护已开启 · 今日拦截 ${security.todayTotal.toLocaleString("zh-CN")} 次`
-      : "应用层防护已开启";
-
+export function SiteFooter() {
+  // Protection counters are internal operator data: they are shown only in
+  // /admin/security, never on a public page.
   return (
     <footer className="site-footer public-footer">
       <div className="container">
@@ -65,12 +54,6 @@ export async function SiteFooter() {
               ? "数字商品为人工发货 · API 按实际用量计费"
               : "数字商品为人工发货 · 质保按商品标注"}
           </span>
-          {securityText ? (
-            <span className="footer-security">
-              <span className="footer-security-dot" aria-hidden="true" />
-              {securityText}
-            </span>
-          ) : null}
         </div>
       </div>
     </footer>
