@@ -4646,3 +4646,331 @@ a.shop-kpi:hover {
     height: 88px;
   }
 }
+
+/* ---------- Shop analytics (admin) ---------- */
+
+.analytics-metrics,
+.analytics-ops {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.analytics-metrics {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.analytics-ops {
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+
+.analytics-metric,
+.analytics-op {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.analytics-metric-label,
+.analytics-op span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.analytics-metric-value {
+  color: var(--ink);
+  font-size: clamp(18px, 1.7vw, 23px);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.analytics-metric-foot,
+.analytics-op small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.analytics-delta {
+  font-weight: 550;
+  white-space: nowrap;
+}
+
+.analytics-delta-up {
+  color: var(--green);
+}
+
+.analytics-delta-down {
+  color: var(--red-deep);
+}
+
+.analytics-delta-flat,
+.analytics-delta-muted {
+  color: var(--muted);
+}
+
+.analytics-op strong {
+  color: var(--ink);
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+
+.analytics-op strong.is-warn {
+  color: var(--red-deep);
+}
+
+.analytics-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(280px, 0.85fr);
+  align-items: start;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.analytics-split > .panel + .panel,
+.analytics-rank-grid > .panel + .panel {
+  margin-top: 0;
+}
+
+.analytics-rank-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.analytics-chart-wrap {
+  padding: 14px 16px 10px;
+}
+
+.analytics-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.analytics-grid-line {
+  stroke: #ece7dc;
+  stroke-width: 1;
+}
+
+.analytics-axis-text {
+  fill: var(--muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.analytics-bar {
+  fill: var(--green);
+  opacity: 0.82;
+  transition: opacity 120ms ease;
+}
+
+.analytics-bar:hover {
+  opacity: 1;
+}
+
+.analytics-cost-line {
+  fill: none;
+  stroke: var(--red-deep);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.75;
+}
+
+.analytics-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.analytics-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.analytics-legend-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  background: var(--green);
+  opacity: 0.82;
+}
+
+.analytics-legend-line {
+  width: 14px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--red-deep);
+  opacity: 0.75;
+}
+
+.analytics-chart-note {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.analytics-channel-list {
+  padding: 8px 20px 14px;
+}
+
+.analytics-channel-row {
+  padding: 11px 0;
+}
+
+.analytics-channel-row + .analytics-channel-row {
+  border-top: 1px solid var(--line);
+}
+
+.analytics-channel-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.analytics-channel-name {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 550;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.analytics-channel-amount {
+  flex: none;
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.analytics-channel-track {
+  height: 7px;
+  margin-top: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #f0eee8;
+}
+
+.analytics-channel-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--green);
+}
+
+.analytics-channel-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.analytics-product-name {
+  max-width: 220px;
+  overflow: hidden;
+  font-weight: 550;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.analytics-missing {
+  color: var(--red-deep);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.analytics-mini-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.analytics-mini {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: #faf9f6;
+}
+
+.analytics-mini span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.analytics-mini strong {
+  overflow-wrap: anywhere;
+  font-size: 17px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.analytics-defs {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--ink-soft);
+  font-size: 12.5px;
+  line-height: 1.75;
+}
+
+.analytics-defs li + li {
+  margin-top: 7px;
+}
+
+@media (max-width: 1100px) {
+  .analytics-split,
+  .analytics-rank-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 680px) {
+  .analytics-metrics,
+  .analytics-ops {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .analytics-mini-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .analytics-product-name {
+    max-width: 150px;
+  }
+}
+
+/* The chart uses one fixed viewBox and scales down with the panel. On phones
+   that shrinks the 10px axis labels to ~4px, so scale the SVG text up in user
+   units; the desktop rendering keeps the original size. */
+@media (max-width: 560px) {
+  .analytics-axis-text {
+    font-size: 20px;
+  }
+}
