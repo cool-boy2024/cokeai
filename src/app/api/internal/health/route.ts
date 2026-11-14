@@ -21,6 +21,26 @@ type PlazaResponse = {
   groups?: Array<{ id: number; models?: unknown[] }>;
 };
 
+type SupplierRow = {
+  name: string;
+  kind: string;
+  last_success_at: string | null;
+  last_error: string | null;
+  created_at: string;
+};
+
+/**
+ * A scheduled sync that silently stops is worse than one that fails loudly:
+ * stock and prices keep looking current. The health probe compares each
+ * enabled supplier against its expected cadence (aibijia hourly, zyanai every
+ * six hours) so the existing 15-minute alert surfaces a stalled schedule even
+ * if n8n swallowed the request error.
+ */
+const SUPPLIER_STALE_AFTER_MS: Record<string, number> = {
+  aibijia: 6 * 60 * 60 * 1000,
+  zyanai: 24 * 60 * 60 * 1000,
+};
+
 export async function GET(request: Request): Promise<Response> {
   if (!verifyInternalSecret(request)) return unauthorized();
 
@@ -101,7 +121,41 @@ export async function GET(request: Request): Promise<Response> {
       (gateway.rate_multiplier === null || gateway.rate_multiplier === 1)
     : legacy.enabledModels > 0;
 
-  const healthy = dbOk && redis === "ok" && gatewayOk;
+  let suppliers: Array<{
+    name: string;
+    kind: string;
+    last_success_at: string | null;
+    stale: boolean;
+  }> = [];
+  const staleSuppliers: string[] = [];
+  try {
+    const rows = await query<SupplierRow>(
+      `SELECT name, kind, last_success_at, last_error, created_at
+         FROM shop_suppliers
+        WHERE enabled = TRUE
+        ORDER BY name`,
+    );
+    const now = Date.now();
+    suppliers = rows.rows.map((row) => {
+      const budget = SUPPLIER_STALE_AFTER_MS[row.kind];
+      const last = Date.parse(row.last_success_at || row.created_at);
+      const stale = Boolean(budget) && Number.isFinite(last) && now - last > budget;
+      if (stale) staleSuppliers.push(row.name);
+      return {
+        name: row.name,
+        kind: row.kind,
+        last_success_at: row.last_success_at,
+        stale,
+      };
+    });
+  } catch (error) {
+    // A failed probe must not crash the health endpoint; the DB check above
+    // already reports database availability.
+    console.warn("[internal/health] supplier staleness check failed:", error);
+  }
+  const suppliersOk = staleSuppliers.length === 0;
+
+  const healthy = dbOk && redis === "ok" && gatewayOk && suppliersOk;
   return Response.json(
     {
       status: healthy ? "ok" : "degraded",
@@ -113,7 +167,13 @@ export async function GET(request: Request): Promise<Response> {
       enabled_models: configured ? gateway.model_count : legacy.enabledModels,
       configured_upstreams: configured ? 1 : legacy.configuredUpstreams,
       gateway,
-      last_error: lastError || gateway.error,
+      suppliers,
+      last_error:
+        lastError ||
+        gateway.error ||
+        (suppliersOk
+          ? null
+          : `货源同步停滞：${staleSuppliers.join("、")}（已超过计划同步周期）`),
     },
     {
       status: healthy ? 200 : 503,

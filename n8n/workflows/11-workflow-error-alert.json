@@ -1,0 +1,100 @@
+{
+  "name": "CokeAI｜工作流失败告警",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## 工作流失败告警\n\n在 n8n 设置里把本工作流选为 Error Workflow。任何工作流执行失败时，这里会把工作流名、失败节点和错误摘要推到 `ALERT_WEBHOOK_URL`。\n\n`ALERT_WEBHOOK_URL` 为空时不发送。这个工作流只做告警，不重试、不改数据。",
+        "height": 220,
+        "width": 360,
+        "color": 3
+      },
+      "id": "c0f0a6f1-6c43-4f8f-a2f3-6d2e7a9c1101",
+      "name": "使用说明",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -500,
+        -70
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "c0f0a6f1-6c43-4f8f-a2f3-6d2e7a9c1102",
+      "name": "错误触发",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first()?.json || {};\nconst execution = data.execution || {};\nconst workflow = data.workflow || {};\nconst error = execution.error || {};\n\nif (!$env.ALERT_WEBHOOK_URL) {\n  return [];\n}\n\nconst lines = [\n  'CokeAI 自动化任务失败',\n  `工作流：${workflow.name || workflow.id || 'unknown'}`,\n  `节点：${execution.lastNodeExecuted || '—'}`,\n  `错误：${String(error.message || error.description || 'unknown').slice(0, 500)}`,\n  `时间：${new Date().toISOString()}`,\n];\nif (execution.url) lines.push(`执行详情：${execution.url}`);\n\nconst text = lines.join('\\n');\nreturn [{ json: { text, content: text } }];"
+      },
+      "id": "c0f0a6f1-6c43-4f8f-a2f3-6d2e7a9c1103",
+      "name": "整理失败信息",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        210,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.ALERT_WEBHOOK_URL }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "c0f0a6f1-6c43-4f8f-a2f3-6d2e7a9c1104",
+      "name": "推送失败告警",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        450,
+        80
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "错误触发": {
+      "main": [
+        [
+          {
+            "node": "整理失败信息",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "整理失败信息": {
+      "main": [
+        [
+          {
+            "node": "推送失败告警",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Shanghai"
+  },
+  "versionId": "c0f0a6f1-6c43-4f8f-a2f3-6d2e7a9c1105",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": []
+}

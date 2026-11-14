@@ -100,8 +100,7 @@
       "position": [
         690,
         80
-      ],
-      "onError": "continueRegularOutput"
+      ]
     }
   ],
   "pinData": {},
