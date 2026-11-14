@@ -38,10 +38,11 @@ const nextConfig: NextConfig = {
             value: "max-age=31536000; includeSubDomains",
           },
           {
-            // Report-Only first: it records violations without breaking the
-            // inline bootstrap scripts and payment redirects. Promote to an
-            // enforcing CSP after the report stream stays clean.
-            key: "Content-Security-Policy-Report-Only",
+            // Enforced policy. The site self-hosts fonts, icons and media;
+            // the inline allowances are still required by the Next.js
+            // bootstrap and style injection. Violations are collected at
+            // /api/csp-report, so any further tightening can be data-driven.
+            key: "Content-Security-Policy",
             value: [
               "default-src 'self'",
               "base-uri 'self'",
@@ -56,6 +57,7 @@ const nextConfig: NextConfig = {
               "connect-src 'self' https: wss:",
               "frame-src 'self' https:",
               "worker-src 'self' blob:",
+              "report-uri /api/csp-report",
             ].join("; "),
           },
         ],

@@ -107,8 +107,7 @@
           "timeout": 300000,
           "response": {
             "response": {
-              "fullResponse": true,
-              "neverError": true
+              "fullResponse": true
             }
           }
         }
@@ -120,8 +119,7 @@
       "position": [
         180,
         60
-      ],
-      "onError": "continueRegularOutput"
+      ]
     },
     {
       "parameters": {
@@ -143,8 +141,7 @@
           "timeout": 300000,
           "response": {
             "response": {
-              "fullResponse": true,
-              "neverError": true
+              "fullResponse": true
             }
           }
         }
@@ -156,8 +153,7 @@
       "position": [
         360,
         180
-      ],
-      "onError": "continueRegularOutput"
+      ]
     }
   ],
   "pinData": {},

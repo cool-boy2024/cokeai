@@ -145,8 +145,14 @@ curl -s -o /dev/null -w "health %{http_code}\n" http://127.0.0.1:3000/api/health
 ## 安全（2026-11-14）
 
 - 响应头已补 `Strict-Transport-Security`、`X-Content-Type-Options`、`X-Frame-Options`、
-  `Referrer-Policy`、`Permissions-Policy`；CSP 目前是 `Content-Security-Policy-Report-Only`，
-  观察无报错后再切强制模式。站内跳转只允许同源路径；帮助中心同步正文经过 HTML 清洗。
+  `Referrer-Policy`、`Permissions-Policy`；CSP 已从 Report-Only 切为强制
+  `Content-Security-Policy`，违规上报到 `/api/csp-report`（只记录脱敏后的主机+路径，
+  每分钟最多 20 条）。站内跳转只允许同源路径；帮助中心同步正文经过 HTML 清洗。
+- **定时任务失败不再静默**：同步类 n8n 工作流不再用 `neverError` 吞掉 HTTP 错误；
+  新增 `n8n/workflows/11-workflow-error-alert.json`，在 n8n 设置里选为 Error Workflow
+  后，任何工作流失败都会推到 `ALERT_WEBHOOK_URL`。`/api/internal/health` 同时检查
+  货源同步新鲜度：aibijia 超过 6 小时、zyanai 超过 24 小时没有成功同步即降级，
+  由现有 15 分钟健康告警推送。生产 n8n 需重新导入工作流并手动设置 Error Workflow。
 - 当前真正生效的只有应用层防护：`src/proxy.ts` 的扫描拦截，登录/注册/小店/API/Server Action 按 IP 限流；事件写 Redis，管理员页 `/admin/security`；n8n 每 5 分钟拉取摘要，应用把告警发到后台配置的通道。
 - **防护状态与拦截计数只对管理员展示**：完整计数、告警和应急开关都在 `/admin/security`；公开页面（包括页脚）不再出现“应用层防护已开启/今日拦截”等状态。后台侧栏的“安全”入口已移到“概览”之后，首屏可见。
 - **Cloudflare Tunnel 仍指向 `app:3000`**，边缘 Caddy 限流不在公网链路上；CrowdSec、Anubis、WAF 均未启用。`ops/edge/` 的限流预案默认关闭，启用前必须单独审批并验证回滚。

@@ -57,8 +57,7 @@
           "timeout": 300000,
           "response": {
             "response": {
-              "fullResponse": true,
-              "neverError": true
+              "fullResponse": true
             }
           }
         }
@@ -70,8 +69,7 @@
       "position": [
         210,
         80
-      ],
-      "onError": "continueRegularOutput"
+      ]
     }
   ],
   "pinData": {},
