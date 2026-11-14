@@ -14,6 +14,7 @@ import {
   markShopItemOutOfStock,
   markShopOrderPaid,
   refundShopOrder,
+  rejectShopManualPaymentClaim,
   requestShopRefund,
   startShopProcurement,
 } from "@/lib/shop/orders";
@@ -106,6 +107,27 @@ export async function adminMarkShopPaidAction(formData: FormData): Promise<void>
   revalidatePath("/admin/shop/orders");
   revalidatePath(`/admin/shop/orders/${text(formData, "orderId")}`);
   redirect(`/admin/shop/orders/${text(formData, "orderId")}?saved=1`);
+}
+
+export async function adminRejectShopPaymentClaimAction(formData: FormData): Promise<void> {
+  const admin = await requireAdmin();
+  const orderId = text(formData, "orderId");
+  try {
+    await rejectShopManualPaymentClaim({
+      orderId,
+      adminId: admin.id,
+      reason: text(formData, "reason"),
+    });
+  } catch (error) {
+    redirect(
+      `/admin/shop/orders/${orderId}?error=${encodeURIComponent(
+        error instanceof Error ? error.message : "打回失败",
+      )}`,
+    );
+  }
+  revalidatePath(`/admin/shop/orders/${orderId}`);
+  revalidatePath("/shop/checkout/[orderNo]", "page");
+  redirect(`/admin/shop/orders/${orderId}?saved=1`);
 }
 
 export async function adminStartProcurementAction(formData: FormData): Promise<void> {

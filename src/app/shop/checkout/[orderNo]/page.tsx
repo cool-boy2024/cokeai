@@ -44,6 +44,16 @@ export default async function ShopCheckoutPage({
   if (!order) notFound();
   if (order.status !== "pending_payment") redirect(`/shop/orders/${orderNo}`);
   const personal = order.payment_provider === "alipay_manual" ? (await query<{ qr_data_url: string; payee: string; reported_reference: string | null; payer_note: string | null; reported_at: string | null }>("SELECT qr_data_url,payee,reported_reference,payer_note,reported_at FROM manual_alipay_payments WHERE order_id=$1 AND order_kind='shop'", [order.id])).rows[0] : null;
+  // An admin can send a claim back; while no new claim is reported, show why.
+  const rejectedClaim =
+    personal && !personal.reported_at
+      ? (await query<{ note: string; created_at: Date }>(
+          `SELECT note, created_at FROM shop_order_events
+            WHERE order_id = $1 AND event = 'payment_claim_rejected'
+            ORDER BY created_at DESC LIMIT 1`,
+          [order.id],
+        )).rows[0]
+      : null;
 
   const usdtNetwork = networkForProvider(order.payment_provider);
   const usdtMeta = usdtNetwork ? USDT_NETWORKS[usdtNetwork] : null;
@@ -123,6 +133,18 @@ export default async function ShopCheckoutPage({
               {personal ? <div className="payment-form">
                 <h2>支付宝扫码付款</h2>
                 <p>应付 <strong>{formatCny(order.amount_micros)}</strong> · 收款人：{personal.payee}</p>
+                {rejectedClaim ? (
+                  <div className="notice notice-red">
+                    <Warning size={16} />
+                    <div>
+                      <strong>付款信息已被打回</strong>
+                      <p>原因：{rejectedClaim.note}</p>
+                      <p>
+                        请先在支付宝账单核对交易号、金额和订单号，再重新提交。同一笔转账不能用于多张订单，请不要重复付款。
+                      </p>
+                    </div>
+                  </div>
+                ) : null}
                 {personal.reported_at ? <div className="notice">已提交付款信息，等待核实。请勿重复付款。</div> : null}
                 <img className="payment-qr" src={personal.qr_data_url} alt="支付宝收款二维码" />
                 <p className="small muted">请核对收款人和金额。付款备注填写订单号 {order.order_no}，商家核实到账后安排交付，非即时到账。</p>

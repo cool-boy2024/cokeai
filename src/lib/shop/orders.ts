@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { config } from "@/lib/config";
 import { getManualAlipaySettings } from "@/lib/payments/settings";
-import { receiptReference } from "@/lib/payments/validation";
+import { claimPersonalAlipayReceipt } from "@/lib/payments/receipts";
 import { decryptSecret, encryptSecret } from "@/lib/crypto";
 import { query, toNumber, withTransaction } from "@/lib/db";
 import { isPurchasable, type ShopInputField } from "./copy";
@@ -466,7 +466,13 @@ export async function markShopOrderPaid(input: {
       if (!input.adminId || input.paidAmountMicros === undefined) throw new Error("请先核实真实到账交易号和金额");
       const admin = await client.query("SELECT id FROM users WHERE id=$1 AND role='admin' AND status='active'",[input.adminId]);
       if (!admin.rows[0]) throw new Error("无权核实付款");
-      await client.query("INSERT INTO payment_receipts (order_id,order_kind,provider,receipt_ref,amount_micros,reviewed_by) VALUES ($1,'shop','personal_alipay',$2,$3,$4)", [order.id,receiptReference(input.providerRef),input.paidAmountMicros,input.adminId]);
+      await claimPersonalAlipayReceipt(client, {
+        orderId: order.id,
+        orderKind: "shop",
+        reference: input.providerRef,
+        amountMicros: input.paidAmountMicros,
+        adminId: input.adminId,
+      });
     }
     await client.query(
       `UPDATE shop_orders
@@ -500,6 +506,55 @@ export async function markShopOrderPaid(input: {
     );
 
     return { id: order.id, status: "paid", alreadyPaid: false };
+  });
+}
+
+/**
+ * Return a manual-Alipay claim to the customer without touching the order
+ * status. The claim is cleared so the checkout page shows an empty form again,
+ * and the reason is written to the timeline the customer can read.
+ */
+export async function rejectShopManualPaymentClaim(input: {
+  orderId: string;
+  adminId: string;
+  reason: string;
+}): Promise<void> {
+  return withTransaction(async (client) => {
+    const result = await client.query<{
+      id: string;
+      status: ShopOrderStatus;
+      payment_provider: string;
+    }>(
+      "SELECT id, status, payment_provider FROM shop_orders WHERE id = $1 FOR UPDATE",
+      [input.orderId],
+    );
+    const order = result.rows[0];
+    if (!order) throw new Error("订单不存在");
+    if (order.status !== "pending_payment") throw new Error("只有待付款订单可以打回付款信息");
+    if (order.payment_provider !== "alipay_manual") throw new Error("该订单不是人工支付宝订单");
+
+    const claim = await client.query<{ reported_reference: string | null }>(
+      `SELECT reported_reference FROM manual_alipay_payments
+        WHERE order_id = $1 AND order_kind = 'shop' FOR UPDATE`,
+      [order.id],
+    );
+    const reference = claim.rows[0]?.reported_reference;
+    if (!reference) throw new Error("客户还没有提交付款信息");
+
+    const reason = input.reason.trim().slice(0, 200) ||
+      "交易号或金额与收款账单不一致，请核对后重新提交";
+    await client.query(
+      `UPDATE manual_alipay_payments
+          SET reported_reference = NULL, payer_note = NULL, reported_at = NULL
+        WHERE order_id = $1 AND order_kind = 'shop'`,
+      [order.id],
+    );
+    await client.query(
+      `INSERT INTO shop_order_events
+         (order_id, actor_type, actor_id, event, note, metadata)
+       VALUES ($1, 'admin', $2, 'payment_claim_rejected', $3, $4)`,
+      [order.id, input.adminId, reason, JSON.stringify({ reported_reference: reference })],
+    );
   });
 }
 

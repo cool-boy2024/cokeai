@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { after } from "next/server";
 import { getClientIp, requireUser } from "@/lib/auth";
 import { config } from "@/lib/config";
 import { easyPayConfigError } from "@/lib/payments/easypay";
@@ -17,6 +18,7 @@ import { recordSecurityEventOnce } from "@/lib/security";
 import { verifyShopCaptcha } from "@/lib/shop/captcha";
 import { createShopEasyPayCheckout } from "@/lib/shop/payments";
 import { createShopOrder, revealShopDelivery } from "@/lib/shop/orders";
+import { notifyShopOrderCreated } from "@/lib/shop/notify";
 
 export type ShopCheckoutState = { error?: string };
 
@@ -180,12 +182,14 @@ export async function createShopCheckoutAction(
       "UPDATE shop_orders SET provider_ref = $2, updated_at = now() WHERE id = $1",
       [created.id, `easypay:${created.orderNo}`],
     );
+    after(() => notifyShopOrderCreated(created.id, contactEmail));
     revalidatePath("/dashboard/shop");
     redirect(checkoutUrl);
   }
 
   if (provider === "alipay_manual") {
     // createShopOrder already stored the QR snapshot for this order.
+    after(() => notifyShopOrderCreated(created.id, contactEmail));
     revalidatePath("/dashboard/shop");
     redirect(`/shop/checkout/${created.orderNo}`);
   }
@@ -204,6 +208,7 @@ export async function createShopCheckoutAction(
     };
   }
 
+  after(() => notifyShopOrderCreated(created.id, contactEmail));
   revalidatePath("/dashboard/shop");
   redirect(`/shop/checkout/${created.orderNo}`);
 }

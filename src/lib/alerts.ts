@@ -344,10 +344,12 @@ export async function sendAlert(
       ? "CokeAI 应急防护通知"
       : extra.attack
         ? "CokeAI 安全攻击告警"
-        : event === "shop_manual_payment_reported"
-          ? "CokeAI 小店：客户已上报支付宝付款"
-          : isShop
-            ? "CokeAI 小店订单提醒"
-            : "CokeAI 安全告警";
+        : event === "shop_order_created"
+          ? "CokeAI 小店：客户已下单（待付款）"
+          : event === "shop_manual_payment_reported"
+            ? "CokeAI 小店：客户已上报支付宝付款"
+            : isShop
+              ? "CokeAI 小店订单提醒"
+              : "CokeAI 安全告警";
   return sendEmail(config.smtp, text, subject);
 }
