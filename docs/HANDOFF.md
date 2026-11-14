@@ -86,12 +86,12 @@ ssh -i ~/.ssh/cokeai_deploy deploy@47.83.178.22 \
 rsync -az --delete \
   --exclude '.git' --exclude '.next' --exclude 'node_modules' \
   --exclude '.env' --exclude '.env.*' --exclude '.local-data' \
-  --exclude '.taste-skill' --exclude '*.log' \
+  --exclude '.taste-skill' --exclude '*.log' --exclude 'backups' \
   -e "ssh -i ~/.ssh/cokeai_deploy" ./ deploy@47.83.178.22:/home/deploy/cokeai/
 
-# 2. 构建并重启
+# 2. 构建并重启（backups 目录必须先由 deploy 用户创建）
 ssh -i ~/.ssh/cokeai_deploy deploy@47.83.178.22 \
-  'cd /home/deploy/cokeai && docker compose build app && docker compose up -d app'
+  'cd /home/deploy/cokeai && mkdir -p backups && docker compose build app && docker compose up -d app'
 
 # 3. 等待 healthy，回源验证
 ssh -i ~/.ssh/cokeai_deploy deploy@47.83.178.22 \
@@ -105,7 +105,7 @@ ssh -i ~/.ssh/cokeai_deploy deploy@47.83.178.22 \
   'cd /home/deploy/cokeai && docker tag cokeai-app:pre-<变更名> cokeai-app:local && docker compose up -d app'
 ```
 
-数据库备份在 `/home/deploy/backups/`（0600）。涉及商品/订单的发布，先做 `shop_products`、`shop_product_sources` 的 SQL 备份。
+数据库备份容器会每天向 `/home/deploy/cokeai/backups/`（0700 目录、0600 文件）写入 `cokeai-*.sql.gz` 与 `n8n-*.sql.gz`，默认保留 14 天；`docker compose logs backup` 可查看执行结果。旧路径 `/home/deploy/backups/` 的历史备份仍在，可手动迁移。涉及商品/订单的发布，先做 `shop_products`、`shop_product_sources` 的 SQL 备份。
 
 ## 验证清单
 

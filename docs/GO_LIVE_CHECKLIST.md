@@ -44,11 +44,12 @@ GitHub Actions 首次运行前，服务器上必须先有代码和 `.env`：
 rsync -az --delete \
   --exclude=.git --exclude=.env --exclude=.env.* \
   --exclude=node_modules --exclude=.next \
+  --exclude=backups \
   -e "ssh -i ~/.ssh/cokeai_deploy" \
-  ./ deploy@<VPS_IP>:/opt/cokeai/
+  ./ deploy@<VPS_IP>:/home/deploy/cokeai/
 
 ssh -i ~/.ssh/cokeai_deploy deploy@<VPS_IP> \
-  'cd /opt/cokeai && bash ops/generate-env.sh'
+  'cd /home/deploy/cokeai && bash ops/generate-env.sh'
 ```
 
 把 `generate-env.sh` 输出的两个管理员密码保存到密码管理器。
@@ -65,7 +66,7 @@ Secrets：
 | `VPS_USER` | `deploy` |
 | `VPS_SSH_KEY` | `~/.ssh/cokeai_deploy` 私钥全文 |
 | `VPS_PORT` | SSH 端口，缺省 22 |
-| `VPS_APP_DIR` | `/opt/cokeai` |
+| `VPS_APP_DIR` | `/home/deploy/cokeai` |
 
 Variables：
 
@@ -132,10 +133,10 @@ ssh -L 18080:127.0.0.1:18080 -i ~/.ssh/cokeai_deploy deploy@<VPS_IP>
 
 浏览器打开 `http://127.0.0.1:18080`。
 
-登录邮箱/密码在服务器 `/opt/cokeai/.env`：
+登录邮箱/密码在服务器 `/home/deploy/cokeai/.env`：
 
 ```bash
-ssh deploy@<VPS_IP> "grep '^SUB2API_ADMIN_' /opt/cokeai/.env"
+ssh deploy@<VPS_IP> "grep '^SUB2API_ADMIN_' /home/deploy/cokeai/.env"
 ```
 
 不要把密码贴到聊天。
@@ -165,7 +166,7 @@ SUB2API_GROUP_ID=<分组ID>
 然后重启 app：
 
 ```bash
-cd /opt/cokeai
+cd /home/deploy/cokeai
 docker compose -f docker-compose.yml -f ops/sub2api/compose.yaml up -d app
 ```
 
@@ -308,7 +309,7 @@ SUB2API_IMAGE=weishaw/sub2api@sha256:...
 ```
 
 ```bash
-cd /opt/cokeai
+cd /home/deploy/cokeai
 docker compose -f docker-compose.yml -f ops/sub2api/compose.yaml up -d sub2api
 ```
 
@@ -321,7 +322,7 @@ docker compose -f docker-compose.yml -f ops/sub2api/compose.yaml up -d sub2api
 ### 8.1 数据库与开关
 
 ```bash
-cd /opt/cokeai
+cd /home/deploy/cokeai
 COMPOSE="docker compose -f docker-compose.yml -f ops/sub2api/compose.yaml"
 $COMPOSE exec -T app node scripts/migrate.mjs
 ```
@@ -391,7 +392,7 @@ bash ops/activate-n8n-workflows.sh
 ## 最终验收
 
 ```bash
-cd /opt/cokeai
+cd /home/deploy/cokeai
 COMPOSE="docker compose -f docker-compose.yml -f ops/sub2api/compose.yaml"
 
 $COMPOSE exec -T app node scripts/verify-sub2api-config.mjs
