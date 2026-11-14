@@ -29,6 +29,12 @@ export type ProductMedia = {
   description_images: ShopDescriptionImage[];
 };
 
+export {
+  startingPriceMicros,
+  type ShopVariant,
+} from "./variants";
+import type { ShopVariant } from "./variants";
+
 export type PublicShopProduct = {
   id: string;
   slug: string;
@@ -57,6 +63,8 @@ export type PublicShopProduct = {
   availability: string;
   /** Supplier sells this listing as a preorder; overrides stock/ETA labels. */
   preorder: boolean;
+  /** Selectable options. Empty means the product is sold as a single item. */
+  variants: ShopVariant[];
   featured: boolean;
   sort_order: number;
   display_category: string;
@@ -73,6 +81,7 @@ type RawProduct = Omit<
   | "help_article_ids"
   | "image_url"
   | "description_images"
+  | "variants"
 > & {
   includes: unknown;
   usage_notes: unknown;
@@ -114,7 +123,66 @@ function hydrate(row: RawProduct): PublicShopProduct {
     description_html: String(row.description_html || ""),
     image_url: null,
     description_images: [],
+    variants: [],
   };
+}
+
+type VariantRow = {
+  product_id: string;
+  id: string;
+  variant_key: string;
+  label: string;
+  badge: string;
+  price_micros: string | number;
+  warranty_type: string;
+  warranty_days: number;
+  warranty_note: string;
+  availability: string;
+  preorder_manual: boolean;
+  sort_order: number;
+};
+
+/**
+ * Variants are optional: a product without rows keeps selling as one item.
+ * The table may not exist yet on an un-migrated deployment, so a failed read
+ * degrades to "no variants" instead of taking the catalog down.
+ */
+export async function loadProductVariants(
+  productIds: string[],
+): Promise<Map<string, ShopVariant[]>> {
+  const grouped = new Map<string, ShopVariant[]>();
+  if (productIds.length === 0) return grouped;
+  try {
+    const rows = await query<VariantRow>(
+      `SELECT product_id, id, variant_key, label, badge, price_micros,
+              warranty_type, warranty_days, warranty_note, availability,
+              preorder_manual, sort_order
+         FROM shop_product_variants
+        WHERE product_id = ANY($1::uuid[]) AND active = TRUE
+        ORDER BY sort_order ASC, created_at ASC`,
+      [productIds],
+    );
+    for (const row of rows.rows) {
+      const list = grouped.get(row.product_id) || [];
+      list.push({
+        id: row.id,
+        variant_key: row.variant_key,
+        label: row.label,
+        badge: row.badge || "",
+        price_micros: Number(row.price_micros),
+        warranty_type: row.warranty_type,
+        warranty_days: Number(row.warranty_days),
+        warranty_note: row.warranty_note || "",
+        availability: row.availability,
+        preorder: Boolean(row.preorder_manual),
+        sort_order: Number(row.sort_order),
+      });
+      grouped.set(row.product_id, list);
+    }
+  } catch (error) {
+    console.warn("shop product variants unavailable:", error);
+  }
+  return grouped;
 }
 
 type SourceIdentityRow = {
@@ -301,16 +369,22 @@ export async function listPublicProducts(filter?: {
   );
   const products = rows.rows.map(hydrate);
   const productIds = products.map((product) => product.id);
-  const [identities, media] = await Promise.all([
+  const [identities, media, variants] = await Promise.all([
     loadProductIdentities(productIds),
     loadProductMedia(productIds),
+    loadProductVariants(productIds),
   ]);
   return products.map((product) => {
     const productIdentities = identities.get(product.id) || [];
     const clean = sanitizePublicProduct(product, productIdentities);
     const mediaEntry = sanitizeMediaEntry(media.get(product.id), productIdentities);
+    const productVariants = (variants.get(product.id) || []).map((variant) => ({
+      ...variant,
+      preorder: variant.preorder || product.preorder,
+    }));
     return {
       ...clean,
+      variants: productVariants,
       image_url: mediaEntry.image_url,
       description_images: mediaEntry.description_images,
     };
@@ -328,15 +402,21 @@ export async function getPublicProduct(slug: string): Promise<PublicShopProduct 
   const row = rows.rows[0];
   if (!row) return null;
   const product = hydrate(row);
-  const [identities, media] = await Promise.all([
+  const [identities, media, variants] = await Promise.all([
     loadProductIdentities([product.id]),
     loadProductMedia([product.id]),
+    loadProductVariants([product.id]),
   ]);
   const productIdentities = identities.get(product.id) || [];
   const clean = sanitizePublicProduct(product, productIdentities);
   const mediaEntry = sanitizeMediaEntry(media.get(product.id), productIdentities);
+  const productVariants = (variants.get(product.id) || []).map((variant) => ({
+    ...variant,
+    preorder: variant.preorder || product.preorder,
+  }));
   return {
     ...clean,
+    variants: productVariants,
     image_url: mediaEntry.image_url,
     description_images: mediaEntry.description_images,
   };

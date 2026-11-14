@@ -873,3 +873,41 @@ CREATE TABLE IF NOT EXISTS support_ticket_messages (
 );
 CREATE INDEX IF NOT EXISTS support_ticket_messages_ticket_idx
   ON support_ticket_messages(ticket_id, created_at ASC);
+
+-- ============================================================================
+-- 商品规格（宝贝类型）：同一个商品页可选多个档位，各档有自己的售价、质保、
+-- 可售状态和货源；订单项保存档位快照，历史订单不受后续改档影响。
+-- 纯加法迁移：新表 + 可空列，旧商品（无档位）行为不变。
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS shop_product_variants (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  product_id UUID NOT NULL REFERENCES shop_products(id) ON DELETE CASCADE,
+  variant_key TEXT NOT NULL,
+  label TEXT NOT NULL,
+  badge TEXT NOT NULL DEFAULT '',
+  price_micros BIGINT NOT NULL DEFAULT 0 CHECK (price_micros >= 0),
+  warranty_type TEXT NOT NULL DEFAULT 'first_login'
+    CHECK (warranty_type IN ('first_login', 'days', 'none')),
+  warranty_days INTEGER NOT NULL DEFAULT 0 CHECK (warranty_days >= 0),
+  warranty_note TEXT NOT NULL DEFAULT '',
+  availability TEXT NOT NULL DEFAULT 'in_stock'
+    CHECK (availability IN ('in_stock', 'low_stock', 'out_of_stock', 'paused')),
+  preorder_manual BOOLEAN NOT NULL DEFAULT FALSE,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (product_id, variant_key)
+);
+CREATE INDEX IF NOT EXISTS shop_product_variants_product_idx
+  ON shop_product_variants(product_id, active, sort_order);
+
+ALTER TABLE shop_product_sources
+  ADD COLUMN IF NOT EXISTS variant_id UUID REFERENCES shop_product_variants(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS shop_product_sources_variant_idx
+  ON shop_product_sources(variant_id);
+
+ALTER TABLE shop_order_items
+  ADD COLUMN IF NOT EXISTS variant_id UUID REFERENCES shop_product_variants(id) ON DELETE SET NULL;
+ALTER TABLE shop_order_items
+  ADD COLUMN IF NOT EXISTS variant_label TEXT NOT NULL DEFAULT '';

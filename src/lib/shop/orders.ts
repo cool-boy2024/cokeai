@@ -168,6 +168,8 @@ function validateCustomerInput(
 export async function createShopOrder(input: {
   userId: string;
   productId: string;
+  /** Selected product option; required when the product has any variants. */
+  variantId?: string | null;
   expectedPriceMicros: number;
   qty?: number;
   contactEmail?: string;
@@ -207,7 +209,36 @@ export async function createShopOrder(input: {
     const product = productResult.rows[0];
     if (!product) throw new Error("商品不存在");
     if (product.status !== "active") throw new Error("商品暂不可售");
-    if (product.pricing_review_required || !isPurchasable(product.availability)) {
+    if (product.pricing_review_required) throw new Error("商品暂时缺货");
+
+    // Products with options must be bought through one of them. The variant
+    // row is locked so a concurrent admin edit cannot change the price between
+    // validation and the order insert.
+    const variantCount = await client.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count FROM shop_product_variants
+        WHERE product_id = $1 AND active = TRUE`,
+      [product.id],
+    );
+    const hasVariants = Number(variantCount.rows[0]?.count || 0) > 0;
+    let variant: { id: string; label: string; price_micros: string | number; availability: string } | null = null;
+    if (input.variantId) {
+      const variantResult = await client.query<{
+        id: string;
+        label: string;
+        price_micros: string | number;
+        availability: string;
+      }>(
+        `SELECT id, label, price_micros, availability
+           FROM shop_product_variants
+          WHERE id = $1 AND product_id = $2 AND active = TRUE
+          FOR UPDATE`,
+        [input.variantId, product.id],
+      );
+      variant = variantResult.rows[0] || null;
+      if (!variant) throw new Error("规格不存在或已下架，请刷新后重试");
+    }
+    if (hasVariants && !variant) throw new Error("请选择商品规格");
+    if (!isPurchasable(variant ? variant.availability : product.availability)) {
       throw new Error("商品暂时缺货");
     }
 
@@ -236,15 +267,18 @@ export async function createShopOrder(input: {
          FROM shop_product_sources s
          JOIN shop_offers o ON o.id = s.offer_id
         WHERE s.product_id = $1 AND s.active = TRUE
-        ORDER BY CASE s.role WHEN 'primary' THEN 0 ELSE 1 END, s.created_at
+          AND (s.variant_id = $2::uuid OR s.variant_id IS NULL)
+        ORDER BY CASE WHEN s.variant_id IS NOT NULL THEN 0 ELSE 1 END,
+                 CASE s.role WHEN 'primary' THEN 0 ELSE 1 END,
+                 s.created_at
         LIMIT 1`,
-      [product.id],
+      [product.id, variant?.id ?? null],
     );
     const source = sourceResult.rows[0];
 
     // The browser sends the price it rendered, but the amount charged is
     // recomputed here. A member gets the discount, never below source cost.
-    const retailMicros = toNumber(product.price_micros);
+    const retailMicros = toNumber(variant ? variant.price_micros : product.price_micros);
     const priceMicros = membership.active
       ? memberPriceMicros(
           retailMicros,
@@ -319,15 +353,18 @@ export async function createShopOrder(input: {
     await client.query(
       `INSERT INTO shop_order_items
          (order_id, product_id, product_slug, product_name, brand,
+          variant_id, variant_label,
           unit_price_micros, qty, supplier_offer_id, supplier_title_snapshot,
           supplier_cost_micros, procurement_status, customer_input_encrypted)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'pending', $11)`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'pending', $13)`,
       [
         orderId,
         product.id,
         product.slug,
         product.name,
         product.brand,
+        variant?.id ?? null,
+        variant?.label || "",
         priceMicros,
         qty,
         source?.offer_id || null,

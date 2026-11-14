@@ -11,11 +11,15 @@ import { isPurchasable, productPriceLabel, SHOP_COPY } from "@/lib/shop/copy";
 
 const initial: ShopCheckoutState = {};
 
-function MemberPriceNote({ product }: { product: PublicShopProduct }) {
-  if (!product.list_price_micros) return null;
+function MemberPriceNote({
+  listPriceMicros,
+}: {
+  listPriceMicros?: number | null;
+}) {
+  if (!listPriceMicros) return null;
   return (
     <p className="shop-member-note">
-      会员价已生效 · 原价 <s>{productPriceLabel(product.list_price_micros)}</s>
+      会员价已生效 · 原价 <s>{productPriceLabel(listPriceMicros)}</s>
     </p>
   );
 }
@@ -64,6 +68,20 @@ export function BuyForm({
   const [preorderOpen, setPreorderOpen] = useState(false);
   const [qty, setQty] = useState(1);
   const [provider, setProvider] = useState("");
+  const variants = product.variants || [];
+  const [variantId, setVariantId] = useState(() => {
+    const firstAvailable = variants.find((variant) => isPurchasable(variant.availability));
+    return (firstAvailable || variants[0])?.id || "";
+  });
+  const selectedVariant = variants.find((variant) => variant.id === variantId) || null;
+  const unitMicros = selectedVariant ? selectedVariant.price_micros : product.price_micros;
+  const listUnitMicros = selectedVariant
+    ? selectedVariant.list_price_micros
+    : product.list_price_micros;
+  const effectiveAvailability = selectedVariant
+    ? selectedVariant.availability
+    : product.availability;
+  const effectivePreorder = selectedVariant ? selectedVariant.preorder : product.preorder;
   const preorderConfirmRef = useRef<HTMLButtonElement>(null);
   // The first captcha is rendered with the page, so opening the payment step is
   // instant. Refreshes are only needed when it expires, the code is wrong, or
@@ -72,9 +90,9 @@ export function BuyForm({
   const [captchaVersion, setCaptchaVersion] = useState(0);
   const [captchaRefreshing, setCaptchaRefreshing] = useState(false);
   const captchaPending = useRef(false);
-  const available = isPurchasable(product.availability);
+  const available = isPurchasable(effectiveAvailability);
   const maxQty = Math.max(1, Math.trunc(qtyMax));
-  const totalMicros = product.price_micros * qty;
+  const totalMicros = unitMicros * qty;
 
   const refreshCaptcha = useCallback(async () => {
     if (captchaPending.current) return;
@@ -185,20 +203,54 @@ export function BuyForm({
     if (selectedProvider !== provider) setProvider(selectedProvider);
   }, [selectedProvider, provider]);
 
+  const variantSelector =
+    variants.length > 0 ? (
+      <div className="shop-variant">
+        <span className="shop-variant-label">宝贝类型</span>
+        <div className="shop-variant-options" role="radiogroup" aria-label="宝贝类型">
+          {variants.map((variant) => {
+            const active = variant.id === variantId;
+            const purchasable = isPurchasable(variant.availability);
+            return (
+              <button
+                key={variant.id}
+                type="button"
+                role="radio"
+                aria-checked={active}
+                className={`shop-variant-option${active ? " is-active" : ""}`}
+                disabled={!purchasable}
+                onClick={() => {
+                  setVariantId(variant.id);
+                  if (step === "method") setStep("idle");
+                  setQty(1);
+                }}
+              >
+                <strong>{variant.label}</strong>
+                <span>{productPriceLabel(variant.price_micros)}</span>
+                {variant.badge ? <em>{variant.badge}</em> : null}
+                {!purchasable ? <i>缺货</i> : null}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    ) : null;
+
   if (!loggedIn) {
     return (
       <div className="shop-buy-panel">
         <div className="shop-buy-price">
-          <strong>{productPriceLabel(product.price_micros)}</strong>
+          <strong>{productPriceLabel(unitMicros)}</strong>
           <span>
-            {product.preorder
+            {effectivePreorder
               ? SHOP_COPY.preorder.availability
               : available
-                ? SHOP_COPY.availability[product.availability as "in_stock" | "low_stock"]
+                ? SHOP_COPY.availability[effectiveAvailability as "in_stock" | "low_stock"]
                 : "补货中"}
           </span>
         </div>
-        <MemberPriceNote product={product} />
+        <MemberPriceNote listPriceMicros={listUnitMicros} />
+        {variantSelector}
         <Link className="btn btn-primary btn-block" href={`/login?next=/shop/${product.slug}`}>
           登录后购买
         </Link>
@@ -212,17 +264,18 @@ export function BuyForm({
       <>
         <div className="shop-buy-panel">
           <div className="shop-buy-price">
-            <strong>{productPriceLabel(product.price_micros)}</strong>
+            <strong>{productPriceLabel(unitMicros)}</strong>
             <span>
-              {product.preorder
+              {effectivePreorder
                 ? SHOP_COPY.preorder.eta
                 : available
                   ? "含人工服务"
                   : "补货中"}
             </span>
           </div>
-          <MemberPriceNote product={product} />
-          {product.preorder ? (
+          <MemberPriceNote listPriceMicros={listUnitMicros} />
+          {variantSelector}
+          {effectivePreorder ? (
             <div className="shop-preorder-reminder">
               <strong>预定单提醒</strong>
               <p>
@@ -236,7 +289,7 @@ export function BuyForm({
             type="button"
             disabled={!available || methods.length === 0}
             onClick={() => {
-              if (product.preorder) {
+              if (effectivePreorder) {
                 setPreorderOpen(true);
                 return;
               }
@@ -254,7 +307,7 @@ export function BuyForm({
           ) : null}
           <p className="shop-buy-fine">
             <ShieldCheck size={13} />{" "}
-            {product.preorder
+            {effectivePreorder
               ? "数字商品，预定单。付款后按预定顺序采购，进度可在订单页查看。"
               : "数字商品，人工交付。付款后可在订单页查看进度。"}
           </p>
@@ -345,21 +398,27 @@ export function BuyForm({
   return (
     <form action={action} className="shop-buy-panel">
       <input type="hidden" name="productId" value={product.id} />
-      <input type="hidden" name="expectedPriceMicros" value={product.price_micros} />
+      <input type="hidden" name="variantId" value={variantId} />
+      <input type="hidden" name="expectedPriceMicros" value={unitMicros} />
 
       <div className="shop-buy-price">
         <strong>{productPriceLabel(totalMicros)}</strong>
         <span>
           {qty > 1
-            ? `单价 ${productPriceLabel(product.price_micros)} · ${qty} 件`
-            : product.preorder
+            ? `单价 ${productPriceLabel(unitMicros)} · ${qty} 件`
+            : effectivePreorder
               ? SHOP_COPY.preorder.eta
               : available
                 ? "含人工服务"
                 : "补货中"}
         </span>
       </div>
-      <MemberPriceNote product={product} />
+      <MemberPriceNote listPriceMicros={listUnitMicros} />
+      {selectedVariant ? (
+        <p className="shop-variant-chosen">
+          宝贝类型：{selectedVariant.label} · {productPriceLabel(unitMicros)}
+        </p>
+      ) : null}
 
       <div className="shop-pay-step-head">
         <h2>选择支付方式</h2>
@@ -368,7 +427,7 @@ export function BuyForm({
         </button>
       </div>
 
-      {product.preorder ? (
+      {effectivePreorder ? (
         <p className="shop-preorder-inline">
           预定单：付款后按预约顺序采购，发货可能延迟；取消与退款可联系售后，退款可转入账户余额继续使用。
         </p>

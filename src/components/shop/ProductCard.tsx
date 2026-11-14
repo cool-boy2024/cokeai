@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ArrowUpRight } from "@phosphor-icons/react/dist/ssr";
-import type { PublicShopProduct } from "@/lib/shop/catalog";
+import { startingPriceMicros, type PublicShopProduct } from "@/lib/shop/catalog";
 import { etaLabel, productPriceLabel, warrantyShortLabel } from "@/lib/shop/copy";
 import { ProductCover } from "./ProductCover";
 import { AvailabilityBadge } from "./ShopBadges";
@@ -12,6 +12,8 @@ export function ProductCard({
   product: PublicShopProduct;
   featured?: boolean;
 }) {
+  const price = startingPriceMicros(product);
+  const hasVariants = product.variants.length > 0;
   return (
     <Link
       href={`/shop/${product.slug}`}
@@ -40,7 +42,8 @@ export function ProductCard({
         <div className="shop-product-card-foot">
           <div>
             <strong>
-              {productPriceLabel(product.price_micros)}
+              {productPriceLabel(price)}
+              {hasVariants ? <em className="shop-price-from">起</em> : null}
               {product.list_price_micros ? (
                 <s className="shop-price-was">
                   {productPriceLabel(product.list_price_micros)}
