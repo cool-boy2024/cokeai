@@ -2,6 +2,24 @@
 
 更新时间：2026-11-14
 
+## 2026-11-14：商品详情复刻货源文章、图片与分类
+
+- 富文本：`shop_products.description_html` 保存清洗后的货源文章，详情页用
+  `.shop-rich-content` 渲染。白名单保留标题、段落、红框提示、表格、内联样式
+  （颜色/边框/间距/字号）和帮助链接；货源结算话术（80/20、卡台手续费、
+  退款话术）整块删除，“自动发货”等改人工口径。读取时再跑一次
+  `sanitizeStoredRichHtml`，手工改库也不会泄露。
+- 图片：`shop_images`（sha256 内容寻址）+ `shop_product_images`；
+  `/api/shop/images/<hash>.<ext>` 以本站域名提供，immutable + ETag。下载校验
+  https、公网 DNS、5MB、magic bytes；未镜像的图片直接删除，不热链。
+- 分类：`display_category` 与货源类型一一对应，`/shop` 分类轨道显示中文
+  中性标签和计数；品牌筛选保留。
+- 教程：`help_article_ids` 记录货源文章号，商品页「点我查看教程」只展示
+  `visible=true` 的文章，未匹配时回落到 `/help`。
+- 防泄露：公开读取二次清洗商品与帮助内容；内部接口错误只回固定错误码；
+  `/admin`、`/api`、`/dashboard` 加 noindex + no-store；商品页限流 120/min。
+  巡检脚本 `scripts/audit-supplier-leaks.mjs <baseUrl>`。
+
 ## 2026-11-14：zyanai 商品定时同步（每 6 小时）
 
 - 接口：`POST /api/internal/shop/zyanai-sync`，`x-internal-secret` 校验与帮助中心
@@ -14,7 +32,7 @@
 - 行为：只更新商品标题、介绍、价格和库存状态；缺货隐藏、补货恢复上架；
   价格变化写 `shop_offer_price_history`；每次运行记 `shop_sync_runs`；
   不触碰订单、支付和 USDT 扫描。
-- 手动兜底：`docker compose exec app node zyanai-sync.mjs` 或后台带 secret 调接口。
+- 手动兜底：`docker compose exec app node zyanai-sync.cjs` 或后台带 secret 调接口。
 
 ## 2026-11-13：zyanai.cc 商品镜像（人工采购）
 
@@ -36,8 +54,9 @@
   仍保留记录但 `published_at` 为空，补货后再次同步即可上架。
 - 数据表：`shop_suppliers.kind` CHECK 扩为 `aibijia|manual|zyanai`；其余复用
   `shop_offers`、`shop_products`、`shop_product_sources`。
-- 生产执行：镜像会额外打包 `zyanai-sync.mjs`（`npm run build:zyanai`），
-  在 app 容器内运行 `docker compose exec app node zyanai-sync.mjs`
+- 生产执行：镜像会额外打包 `zyanai-sync.cjs`（`npm run build:zyanai`，CJS、
+  依赖全部内联，运行镜像不需要额外 node_modules），在 app 容器内运行
+  `docker compose exec app node zyanai-sync.cjs`
   （加 `--dry` 只预览）。定时同步见上一节（n8n 每 6 小时）。
 - 验证：本地导入 38/38，公共可售 38；`npm run typecheck`、`npm run build` 通过。
 

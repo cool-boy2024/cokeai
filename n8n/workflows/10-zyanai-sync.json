@@ -3,7 +3,7 @@
   "nodes": [
     {
       "parameters": {
-        "content": "## zyanai 商品镜像同步\n\n每 6 小时拉取 zyanai.cc 公开商品列表与详情，更新小店的商品标题、介绍、价格和库存状态。\n\n- 缺货商品自动隐藏，补货自动恢复上架\n- 售价按拿货价 ÷ 0.7 重算，价格变动写入历史\n- 只同步商品，订单仍由人工采购，不触发任何下单\n- 单款抓取失败保留旧内容，结果写入 shop_sync_runs\n\n手动：后台脚本 `docker compose exec app node zyanai-sync.mjs`，或带 secret 调 `POST /api/internal/shop/zyanai-sync`。",
+        "content": "## zyanai 商品镜像同步\n\n每 6 小时拉取 zyanai.cc 公开商品列表与详情，更新小店的商品标题、介绍、价格和库存状态。\n\n- 缺货商品自动隐藏，补货自动恢复上架\n- 售价按拿货价 ÷ 0.7 重算，价格变动写入历史\n- 只同步商品，订单仍由人工采购，不触发任何下单\n- 单款抓取失败保留旧内容，结果写入 shop_sync_runs\n\n手动：后台脚本 `docker compose exec app node zyanai-sync.cjs`，或带 secret 调 `POST /api/internal/shop/zyanai-sync`。",
         "height": 260,
         "width": 400,
         "color": 6
