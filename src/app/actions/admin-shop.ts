@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { config } from "@/lib/config";
-import { query } from "@/lib/db";
+import { query, withTransaction } from "@/lib/db";
 import { suggestRetailPrice } from "@/lib/shop/catalog";
 import { SHOP_PRODUCT_CATEGORIES } from "@/lib/shop/categories";
 import { createImportJob, drainQueuedJobs, runImportJob } from "@/lib/shop/import";
@@ -545,6 +545,10 @@ export async function adminSaveShopProductAction(formData: FormData): Promise<vo
   const complianceAck = formData.get("complianceAck") === "1";
   // Independent switch: supplier stock or the next sync must not clear it.
   const preorderManual = formData.get("preorderManual") === "1";
+  // Curated placement: featured products get the pinned card and the top of
+  // the catalog; sort order breaks ties within the same placement.
+  const featured = formData.get("featured") === "1";
+  const sortOrder = Math.trunc(Number(formData.get("sortOrder") || 0)) || 0;
 
   const copyReady =
     Boolean(name && subtitle && description) &&
@@ -578,6 +582,8 @@ export async function adminSaveShopProductAction(formData: FormData): Promise<vo
             copy_ready = $15,
             display_category = $19,
             preorder_manual = $20,
+            featured = $21,
+            sort_order = $22,
             status = $16,
             compliance_ack_at = CASE
               WHEN $16 = 'active' AND $17 = TRUE THEN COALESCE(compliance_ack_at, now())
@@ -614,6 +620,8 @@ export async function adminSaveShopProductAction(formData: FormData): Promise<vo
       admin.id,
       displayCategory,
       preorderManual,
+      featured,
+      sortOrder,
     ],
   );
   revalidatePath("/admin/shop/products");
@@ -662,4 +670,159 @@ export async function adminResetShopPriceAction(formData: FormData): Promise<voi
   revalidatePath(`/admin/shop/products/${productId}`);
   revalidatePath("/shop");
   redirect(`/admin/shop/products/${productId}?saved=1&price=auto`);
+}
+
+const VARIANT_AVAILABILITY = new Set([
+  "in_stock",
+  "low_stock",
+  "out_of_stock",
+  "paused",
+]);
+const VARIANT_WARRANTY = new Set(["first_login", "days", "none"]);
+
+type VariantPayload = {
+  id?: string;
+  label?: string;
+  badge?: string;
+  price?: number | string;
+  warrantyType?: string;
+  warrantyDays?: number | string;
+  warrantyNote?: string;
+  availability?: string;
+  preorder?: boolean;
+  sortOrder?: number | string;
+};
+
+/**
+ * Replaces a product's selectable options ("宝贝类型") in one transaction.
+ * Rows keep their id when edited so variant-bound supplier sources and past
+ * order snapshots keep pointing at the same option; removed rows are only
+ * deactivated, never deleted.
+ */
+export async function adminSaveShopVariantsAction(formData: FormData): Promise<void> {
+  await requireAdmin();
+  const productId = text(formData, "productId");
+  const exists = await query(`SELECT 1 FROM shop_products WHERE id = $1`, [productId]);
+  if (!exists.rowCount) redirect("/admin/shop/products?error=商品不存在");
+
+  let payload: VariantPayload[] = [];
+  try {
+    const parsed = JSON.parse(text(formData, "variants") || "[]");
+    if (!Array.isArray(parsed)) throw new Error("not an array");
+    payload = parsed;
+  } catch {
+    redirect(
+      `/admin/shop/products/${productId}?error=${encodeURIComponent("规格数据格式错误，请刷新后重试")}`,
+    );
+  }
+  if (payload.length > 30) {
+    redirect(
+      `/admin/shop/products/${productId}?error=${encodeURIComponent("单个商品最多 30 个规格")}`,
+    );
+  }
+
+  const clean = payload.map((item, index) => {
+    const label = String(item.label || "").trim().slice(0, 80);
+    const priceMicros = Math.round(Number(item.price || 0) * 1_000_000);
+    const availability = VARIANT_AVAILABILITY.has(String(item.availability))
+      ? String(item.availability)
+      : "in_stock";
+    const warrantyType = VARIANT_WARRANTY.has(String(item.warrantyType))
+      ? String(item.warrantyType)
+      : "first_login";
+    return {
+      id: item.id ? String(item.id) : null,
+      label,
+      badge: String(item.badge || "").trim().slice(0, 40),
+      priceMicros,
+      warrantyType,
+      warrantyDays: Math.max(0, Math.trunc(Number(item.warrantyDays || 0)) || 0),
+      warrantyNote: String(item.warrantyNote || "").trim().slice(0, 300),
+      availability,
+      preorder: Boolean(item.preorder),
+      sortOrder: Math.trunc(Number(item.sortOrder ?? index)) || 0,
+    };
+  });
+  if (clean.some((item) => !item.label)) {
+    redirect(
+      `/admin/shop/products/${productId}?error=${encodeURIComponent("每个规格都需要填写名称")}`,
+    );
+  }
+  if (clean.some((item) => item.priceMicros <= 0)) {
+    redirect(
+      `/admin/shop/products/${productId}?error=${encodeURIComponent("每个规格都需要填写大于 0 的售价")}`,
+    );
+  }
+
+  await withTransaction(async (client) => {
+    const existing = await client.query<{ id: string }>(
+      `SELECT id FROM shop_product_variants WHERE product_id = $1`,
+      [productId],
+    );
+    const existingIds = new Set(existing.rows.map((row) => row.id));
+    const keptIds: string[] = [];
+
+    for (const item of clean) {
+      const id = item.id && existingIds.has(item.id) ? item.id : null;
+      if (id) {
+        keptIds.push(id);
+        await client.query(
+          `UPDATE shop_product_variants
+              SET label = $3, badge = $4, price_micros = $5,
+                  warranty_type = $6, warranty_days = $7, warranty_note = $8,
+                  availability = $9, preorder_manual = $10, sort_order = $11,
+                  active = TRUE, updated_at = now()
+            WHERE id = $2 AND product_id = $1`,
+          [
+            productId,
+            id,
+            item.label,
+            item.badge,
+            item.priceMicros,
+            item.warrantyType,
+            item.warrantyDays,
+            item.warrantyNote,
+            item.availability,
+            item.preorder,
+            item.sortOrder,
+          ],
+        );
+      } else {
+        await client.query(
+          `INSERT INTO shop_product_variants
+             (product_id, variant_key, label, badge, price_micros,
+              warranty_type, warranty_days, warranty_note, availability,
+              preorder_manual, sort_order)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+          [
+            productId,
+            `v${crypto.randomUUID().slice(0, 8)}`,
+            item.label,
+            item.badge,
+            item.priceMicros,
+            item.warrantyType,
+            item.warrantyDays,
+            item.warrantyNote,
+            item.availability,
+            item.preorder,
+            item.sortOrder,
+          ],
+        );
+      }
+    }
+
+    await client.query(
+      `UPDATE shop_product_variants
+          SET active = FALSE, updated_at = now()
+        WHERE product_id = $1
+          AND NOT (id = ANY($2::uuid[]))
+          AND active = TRUE`,
+      [productId, keptIds],
+    );
+  });
+
+  revalidatePath("/admin/shop/products");
+  revalidatePath(`/admin/shop/products/${productId}`);
+  revalidatePath("/shop");
+  redirect(`/admin/shop/products/${productId}?saved=variants`);
 }

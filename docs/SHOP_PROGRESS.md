@@ -1652,3 +1652,16 @@ UI 实测：浏览 → 登录 → 下单（人工）→ 后台确认到账 → �
   GitHub 外部探测，持续失败时自动开 issue。
 - 规则：**不要在服务器上 `docker compose build` 或 `up -d --build`**；
   发布统一用 `gh workflow run deploy.yml --ref main`（`npm run deploy:prod`）。
+
+### 2026-11-14 小店目录改版与商品档位（宝贝类型）
+
+- `shop_product_variants` 纯加法迁移；`shop_product_sources.variant_id`、
+  `shop_order_items.variant_id/variant_label` 均可空。回滚只需部署上一版
+  镜像，旧代码忽略新列；新表保留不影响旧逻辑。
+- 商品页：档位选择器（价格/质保/库存/预定随档切换），订单按档位重算价格，
+  优先绑定该档位的货源，订单项保存档位快照。
+- `/shop`：左侧分类（计数）+ 顶部搜索（`?q=`，内存过滤，不拼 SQL）+
+  表格式商品行 + 主推位 + 「今日热销 / 近 7 天热销」（只按真实已付款订单，
+  低于 3 件不展示）+ 分类外推荐。
+- 后台商品页：档位编辑器（最多 30 档，删除为停用）、主推开关与排序权重。
+- 纯函数测试：`npm run test:shop:variants`。

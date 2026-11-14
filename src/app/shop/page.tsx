@@ -3,27 +3,36 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
   ArrowRight,
-  CheckCircle,
-  Clock,
-  Headset,
+  MagnifyingGlass,
   Package,
+  Question,
+  X,
 } from "@phosphor-icons/react/dist/ssr";
 import { SiteFooter } from "@/components/SiteFooter";
 import { SiteHeader } from "@/components/SiteHeader";
-import { Reveal } from "@/components/Reveal";
 import { ProductCard } from "@/components/shop/ProductCard";
+import { ProductRow } from "@/components/shop/ProductRow";
+import { ShopFeaturedCard } from "@/components/shop/ShopFeaturedCard";
 import { AvailabilityLegend } from "@/components/shop/ShopBadges";
 import { getCurrentUser } from "@/lib/auth";
 import { config } from "@/lib/config";
-import { listPublicProducts } from "@/lib/shop/catalog";
+import {
+  listPublicProducts,
+  startingPriceMicros,
+  type PublicShopProduct,
+} from "@/lib/shop/catalog";
 import { applyMemberPricing } from "@/lib/shop/member-pricing";
 import {
   filterProductsByCategory,
   isShopCategorySlug,
   productCategorySlug,
+  productDisplayCategory,
+  SHOP_CATEGORY_LABELS,
   SHOP_CATEGORY_RAIL,
   type ShopCategorySlug,
 } from "@/lib/shop/categories";
+import { productPriceLabel } from "@/lib/shop/copy";
+import { loadShopTrending } from "@/lib/shop/trending";
 
 export const metadata: Metadata = {
   title: "CokeAI 小店",
@@ -33,8 +42,33 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic";
 
-function shopHref(category: ShopCategorySlug): string {
-  return category === "all" ? "/shop" : `/shop?category=${category}`;
+function shopHref(category: ShopCategorySlug, query = ""): string {
+  const params = new URLSearchParams();
+  if (category !== "all") params.set("category", category);
+  if (query) params.set("q", query);
+  const suffix = params.toString();
+  return suffix ? `/shop?${suffix}` : "/shop";
+}
+
+/**
+ * All search tokens must appear in the haystack. Matching runs in memory over
+ * the already loaded catalog (the public list is small), so no user input ever
+ * reaches SQL.
+ */
+function matchesSearch(product: PublicShopProduct, query: string): boolean {
+  const tokens = query.toLowerCase().split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return true;
+  const haystack = [
+    product.name,
+    product.subtitle,
+    product.brand,
+    product.slug,
+    product.display_category,
+    productDisplayCategory(product),
+  ]
+    .join(" ")
+    .toLowerCase();
+  return tokens.every((token) => haystack.includes(token));
 }
 
 export default async function ShopPage({
@@ -50,33 +84,66 @@ export default async function ShopPage({
   const category: ShopCategorySlug = isShopCategorySlug(params.category)
     ? params.category
     : "all";
+  const query = (params.q || "").trim().slice(0, 60);
 
-  const [catalog, user] = await Promise.all([
+  const [catalog, user, trending] = await Promise.all([
     listPublicProducts(),
     getCurrentUser(),
+    loadShopTrending(4),
   ]);
   // Members see their discounted price everywhere in the catalog; the order
   // action recomputes it server-side, so the displayed price is never trusted.
   const allProducts = await applyMemberPricing(catalog, user);
+  const searchPool = query
+    ? allProducts.filter((product) => matchesSearch(product, query))
+    : allProducts;
+
   const categoryCounts = new Map<ShopCategorySlug, number>(
     SHOP_CATEGORY_RAIL.map((item) => [item.slug, 0]),
   );
-  for (const product of allProducts) {
+  for (const product of searchPool) {
     const slug = productCategorySlug(product);
     categoryCounts.set(slug, (categoryCounts.get(slug) || 0) + 1);
   }
-  categoryCounts.set("all", allProducts.length);
-  // Every category stays visible, including empty ones, so the structure does
-  // not change shape as stock comes and goes.
-  const visibleCategories = SHOP_CATEGORY_RAIL;
-  const products = filterProductsByCategory(allProducts, category);
-  const showFeatured = category === "all" && products.length >= 3;
+  categoryCounts.set("all", searchPool.length);
+
+  const products = filterProductsByCategory(searchPool, category);
+  const productById = new Map(allProducts.map((product) => [product.id, product]));
+
+  // Hot strip: only real paid-order data, only on the unfiltered catalog.
+  const hot =
+    trending && !query && category === "all"
+      ? trending.items
+          .map((item) => ({
+            units: item.units,
+            product: productById.get(item.productId),
+          }))
+          .filter(
+            (item): item is { units: number; product: PublicShopProduct } =>
+              Boolean(item.product),
+          )
+      : [];
+  const featuredProducts = allProducts.filter((product) => product.featured);
+  const showFeatured =
+    !query && category === "all" ? featuredProducts[0] || null : null;
+
+  // Cross-sell: products outside the current view, featured first (the catalog
+  // is already ordered that way). Never shown when the view is the full list.
+  const visibleIds = new Set(products.map((product) => product.id));
+  const recommended =
+    (query || category !== "all") && products.length > 0
+      ? allProducts
+          .filter((product) => !visibleIds.has(product.id))
+          .slice(0, 3)
+      : [];
+
+  const categoryLabel = SHOP_CATEGORY_LABELS[category];
 
   return (
     <>
       <SiteHeader />
-      <main id="main-content" className="public-main shop-page">
-        <section className="shop-hero">
+      <main id="main-content" className="public-main shop-page shop-market-page">
+        <section className="shop-hero shop-hero-compact">
           <div className="container">
             <div className="shop-hero-inner">
               <div>
@@ -90,83 +157,164 @@ export default async function ShopPage({
                   <em>在这里一次买齐。</em>
                 </h1>
                 <p>
-                  ChatGPT、Claude、Gemini、Grok、Muse，以及邮箱、接码等数字商品。
-                  下单后人工处理，订单进度随时可查，完成后在订单页领取交付内容。
+                  按分类浏览、直接搜索，商品页内切换档位。下单后人工处理，
+                  进度随时可查，完成后在订单页领取交付内容。
                 </p>
               </div>
-              <div className="shop-hero-points">
-                <span>
-                  <Clock size={16} /> 商品页标注预计发货时间
-                </span>
-                <span>
-                  <CheckCircle size={16} /> 质保按商品标注
-                </span>
-                <span>
-                  <Headset size={16} /> 订单内售后
-                </span>
-              </div>
+              <form className="shop-search" action="/shop" method="get" role="search">
+                {category !== "all" ? (
+                  <input type="hidden" name="category" value={category} />
+                ) : null}
+                <div className="shop-search-field">
+                  <MagnifyingGlass size={18} />
+                  <input
+                    type="search"
+                    name="q"
+                    defaultValue={query}
+                    placeholder="搜索商品，如 GPT、Claude、邮箱…"
+                    aria-label="搜索商品"
+                    maxLength={60}
+                  />
+                  {query ? (
+                    <Link
+                      href={shopHref(category)}
+                      className="shop-search-clear"
+                      aria-label="清除搜索"
+                    >
+                      <X size={14} />
+                    </Link>
+                  ) : null}
+                  <button type="submit">搜索</button>
+                </div>
+              </form>
             </div>
           </div>
         </section>
 
-        <section className="container shop-catalog">
-          <div className="shop-catalog-head">
-            <div className="shop-catalog-filters">
-              <nav className="shop-category-rail" aria-label="商品分类">
-                {visibleCategories.map((item) => {
-                  const active = category === item.slug;
-                  return (
-                    <Link
-                      key={item.slug}
-                      href={shopHref(item.slug)}
-                      className={`shop-category-link${active ? " active" : ""}`}
-                      aria-current={active ? "page" : undefined}
-                    >
-                      <span className="shop-category-label">{item.label}</span>
-                      <span className="shop-category-count">
-                        {categoryCounts.get(item.slug) || 0}
-                      </span>
-                    </Link>
-                  );
-                })}
-              </nav>
-            </div>
-            <AvailabilityLegend />
-          </div>
+        <section className="container shop-market">
+          <aside className="shop-sidebar">
+            <nav className="shop-side-nav" aria-label="商品分类">
+              <p className="shop-side-title">商品分类</p>
+              {SHOP_CATEGORY_RAIL.map((item) => {
+                const active = category === item.slug;
+                return (
+                  <Link
+                    key={item.slug}
+                    href={shopHref(item.slug, query)}
+                    className={`shop-side-link${active ? " active" : ""}`}
+                    aria-current={active ? "page" : undefined}
+                  >
+                    <span>{item.label}</span>
+                    <em>{categoryCounts.get(item.slug) || 0}</em>
+                  </Link>
+                );
+              })}
+            </nav>
 
-          {products.length === 0 ? (
-            <div className="shop-empty-state">
-              <Package size={32} />
-              <h2>这一栏正在补货</h2>
-              <p>暂时没有可售商品。看看其他分类，或者稍后再来。</p>
-              <Link className="btn btn-light" href="/shop">
-                查看全部 <ArrowRight size={15} />
-              </Link>
+            <div className="shop-side-help">
+              <Question size={18} />
+              <strong>不确定选哪个？</strong>
+              <p>先看商品页的档位、发货时间和质保说明，再决定。</p>
+              <Link href="/shop/terms">购买须知</Link>
             </div>
-          ) : (
-            <Reveal>
-              <div className="shop-grid shop-grid-catalog">
-                {products.map((product, index) => (
-                  <ProductCard
-                    product={product}
-                    featured={showFeatured && index === 0}
-                    key={product.id}
-                  />
+          </aside>
+
+          <div className="shop-market-main">
+            <div className="shop-toolbar">
+              <p>
+                {query ? (
+                  <>
+                    「{query}」的搜索结果
+                    <span> · {products.length} 件</span>
+                  </>
+                ) : (
+                  <>
+                    {categoryLabel}
+                    <span> · {products.length} 件商品</span>
+                  </>
+                )}
+              </p>
+              <AvailabilityLegend />
+            </div>
+
+            {hot.length > 0 ? (
+              <section className="shop-hot" aria-label={trending?.label || "热销"}>
+                <div className="shop-section-head">
+                  <h2>{trending?.label}</h2>
+                  <span>按已付款订单统计</span>
+                </div>
+                <div className="shop-hot-list">
+                  {hot.map((item, index) => (
+                    <Link
+                      key={item.product.id}
+                      href={`/shop/${item.product.slug}`}
+                      className="shop-hot-item"
+                    >
+                      <span className="shop-hot-rank">{index + 1}</span>
+                      <div>
+                        <strong>{item.product.name}</strong>
+                        <span>
+                          {productDisplayCategory(item.product)} · 已售 {item.units} 件
+                        </span>
+                      </div>
+                      <em>{productPriceLabel(startingPriceMicros(item.product))}</em>
+                    </Link>
+                  ))}
+                </div>
+              </section>
+            ) : null}
+
+            {showFeatured ? <ShopFeaturedCard product={showFeatured} /> : null}
+
+            {products.length === 0 ? (
+              <div className="shop-empty-state">
+                <Package size={32} />
+                <h2>{query ? "没有匹配的商品" : "这一栏正在补货"}</h2>
+                <p>
+                  {query
+                    ? `没有找到与「${query}」相关的商品。换个关键词，或浏览全部分类。`
+                    : "暂时没有可售商品。看看其他分类，或者稍后再来。"}
+                </p>
+                <Link
+                  className="btn btn-light"
+                  href={query ? "/shop" : shopHref("all")}
+                >
+                  {query ? "清除搜索" : "查看全部"} <ArrowRight size={15} />
+                </Link>
+              </div>
+            ) : (
+              <div className="shop-row-list">
+                {products.map((product) => (
+                  <ProductRow product={product} key={product.id} />
                 ))}
               </div>
-            </Reveal>
-          )}
+            )}
 
-          <div className="shop-note">
-            <p>
-              所有商品均为数字商品，由人工处理。缺货商品会显示“补货中”，无法下单。
-            </p>
-            <p>
-              售后请联系{" "}
-              <a href={`mailto:${config.shopSupportEmail}`}>{config.shopSupportEmail}</a>
-              ，或在订单页留言。购买前请阅读{" "}
-              <Link href="/shop/terms">数字商品购买须知</Link>。
-            </p>
+            {recommended.length > 0 ? (
+              <section className="shop-recommend">
+                <div className="shop-section-head">
+                  <h2>也可以看看</h2>
+                  <span>其他分类的商品</span>
+                </div>
+                <div className="shop-recommend-grid">
+                  {recommended.map((product) => (
+                    <ProductCard product={product} key={product.id} />
+                  ))}
+                </div>
+              </section>
+            ) : null}
+
+            <div className="shop-note">
+              <p>
+                所有商品均为数字商品，由人工处理。缺货商品会显示“补货中”，无法下单。
+              </p>
+              <p>
+                售后请联系{" "}
+                <a href={`mailto:${config.shopSupportEmail}`}>{config.shopSupportEmail}</a>
+                ，或在订单页留言。购买前请阅读{" "}
+                <Link href="/shop/terms">数字商品购买须知</Link>。
+              </p>
+            </div>
           </div>
         </section>
       </main>

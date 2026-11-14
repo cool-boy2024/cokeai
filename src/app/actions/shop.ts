@@ -32,6 +32,7 @@ export async function createShopCheckoutAction(
 ): Promise<ShopCheckoutState> {
   const user = await requireUser();
   const productId = String(formData.get("productId") || "");
+  const variantId = String(formData.get("variantId") || "").trim() || null;
   const postedProvider = String(formData.get("provider") || "alipay");
   // Older pages posted the single value "usdt"; treat it as TRC20.
   const provider = postedProvider === "usdt" ? "usdt_trc20" : postedProvider;
@@ -109,12 +110,25 @@ export async function createShopCheckoutAction(
       return { error: "支付宝收款暂未开放，请选择其他支付方式。" };
     }
   }
-  const product = await query<{ input_fields: Array<{ key?: string }>; name: string }>(
-    `SELECT input_fields, name FROM shop_products
-      WHERE id = $1 AND status = 'active' AND copy_ready = TRUE LIMIT 1`,
-    [productId],
+  const product = await query<{
+    input_fields: Array<{ key?: string }>;
+    name: string;
+    variant_label: string | null;
+  }>(
+    `SELECT p.input_fields, p.name,
+            (SELECT v.label FROM shop_product_variants v
+              WHERE v.id = $2 AND v.product_id = p.id AND v.active = TRUE) AS variant_label
+       FROM shop_products p
+      WHERE p.id = $1 AND p.status = 'active' AND p.copy_ready = TRUE LIMIT 1`,
+    [productId, variantId],
   );
   if (!product.rows[0]) return { error: "商品已下架。" };
+  if (variantId && !product.rows[0].variant_label) {
+    return { error: "商品规格已下架，请刷新后重新选择。" };
+  }
+  const orderProductName = product.rows[0].variant_label
+    ? `${product.rows[0].name} · ${product.rows[0].variant_label}`
+    : product.rows[0].name;
 
   const customerInput: Record<string, string> = {};
   for (const field of Array.isArray(product.rows[0].input_fields)
@@ -131,6 +145,7 @@ export async function createShopCheckoutAction(
     created = await createShopOrder({
       userId: user.id,
       productId,
+      variantId,
       expectedPriceMicros,
       qty,
       contactEmail,
@@ -209,7 +224,7 @@ export async function createShopCheckoutAction(
       checkoutUrl = createShopEasyPayCheckout({
         orderNo: created.orderNo,
         amountMicros: created.amountMicros,
-        productName: product.rows[0].name,
+        productName: orderProductName,
       }).url;
     } catch (error) {
       await cancelPendingShopOrder(created.id, user.id);

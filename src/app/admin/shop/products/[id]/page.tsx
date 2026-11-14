@@ -11,7 +11,12 @@ import { requireAdmin } from "@/lib/auth";
 import { query } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { formatCny } from "@/lib/money";
-import { getAdminProduct, suggestRetailPrice } from "@/lib/shop/catalog";
+import {
+  getAdminProduct,
+  loadProductVariants,
+  suggestRetailPrice,
+} from "@/lib/shop/catalog";
+import { VariantEditor } from "@/components/shop/admin/VariantEditor";
 import {
   normalizeDisplayCategory,
   SHOP_PRODUCT_CATEGORIES,
@@ -56,6 +61,7 @@ export default async function AdminShopProductEditPage({
     [product.id],
   );
 
+  const variants = (await loadProductVariants([product.id])).get(product.id) || [];
   const missing = validateProductCopy(product);
   const cost = Math.max(
     0,
@@ -91,6 +97,12 @@ export default async function AdminShopProductEditPage({
         <div className="notice notice-green">
           <CheckCircle2 size={16} />
           <div>商品已保存。</div>
+        </div>
+      ) : null}
+      {flags.saved === "variants" ? (
+        <div className="notice notice-green">
+          <CheckCircle2 size={16} />
+          <div>档位已保存，商品页立即生效。</div>
         </div>
       ) : null}
       {flags.ai === "1" ? (
@@ -262,7 +274,27 @@ export default async function AdminShopProductEditPage({
                   <option value="archived">归档</option>
                 </select>
               </label>
+              <label className="shop-field">
+                <span>排序权重（越小越靠前）</span>
+                <input
+                  name="sortOrder"
+                  type="number"
+                  defaultValue={product.sort_order}
+                />
+              </label>
             </div>
+
+            <label className="shop-compliance">
+              <input
+                type="checkbox"
+                name="featured"
+                value="1"
+                defaultChecked={product.featured}
+              />
+              <span>
+                设为主推商品：在 /shop 顶部主推位展示，并在商品列表中置顶。
+              </span>
+            </label>
 
             <label className="shop-compliance">
               <input
@@ -417,6 +449,33 @@ export default async function AdminShopProductEditPage({
           </section>
         </aside>
       </div>
+
+      <section className="panel shop-variant-panel">
+        <div className="panel-head">
+          <div>
+            <h2>宝贝类型 / 档位</h2>
+            <p className="shop-muted">
+              买家在商品页点选档位，价格与质保随之切换；订单会记录所选档位。
+            </p>
+          </div>
+          <span className="badge">{variants.length} 个档位</span>
+        </div>
+        <VariantEditor
+          productId={product.id}
+          initialVariants={variants.map((variant) => ({
+            id: variant.id,
+            label: variant.label,
+            badge: variant.badge,
+            price_micros: variant.price_micros,
+            warranty_type: variant.warranty_type,
+            warranty_days: variant.warranty_days,
+            warranty_note: variant.warranty_note,
+            availability: variant.availability,
+            preorder: variant.preorder,
+            sort_order: variant.sort_order,
+          }))}
+        />
+      </section>
     </>
   );
 }

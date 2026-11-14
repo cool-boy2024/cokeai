@@ -13,23 +13,40 @@ import {
  */
 async function loadPrimaryCosts(
   productIds: string[],
-): Promise<Map<string, number>> {
-  const costs = new Map<string, number>();
-  if (productIds.length === 0) return costs;
-  const result = await query<{ product_id: string; supplier_cost_micros: string | number }>(
-    `SELECT DISTINCT ON (s.product_id)
-            s.product_id, s.supplier_cost_micros
-       FROM shop_product_sources s
-      WHERE s.product_id = ANY($1::uuid[]) AND s.active = TRUE
-      ORDER BY s.product_id,
-               CASE s.role WHEN 'primary' THEN 0 ELSE 1 END,
-               s.created_at`,
-    [productIds],
-  );
-  for (const row of result.rows) {
-    costs.set(row.product_id, Number(row.supplier_cost_micros) || 0);
+): Promise<{ products: Map<string, number>; variants: Map<string, number> }> {
+  const products = new Map<string, number>();
+  const variants = new Map<string, number>();
+  if (productIds.length === 0) return { products, variants };
+  const [productResult, variantResult] = await Promise.all([
+    query<{ product_id: string; supplier_cost_micros: string | number }>(
+      `SELECT DISTINCT ON (s.product_id)
+              s.product_id, s.supplier_cost_micros
+         FROM shop_product_sources s
+        WHERE s.product_id = ANY($1::uuid[]) AND s.active = TRUE
+        ORDER BY s.product_id,
+                 CASE s.role WHEN 'primary' THEN 0 ELSE 1 END,
+                 s.created_at`,
+      [productIds],
+    ),
+    query<{ variant_id: string; supplier_cost_micros: string | number }>(
+      `SELECT DISTINCT ON (s.variant_id)
+              s.variant_id, s.supplier_cost_micros
+         FROM shop_product_sources s
+        WHERE s.product_id = ANY($1::uuid[]) AND s.active = TRUE
+          AND s.variant_id IS NOT NULL
+        ORDER BY s.variant_id,
+                 CASE s.role WHEN 'primary' THEN 0 ELSE 1 END,
+                 s.created_at`,
+      [productIds],
+    ),
+  ]);
+  for (const row of productResult.rows) {
+    products.set(row.product_id, Number(row.supplier_cost_micros) || 0);
   }
-  return costs;
+  for (const row of variantResult.rows) {
+    variants.set(row.variant_id, Number(row.supplier_cost_micros) || 0);
+  }
+  return { products, variants };
 }
 
 /**
@@ -46,16 +63,48 @@ export async function applyMemberPricing(
 
   const costs = await loadPrimaryCosts(products.map((product) => product.id));
   return products.map((product) => {
+    const productCost = costs.products.get(product.id) || 0;
     const price = memberPriceMicros(
       product.price_micros,
-      costs.get(product.id) || 0,
+      productCost,
       membership.discountBps,
     );
-    if (price >= product.price_micros) return product;
+
+    // Each option keeps its own floor: a cheap tier must not be discounted
+    // below the cost of the offer that fulfils it.
+    const variants = product.variants.map((variant) => {
+      const variantPrice = memberPriceMicros(
+        variant.price_micros,
+        costs.variants.get(variant.id) ?? productCost,
+        membership.discountBps,
+      );
+      return variantPrice < variant.price_micros
+        ? {
+            ...variant,
+            price_micros: variantPrice,
+            list_price_micros: variant.price_micros,
+          }
+        : variant;
+    });
+    const variantsChanged = variants.some(
+      (variant, index) => variant.price_micros !== product.variants[index].price_micros,
+    );
+    if (price >= product.price_micros && !variantsChanged) return product;
+
+    const fromPrice =
+      variants.length > 0
+        ? Math.min(...variants.map((variant) => variant.price_micros))
+        : price;
+    const fromListPrice =
+      variants.length > 0
+        ? Math.min(...product.variants.map((variant) => variant.price_micros))
+        : product.price_micros;
+
     return {
       ...product,
-      price_micros: price,
-      list_price_micros: product.price_micros,
+      price_micros: fromPrice,
+      list_price_micros: fromListPrice > fromPrice ? fromListPrice : product.list_price_micros,
+      variants,
     };
   });
 }
