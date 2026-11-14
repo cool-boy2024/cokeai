@@ -349,6 +349,44 @@ export async function listUserShopOrders(userId: string): Promise<ShopOrderDetai
   return result.rows.map(mapOrder);
 }
 
+export type UserShopOrderSummary = {
+  total_count: number;
+  open_count: number;
+  paid_amount_micros: number;
+};
+
+/**
+ * Exact per-user totals for the dashboard. Keep this separate from
+ * listUserShopOrders(), which is intentionally capped at 100 rows: deriving
+ * counters from that list would silently stop growing for busy accounts.
+ */
+export async function getUserShopOrderSummary(
+  userId: string,
+): Promise<UserShopOrderSummary> {
+  const result = await query<{
+    total_count: string;
+    open_count: string;
+    paid_amount_micros: string | null;
+  }>(
+    `SELECT COUNT(*)::text AS total_count,
+            (COUNT(*) FILTER (
+              WHERE status IN ('pending_payment', 'paid', 'procuring', 'refund_pending')
+            ))::text AS open_count,
+            COALESCE(SUM(amount_micros) FILTER (
+              WHERE status IN ('paid', 'procuring', 'delivered', 'refund_pending')
+            ), 0)::text AS paid_amount_micros
+       FROM shop_orders
+      WHERE user_id = $1`,
+    [userId],
+  );
+  const row = result.rows[0];
+  return {
+    total_count: toNumber(row?.total_count || 0),
+    open_count: toNumber(row?.open_count || 0),
+    paid_amount_micros: toNumber(row?.paid_amount_micros || 0),
+  };
+}
+
 export async function listAdminShopOrders(filter?: {
   status?: string;
   limit?: number;

@@ -18,7 +18,11 @@ import { formatDateTime } from "@/lib/format";
 import { getGatewayBalanceForRequest } from "@/lib/gateway-credits";
 import { formatCny } from "@/lib/money";
 import { SHOP_COPY } from "@/lib/shop/copy";
-import { listUserShopOrders, type ShopOrderStatus } from "@/lib/shop/orders";
+import {
+  getUserShopOrderSummary,
+  listUserShopOrders,
+  type ShopOrderStatus,
+} from "@/lib/shop/orders";
 
 export const metadata: Metadata = { title: "概览" };
 export const dynamic = "force-dynamic";
@@ -40,22 +44,28 @@ const PAID_ORDER_STATUSES: ShopOrderStatus[] = [
 export default async function DashboardPage() {
   const user = await requireUser();
 
-  const [balanceResult, orders, announcements] = await Promise.all([
+  const [balanceResult, orders, orderSummary, announcements] = await Promise.all([
     getGatewayBalanceForRequest(user.id).catch(() => ({
       balance: user.balance_micros / 1_000_000,
     })),
     listUserShopOrders(user.id).catch(() => []),
+    getUserShopOrderSummary(user.id).catch(() => null),
     listActiveAnnouncements(3).catch(() => []),
   ]);
 
   const balance = balanceResult.balance;
   const recentOrders = orders.slice(0, 5);
-  const openOrderCount = orders.filter((order) =>
-    OPEN_ORDER_STATUSES.includes(order.status),
-  ).length;
-  const spentMicros = orders
-    .filter((order) => PAID_ORDER_STATUSES.includes(order.status))
-    .reduce((sum, order) => sum + order.amount_micros, 0);
+  // The list above is capped at 100 rows; prefer the exact aggregate and only
+  // fall back to the visible rows if that query is unavailable.
+  const orderCount = orderSummary?.total_count ?? orders.length;
+  const openOrderCount =
+    orderSummary?.open_count ??
+    orders.filter((order) => OPEN_ORDER_STATUSES.includes(order.status)).length;
+  const spentMicros =
+    orderSummary?.paid_amount_micros ??
+    orders
+      .filter((order) => PAID_ORDER_STATUSES.includes(order.status))
+      .reduce((sum, order) => sum + order.amount_micros, 0);
 
   return (
     <>
@@ -99,7 +109,7 @@ export default async function DashboardPage() {
           <div className="stat-label">
             小店订单 <ShoppingBag size={15} />
           </div>
-          <div className="stat-value">{orders.length}</div>
+          <div className="stat-value">{orderCount}</div>
           <div className="stat-foot">累计下单</div>
         </div>
         <div className="stat-card">
