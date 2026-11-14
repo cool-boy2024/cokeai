@@ -531,7 +531,13 @@ async function persistProduct(supplierId: string, product: ZyanaiProduct): Promi
                CASE WHEN $11 = 'out_of_stock' THEN NULL ELSE now() END)
        ON CONFLICT (slug) DO UPDATE
          SET name = EXCLUDED.name, subtitle = EXCLUDED.subtitle,
-             description = EXCLUDED.description, price_micros = EXCLUDED.price_micros,
+             description = EXCLUDED.description,
+             -- Supplier cost still drives the suggested price, but an
+             -- operator-set retail price wins until they reset the lock.
+             price_micros = CASE
+               WHEN shop_products.price_locked THEN shop_products.price_micros
+               ELSE EXCLUDED.price_micros
+             END,
              warranty_type = EXCLUDED.warranty_type,
              warranty_days = EXCLUDED.warranty_days,
              warranty_note = EXCLUDED.warranty_note,

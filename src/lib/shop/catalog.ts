@@ -339,6 +339,8 @@ export type AdminShopProduct = PublicShopProduct & {
   copy_ready: boolean;
   compliance_ack_at: string | null;
   published_at: string | null;
+  price_locked: boolean;
+  price_locked_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -347,7 +349,8 @@ export async function listAdminProducts(): Promise<AdminShopProduct[]> {
   const rows = await query<RawProduct & Omit<AdminShopProduct, keyof RawProduct>>(
     `SELECT ${DETAIL_COLUMNS},
             status, availability_reason, pricing_review_required, copy_ready,
-            compliance_ack_at, published_at, created_at, updated_at
+            compliance_ack_at, published_at, price_locked, price_locked_at,
+            created_at, updated_at
        FROM shop_products
       ORDER BY sort_order ASC, created_at DESC`,
   );
@@ -359,6 +362,8 @@ export async function listAdminProducts(): Promise<AdminShopProduct[]> {
     copy_ready: Boolean(row.copy_ready),
     compliance_ack_at: row.compliance_ack_at,
     published_at: row.published_at,
+    price_locked: Boolean(row.price_locked),
+    price_locked_at: row.price_locked_at,
     created_at: row.created_at,
     updated_at: row.updated_at,
   }));
@@ -368,7 +373,8 @@ export async function getAdminProduct(id: string): Promise<AdminShopProduct | nu
   const rows = await query<RawProduct & Omit<AdminShopProduct, keyof RawProduct>>(
     `SELECT ${DETAIL_COLUMNS},
             status, availability_reason, pricing_review_required, copy_ready,
-            compliance_ack_at, published_at, created_at, updated_at
+            compliance_ack_at, published_at, price_locked, price_locked_at,
+            created_at, updated_at
        FROM shop_products
       WHERE id = $1
       LIMIT 1`,
@@ -384,6 +390,8 @@ export async function getAdminProduct(id: string): Promise<AdminShopProduct | nu
     copy_ready: Boolean(row.copy_ready),
     compliance_ack_at: row.compliance_ack_at,
     published_at: row.published_at,
+    price_locked: Boolean(row.price_locked),
+    price_locked_at: row.price_locked_at,
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
