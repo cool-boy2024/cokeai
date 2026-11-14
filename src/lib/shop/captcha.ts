@@ -4,6 +4,27 @@ import { ensureConnected, getRedis } from "@/lib/rate-limit";
 const CAPTCHA_CHARSET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
 const CAPTCHA_TTL_MS = 5 * 60_000;
 
+const globalForCaptcha = globalThis as unknown as {
+  cokeaiUsedCaptchas?: Map<string, number>;
+};
+
+function consumeCaptchaLocally(nonce: string): boolean {
+  if (!globalForCaptcha.cokeaiUsedCaptchas) {
+    globalForCaptcha.cokeaiUsedCaptchas = new Map();
+  }
+  const store = globalForCaptcha.cokeaiUsedCaptchas;
+  const now = Date.now();
+  if (store.size > 5_000) {
+    for (const [key, expiresAt] of store) {
+      if (expiresAt <= now) store.delete(key);
+    }
+    if (store.size > 5_000) store.clear();
+  }
+  if (store.has(nonce)) return false;
+  store.set(nonce, now + CAPTCHA_TTL_MS);
+  return true;
+}
+
 function captchaSecret(): string {
   const secret = process.env.APP_ENCRYPTION_KEY;
   if (!secret || secret.length < 24) {
@@ -95,10 +116,11 @@ export async function verifyShopCaptcha(
     return false;
   }
 
-  // A valid captcha can only be used once. If Redis is unavailable we still
-  // accept it, because the signature and expiry remain enforced.
+  // A valid captcha can only be used once. During a Redis outage the same
+  // guarantee is enforced in-process, so an attacker cannot replay one captcha
+  // for every order while Redis is down.
   const client = getRedis();
-  if (!client) return true;
+  if (!client) return consumeCaptchaLocally(nonce);
   try {
     await ensureConnected(client);
     const stored = await client.set(
@@ -114,6 +136,6 @@ export async function verifyShopCaptcha(
       "[shop-captcha]",
       error instanceof Error ? error.message : error,
     );
-    return true;
+    return consumeCaptchaLocally(nonce);
   }
 }

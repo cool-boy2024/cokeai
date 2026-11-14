@@ -13,9 +13,12 @@ function floatEnv(name: string, fallback: number): number {
 }
 
 function boolEnv(name: string, fallback: boolean): boolean {
-  const raw = process.env[name];
+  const raw = process.env[name]?.trim().toLowerCase();
   if (!raw) return fallback;
-  return raw.toLowerCase() !== "false";
+  if (["1", "true", "yes", "on"].includes(raw)) return true;
+  if (["0", "false", "no", "off"].includes(raw)) return false;
+  console.warn(`[config] ${name}=${raw} 不是有效的布尔值，使用默认值 ${fallback}`);
+  return fallback;
 }
 
 export const config = {

@@ -288,14 +288,35 @@ export async function adminStartShopOfferImportAction(formData: FormData): Promi
   redirect(`/admin/shop/sources?import=queued&job=${encodeURIComponent(jobId)}`);
 }
 
+/**
+ * The internal secret may only travel over the private Docker network or
+ * loopback. If an operator points the import webhook at an external host, the
+ * local import path still runs; leaking the secret that protects every internal
+ * endpoint is not an acceptable fallback.
+ */
+function internalWebhookSecret(url: string): string | undefined {
+  try {
+    const host = new URL(url).hostname;
+    const allowed = ["n8n", "app", "edge", "localhost", "127.0.0.1", "::1"].includes(host);
+    if (!allowed) {
+      console.warn("[shop] import webhook is external; internal secret not sent", host);
+      return undefined;
+    }
+    return process.env.INTERNAL_API_SECRET || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 async function notifyImportWebhook(jobId: string, offerId: string): Promise<boolean> {
   if (!config.shopImportWebhookUrl) return false;
+  const secret = internalWebhookSecret(config.shopImportWebhookUrl);
   try {
     const response = await fetch(config.shopImportWebhookUrl, {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        "x-internal-secret": process.env.INTERNAL_API_SECRET || "",
+        ...(secret ? { "x-internal-secret": secret } : {}),
       },
       body: JSON.stringify({ jobId, offerId }),
       signal: AbortSignal.timeout(5_000),

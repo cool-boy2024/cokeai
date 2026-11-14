@@ -13,6 +13,7 @@ import {
 import { query } from "@/lib/db";
 import { generateReferralCode } from "@/lib/crypto";
 import { fixedWindowLimit } from "@/lib/rate-limit";
+import { safeNextPath } from "@/lib/redirects";
 import { recordSecurityEventOnce } from "@/lib/security";
 import {
   ensureGatewayIdentity,
@@ -35,8 +36,7 @@ const registerSchema = z.object({
 });
 
 function safeNext(value: string | undefined): string {
-  if (!value || !value.startsWith("/") || value.startsWith("//")) return "/dashboard";
-  return value;
+  return safeNextPath(value);
 }
 
 async function authRateLimit(action: string, email: string): Promise<string | null> {
