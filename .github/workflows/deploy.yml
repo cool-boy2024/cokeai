@@ -12,9 +12,12 @@ permissions:
 
 jobs:
   deploy:
-    # Production credentials stay with the repository owner. Collaborators can
-    # review and merge code, but only this account can trigger a deploy.
-    if: vars.VPS_ENABLED == 'true' && github.actor == 'cool-boy2024'
+    # Production credentials stay in repository secrets. Both maintainers may
+    # trigger a deploy, but only from main; neither can read the secrets.
+    if: >-
+      vars.VPS_ENABLED == 'true' &&
+      github.ref == 'refs/heads/main' &&
+      contains(fromJSON('["cool-boy2024","wjlwww"]'), github.actor)
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
