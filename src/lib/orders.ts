@@ -1,7 +1,7 @@
 import { config } from "./config";
 import { withTransaction } from "./db";
 import { applyCreditOpById, enqueueTopup } from "./gateway-credits";
-import { receiptReference } from "./payments/validation";
+import { claimPersonalAlipayReceipt } from "./payments/receipts";
 
 export type ManualReceipt = { adminId: string; reference: string; amountMicros: string };
 
@@ -72,11 +72,13 @@ export async function fulfillOrder(orderId: string, manualReceipt?: ManualReceip
       const admin = await client.query("SELECT id FROM users WHERE id = $1 AND role = 'admin' AND status = 'active'", [manualReceipt.adminId]);
       if (!admin.rows[0]) throw new Error("无权核实付款");
       if (BigInt(manualReceipt.amountMicros) !== BigInt(order.amount_micros)) throw new Error("实际到账金额与订单不一致");
-      await client.query(
-        `INSERT INTO payment_receipts (order_id, provider, receipt_ref, amount_micros, reviewed_by)
-         VALUES ($1,$2,$3,$4,$5)`,
-        [orderId, "personal_alipay", receiptReference(manualReceipt.reference), manualReceipt.amountMicros, manualReceipt.adminId],
-      );
+      await claimPersonalAlipayReceipt(client, {
+        orderId,
+        orderKind: "credits",
+        reference: manualReceipt.reference,
+        amountMicros: manualReceipt.amountMicros,
+        adminId: manualReceipt.adminId,
+      });
     }
 
     await client.query(

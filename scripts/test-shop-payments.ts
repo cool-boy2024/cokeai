@@ -30,9 +30,12 @@ async function main() {
   const { query } = await import("../src/lib/db");
   const { suggestRetailPrice } = await import("../src/lib/shop/catalog");
   const { parseYuanMicros } = await import("../src/lib/payments/validation");
-  const { markShopOrderPaid, requestShopRefund, refundShopOrder } = await import(
-    "../src/lib/shop/orders"
-  );
+  const {
+    markShopOrderPaid,
+    rejectShopManualPaymentClaim,
+    requestShopRefund,
+    refundShopOrder,
+  } = await import("../src/lib/shop/orders");
 
   const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   let userId: string | null = null;
@@ -193,6 +196,104 @@ async function main() {
     });
     assert(!alipayManualPaid.alreadyPaid, "alipay_manual 渠道 ¥107.14 应按分匹配成功");
     assert((await orderStatus(alipayManual.id)) === "paid", "alipay_manual 确认后应为 paid");
+
+    // ------------------------------------------------------------------
+    // 3b. 同一交易号不能登记到第二张订单；打回后客户可重新提交
+    // ------------------------------------------------------------------
+    const duplicateRef = ref("DUPTX");
+    const firstClaim = await makeOrder({
+      status: "pending_payment",
+      provider: "alipay_manual",
+      amountMicros: 15_000_000,
+    });
+    await markShopOrderPaid({
+      orderNo: firstClaim.orderNo,
+      provider: "alipay_manual",
+      providerRef: duplicateRef,
+      paidAmountMicros: 15_000_000,
+      adminId,
+    });
+
+    const secondClaim = await makeOrder({
+      status: "pending_payment",
+      provider: "alipay_manual",
+      amountMicros: legacyAmount,
+    });
+    const duplicateError = await assertThrows(
+      () =>
+        markShopOrderPaid({
+          orderNo: secondClaim.orderNo,
+          provider: "alipay_manual",
+          providerRef: duplicateRef,
+          paidAmountMicros: enteredAmount,
+          adminId,
+        }),
+      "已登记在小店订单",
+      "同一交易号登记到第二张订单应被拒绝",
+    );
+    assert(
+      duplicateError instanceof Error && duplicateError.message.includes(firstClaim.orderNo),
+      "重复交易号错误信息应指出占用该交易号的订单号",
+    );
+    assert(
+      (await orderStatus(secondClaim.id)) === "pending_payment",
+      "重复交易号被拒后订单应保持待付款",
+    );
+    const noReceipt = await query(
+      "SELECT 1 FROM payment_receipts WHERE order_id = $1",
+      [secondClaim.id],
+    );
+    assert(noReceipt.rows.length === 0, "重复交易号不应给第二张订单写入收款记录");
+
+    // 客户上报了错误交易号，运营打回；订单仍待付款，上报信息被清空。
+    await query(
+      `INSERT INTO manual_alipay_payments
+         (order_id, order_kind, qr_data_url, payee, reported_reference, payer_note, reported_at)
+       VALUES ($1, 'shop', 'data:image/png;base64,test', '测试收款人', $2, '客户备注', now())`,
+      [secondClaim.id, duplicateRef],
+    );
+    await rejectShopManualPaymentClaim({
+      orderId: secondClaim.id,
+      adminId,
+      reason: "该交易号已用于其他订单，请核对后重新提交",
+    });
+    const clearedClaim = await query<{ reported_at: string | null; reported_reference: string | null }>(
+      "SELECT reported_at, reported_reference FROM manual_alipay_payments WHERE order_id = $1",
+      [secondClaim.id],
+    );
+    assert(
+      clearedClaim.rows[0]?.reported_at === null && clearedClaim.rows[0]?.reported_reference === null,
+      "打回后应清空客户上报的交易号和时间",
+    );
+    assert(
+      (await orderStatus(secondClaim.id)) === "pending_payment",
+      "打回不应改变订单的待付款状态",
+    );
+    assert(
+      (await eventCount(secondClaim.id, "payment_claim_rejected")) === 1,
+      "打回应写入 1 条客户可见的事件",
+    );
+    const rejectedEvent = await query<{ note: string }>(
+      "SELECT note FROM shop_order_events WHERE order_id = $1 AND event = 'payment_claim_rejected'",
+      [secondClaim.id],
+    );
+    assert(
+      rejectedEvent.rows[0]?.note === "该交易号已用于其他订单，请核对后重新提交",
+      "打回原因应写入事件，供客户在支付页查看",
+    );
+
+    // 打回后客户改用正确交易号，可以正常确认。
+    await markShopOrderPaid({
+      orderNo: secondClaim.orderNo,
+      provider: "alipay_manual",
+      providerRef: ref("RETRYTX"),
+      paidAmountMicros: enteredAmount,
+      adminId,
+    });
+    assert(
+      (await orderStatus(secondClaim.id)) === "paid",
+      "打回后重新提交正确交易号应能确认到账",
+    );
 
     const manualOffByOneCent = await makeOrder({
       status: "pending_payment",
@@ -384,6 +485,7 @@ async function main() {
             strictMatching: "usdt_trc20",
             refundStateMachine: ["paid", "procuring", "rejected"],
             refundAmountCapped: true,
+            duplicateReceipt: "rejected with owner order; claim can be returned",
             eventsWritten: true,
           },
         },

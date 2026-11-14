@@ -7,6 +7,7 @@ import {
   adminMarkShopPaidAction,
   adminOutOfStockShopAction,
   adminRefundShopAction,
+  adminRejectShopPaymentClaimAction,
   adminRequestShopRefundAction,
   adminStartProcurementAction,
 } from "@/app/actions/admin-shop";
@@ -339,6 +340,26 @@ export default async function AdminShopOrderDetailPage({
                   ) : (
                     <p className="shop-muted">客户尚未上报交易号，请以支付宝账单实际到账为准。</p>
                   )
+                ) : null}
+                {order.payment_provider === "alipay_manual" && manualClaim?.reported_at ? (
+                  <form action={adminRejectShopPaymentClaimAction} className="shop-admin-form">
+                    <input type="hidden" name="orderId" value={order.id} />
+                    <p className="shop-muted">
+                      交易号已用于其他订单、金额不符或查不到账时，打回后客户会在支付页看到原因并重新提交。
+                    </p>
+                    <label className="shop-field">
+                      <span>打回原因（客户可见）</span>
+                      <input
+                        name="reason"
+                        defaultValue="交易号或金额与收款账单不一致，请核对后重新提交"
+                        maxLength={200}
+                        required
+                      />
+                    </label>
+                    <button className="btn btn-danger btn-block" type="submit">
+                      打回，让客户重新提交
+                    </button>
+                  </form>
                 ) : null}
                 <form action={adminMarkShopPaidAction} className="shop-admin-form">
                   <input type="hidden" name="orderId" value={order.id} />
