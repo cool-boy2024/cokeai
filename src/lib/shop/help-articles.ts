@@ -1,23 +1,8 @@
 /**
- * Bridges shop products to the help center. Every product also gets one
- * first-party category guide (`guide.*`, seeded from scripts/guides.mjs);
- * supplier articles keep the `article.` prefix and are appended afterwards.
+ * Bridges shop products to the help center. Only mirrored supplier articles
+ * (`article.N`) are linked; the first-party `guide.*` category tutorials were
+ * removed on 2026-11-14 because product pages already carry the notices.
  */
-
-import {
-  productCategorySlug,
-  type ShopProductCategorySlug,
-} from "./categories";
-
-const CATEGORY_GUIDE_IDS: Record<ShopProductCategorySlug, string> = {
-  gpt: "guide.gpt",
-  claude: "guide.claude",
-  gemini: "guide.gemini",
-  grok: "guide.grok",
-  email: "guide.email",
-  sms: "guide.sms",
-  other: "guide.other",
-};
 
 const MUSE_HELP_IDS = ["article.9"];
 const CHATGPT_HELP_IDS = ["article.10"];
@@ -52,6 +37,5 @@ export function getProductHelpArticleIds(product: {
       )
     : [];
   const supplierIds = own.length > 0 ? own : getManualHelpArticleIds(product.slug, product.brand);
-  const guideId = CATEGORY_GUIDE_IDS[productCategorySlug(product)];
-  return Array.from(new Set([guideId, ...supplierIds]));
+  return Array.from(new Set(supplierIds));
 }

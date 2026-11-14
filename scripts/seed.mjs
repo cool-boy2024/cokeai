@@ -2,7 +2,6 @@ import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
 import pg from "pg";
 import { loadEnv } from "./env.mjs";
-import { GUIDES, renderGuideHtml } from "./guides.mjs";
 
 loadEnv();
 
@@ -188,33 +187,11 @@ try {
       [welcomeAnnouncement.title, welcomeAnnouncement.body, welcomeAnnouncement.level],
     );
 
-    // First-party category guides share the help_articles table with the
-    // mirrored supplier articles. Their `guide.` prefix keeps them out of the
-    // help sync's stale-hiding pass; content is owned by scripts/guides.mjs.
-    for (const guide of GUIDES) {
-      await client.query(
-        `INSERT INTO help_articles
-           (id, title, summary, body_html, source_url, published_at, content_hash,
-            sort_order, visible, synced_at)
-         VALUES ($1, $2, $3, $4, $5, now(), '', $6, TRUE, now())
-         ON CONFLICT (id) DO UPDATE SET
-           title = EXCLUDED.title,
-           summary = EXCLUDED.summary,
-           body_html = EXCLUDED.body_html,
-           source_url = EXCLUDED.source_url,
-           sort_order = EXCLUDED.sort_order,
-           visible = TRUE,
-           synced_at = now()`,
-        [
-          guide.id,
-          guide.title,
-          guide.summary,
-          renderGuideHtml(guide),
-          `/help/${guide.id}`,
-          guide.sortOrder,
-        ],
-      );
-    }
+    // First-party `guide.*` tutorials were removed on 2026-11-14 at the
+    // operator's request: product pages already carry the usage notices and
+    // the guides added little. Delete rows written by older builds. Nothing
+    // references help_articles by foreign key, so the delete cannot be blocked.
+    await client.query("DELETE FROM help_articles WHERE id LIKE 'guide.%'");
 
     for (const upstream of upstreams) {
       await client.query(

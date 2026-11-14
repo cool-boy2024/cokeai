@@ -106,10 +106,11 @@
   账号仍归 `account`），`/admin/shop/sources` 自动出现「邮箱」筛选。
   批量 AI 上架生成的草稿会写 `display_category='邮箱' / '接码'`，仍只生成
   `draft`，必须人工核价、审文案后手动发布。
-- 教程：新增 7 篇本站自建教程 `guide.gpt|claude|gemini|grok|email|sms|other`，
-  内容维护在 `scripts/guides.mjs`，seed 时 UPSERT 到 `help_articles`。
-  商品页自动带上对应分类教程，再接货源文章；帮助同步的失效隐藏只处理
-  `article.*`，不会把 `guide.*` 置为隐藏。`/help/<id>` 同时接受两种前缀。
+- 教程：2026-11-14 按用户要求移除 7 篇自建分类教程（`guide.gpt` 等
+  `guide.*`）。商品详情页已有注意事项，这些教程不再产生实际价值。
+  `scripts/guides.mjs` 已删除，seed 会幂等删除 `help_articles` 中
+  `id LIKE 'guide.%'` 的行；商品页只保留货源文章 `article.*`，没有关联文章
+  时整个教程区隐藏，不留死链。货源文章与帮助中心其它功能不变。
 - 授权边界：对齐的是通用品类口径；不抓取、不镜像 PriceAI 或其他参考站的
   商品、图片、教程文案。接入其正式 API 前需取得书面授权。
 - 测试：`npm run test:shop:categories`（纯函数，无需数据库）。
