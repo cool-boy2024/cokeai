@@ -5,6 +5,7 @@ import {
   adminBulkShopOfferImportAction,
   adminCreateShopProductFromOfferAction,
   adminRunShopImportQueueAction,
+  adminSaveShopSourceSettingsAction,
   adminStartShopOfferImportAction,
   adminSyncShopAction,
 } from "@/app/actions/admin-shop";
@@ -14,6 +15,10 @@ import { requireAdmin } from "@/lib/auth";
 import { config } from "@/lib/config";
 import { query } from "@/lib/db";
 import { suggestRetailPrice } from "@/lib/shop/catalog";
+import {
+  getShopSourceSettings,
+  getShopTargetMarginBps,
+} from "@/lib/shop/settings";
 import { formatDateTime } from "@/lib/format";
 import { formatCny } from "@/lib/money";
 import {
@@ -78,6 +83,11 @@ export default async function AdminShopSourcesPage({
 }) {
   await requireAdmin();
   const params = await searchParams;
+
+  const [sourceSettings, targetMarginBps] = await Promise.all([
+    getShopSourceSettings(),
+    getShopTargetMarginBps(),
+  ]);
 
   const [supplierResult, storeResult, offerResult, statsResult] = await Promise.all([
     query<{
@@ -201,7 +211,7 @@ export default async function AdminShopSourcesPage({
     const cost = Number(offer.price_micros);
     const listed = offer.retail_micros ? Number(offer.retail_micros) : 0;
     const retail =
-      listed > 0 ? listed : suggestRetailPrice(cost, config.shopImportTargetMarginBps);
+      listed > 0 ? listed : suggestRetailPrice(cost, targetMarginBps);
     const margin = retail > 0 ? ((retail - cost) / retail) * 100 : null;
     return { cost, listed, retail, margin, profit: retail > 0 ? retail - cost : 0 };
   };
@@ -303,6 +313,10 @@ export default async function AdminShopSourcesPage({
       {importNotice ? (
         <div className={`shop-import-banner is-${params.import}`}>{importNotice}</div>
       ) : null}
+      {params.saved === "1" ? (
+        <div className="notice notice-green">货源设置已保存，下次同步生效。</div>
+      ) : null}
+      {params.error ? <div className="notice notice-red">{params.error}</div> : null}
       <ImportJobWatcher jobId={trackedJob} pending={importPending} />
 
       <div className="stat-grid">
@@ -400,6 +414,68 @@ export default async function AdminShopSourcesPage({
           {supplier?.last_error ? (
             <p className="shop-form-error mt-16">{redactSource(supplier.last_error)}</p>
           ) : null}
+        </div>
+      </section>
+
+      <section className="panel mt-16">
+        <div className="panel-head">
+          <div>
+            <h2>货源设置</h2>
+            <p>数据源地址与目标毛利率；URL 留空表示回退到 .env 默认值。</p>
+          </div>
+        </div>
+        <div className="panel-body">
+          <form action={adminSaveShopSourceSettingsAction} className="form-stack">
+            <div className="field">
+              <label htmlFor="shop-feed-url">数据源 URL</label>
+              <input
+                id="shop-feed-url"
+                className="input mono"
+                name="feedUrl"
+                type="url"
+                defaultValue={sourceSettings.feedUrl}
+                placeholder={config.shopFeedUrl}
+                autoComplete="off"
+                spellCheck={false}
+              />
+              <small className="hint">Aibijia 格式的 products.json 地址。</small>
+            </div>
+            <div className="field">
+              <label htmlFor="shop-feed-meta-url">数据源 Meta URL</label>
+              <input
+                id="shop-feed-meta-url"
+                className="input mono"
+                name="feedMetaUrl"
+                type="url"
+                defaultValue={sourceSettings.feedMetaUrl}
+                placeholder={config.shopFeedMetaUrl}
+                autoComplete="off"
+                spellCheck={false}
+              />
+              <small className="hint">meta.json 地址，用于完整性校验。</small>
+            </div>
+            <div className="field">
+              <label htmlFor="shop-target-margin">目标毛利率（%）</label>
+              <input
+                id="shop-target-margin"
+                className="input"
+                name="targetMarginPercent"
+                type="number"
+                min="0"
+                max="90"
+                step="0.1"
+                defaultValue={(targetMarginBps / 100).toString()}
+              />
+              <small className="hint">
+                上架定价使用：售价 ≈ 成本 × (1 + 毛利率)。默认 30%。
+              </small>
+            </div>
+            <div className="form-actions">
+              <SubmitButton className="btn btn-dark btn-sm" pendingText="保存中…">
+                保存货源设置
+              </SubmitButton>
+            </div>
+          </form>
         </div>
       </section>
 

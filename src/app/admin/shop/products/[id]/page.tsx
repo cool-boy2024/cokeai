@@ -8,11 +8,11 @@ import {
   adminSaveShopProductAction,
 } from "@/app/actions/admin-shop";
 import { requireAdmin } from "@/lib/auth";
-import { config } from "@/lib/config";
 import { query } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { formatCny } from "@/lib/money";
 import { getAdminProduct, suggestRetailPrice } from "@/lib/shop/catalog";
+import { getShopTargetMarginBps } from "@/lib/shop/settings";
 import { offerAvailabilityLabel, validateProductCopy } from "@/lib/shop/copy";
 
 export const metadata: Metadata = { title: "编辑小店商品" };
@@ -60,8 +60,9 @@ export default async function AdminShopProductEditPage({
     product.price_micros > 0 && cost > 0
       ? ((product.price_micros - cost) / product.price_micros) * 100
       : null;
+  const targetMarginBps = await getShopTargetMarginBps();
   const suggestedPrice =
-    cost > 0 ? suggestRetailPrice(cost, config.shopImportTargetMarginBps) : 0;
+    cost > 0 ? suggestRetailPrice(cost, targetMarginBps) : 0;
 
   return (
     <>
@@ -317,7 +318,7 @@ export default async function AdminShopProductEditPage({
               <p className="shop-muted">
                 定时同步只更新成本和文案，不会覆盖当前售价。
                 {suggestedPrice > 0
-                  ? `按当前货源成本，自动定价约为 ${formatCny(suggestedPrice)}（目标毛利 ${(config.shopImportTargetMarginBps / 100).toFixed(0)}%）。`
+                  ? `按当前货源成本，自动定价约为 ${formatCny(suggestedPrice)}（目标毛利 ${(targetMarginBps / 100).toFixed(0)}%）。`
                   : ""}
               </p>
               <form action={adminResetShopPriceAction} className="shop-admin-form">

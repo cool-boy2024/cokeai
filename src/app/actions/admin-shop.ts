@@ -16,6 +16,11 @@ import {
   startShopProcurement,
 } from "@/lib/shop/orders";
 import { syncShopFeed } from "@/lib/shop/sync";
+import {
+  getShopTargetMarginBps,
+  saveShopSourceSettings,
+  saveShopTargetMarginBps,
+} from "@/lib/shop/settings";
 import { parseYuanMicros, receiptReference } from "@/lib/payments/validation";
 
 function text(formData: FormData, key: string): string {
@@ -30,6 +35,47 @@ export async function adminSyncShopAction(): Promise<void> {
   revalidatePath("/admin/shop");
   revalidatePath("/admin/shop/sources");
   revalidatePath("/shop");
+}
+
+/**
+ * Saves the supplier feed URL (and meta URL) plus the shop target margin from
+ * the sources page. URLs may be left empty to fall back to the .env default.
+ */
+export async function adminSaveShopSourceSettingsAction(formData: FormData): Promise<void> {
+  const admin = await requireAdmin();
+  const feedUrl = text(formData, "feedUrl");
+  const feedMetaUrl = text(formData, "feedMetaUrl");
+  const marginPercent = Number(formData.get("targetMarginPercent") || "");
+
+  const validateHttpUrl = (raw: string, label: string): string | null => {
+    if (!raw) return null;
+    try {
+      const url = new URL(raw);
+      if (url.protocol !== "https:" && url.protocol !== "http:") throw new Error();
+      return raw;
+    } catch {
+      throw new Error(`${label}不是合法的 http(s) 地址`);
+    }
+  };
+
+  try {
+    const feed = validateHttpUrl(feedUrl, "数据源 URL");
+    const meta = validateHttpUrl(feedMetaUrl, "数据源 Meta URL");
+    if (!Number.isFinite(marginPercent) || marginPercent < 0 || marginPercent > 90) {
+      throw new Error("目标毛利率需在 0–90% 之间");
+    }
+    await saveShopSourceSettings({ feedUrl: feed || "", feedMetaUrl: meta || "" });
+    await saveShopTargetMarginBps(Math.round(marginPercent * 100), admin.id);
+  } catch (error) {
+    redirect(
+      `/admin/shop/sources?error=${encodeURIComponent(
+        error instanceof Error ? error.message : "保存失败",
+      )}`,
+    );
+  }
+  revalidatePath("/admin/shop/sources");
+  revalidatePath("/shop");
+  redirect("/admin/shop/sources?saved=1");
 }
 
 export async function adminMarkShopPaidAction(formData: FormData): Promise<void> {
@@ -546,7 +592,7 @@ export async function adminResetShopPriceAction(formData: FormData): Promise<voi
     );
   }
 
-  const retail = suggestRetailPrice(cost, config.shopImportTargetMarginBps);
+  const retail = suggestRetailPrice(cost, await getShopTargetMarginBps());
   await query(
     `UPDATE shop_products
         SET price_micros = $2, price_locked = FALSE, price_locked_at = NULL,
