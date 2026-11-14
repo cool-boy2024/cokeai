@@ -431,7 +431,9 @@ async function persistProduct(supplierId: string, product: ZyanaiProduct): Promi
              warranty_days = EXCLUDED.warranty_days,
              warranty_note = EXCLUDED.warranty_note,
              availability = EXCLUDED.availability,
-             status = 'active',
+             -- Operators pause or archive a product on purpose. A scheduled
+             -- supply sync may refresh copy and price, but it must never put
+             -- a product they took down back on sale.
              published_at = COALESCE(shop_products.published_at, EXCLUDED.published_at),
              updated_at = now()
        RETURNING id`,
