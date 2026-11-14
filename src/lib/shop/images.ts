@@ -25,6 +25,9 @@ const USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36";
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+// Help-centre tutorial clips are screen recordings of 10-40 MB. They are
+// served from our own route with Range support so seeking still works.
+const MAX_VIDEO_BYTES = 60 * 1024 * 1024;
 // Supplier covers are often the shop's 128x128 product icon (2-3 KB), so a
 // byte floor cannot stand in for "is this a real picture". Only obvious
 // spacers are rejected by size; covers get a pixel-size gate instead.
@@ -34,6 +37,7 @@ const MAX_REDIRECTS = 3;
 const COVER_LIMIT = 1;
 const DESCRIPTION_LIMIT = 12;
 const ALLOWED_MIME = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
+const ALLOWED_VIDEO_MIME = new Set(["video/mp4", "video/webm"]);
 
 // A single sync run touches many products that often reuse the same banner
 // images. Keeping successful downloads in memory avoids fetching (and
@@ -133,6 +137,27 @@ function detectImage(bytes: Buffer): { mime: string; ext: string } | null {
 }
 
 /**
+ * Video magic bytes. MP4 is an ISO base-media file (`ftyp` at offset 4);
+ * WebM starts with the EBML header. Anything else is rejected, so a
+ * mislabelled HTML error page can never be stored as a clip.
+ */
+function detectVideo(bytes: Buffer): { mime: string; ext: string } | null {
+  if (bytes.length >= 12 && bytes.subarray(4, 8).toString("ascii") === "ftyp") {
+    return { mime: "video/mp4", ext: "mp4" };
+  }
+  if (
+    bytes.length >= 4 &&
+    bytes[0] === 0x1a &&
+    bytes[1] === 0x45 &&
+    bytes[2] === 0xdf &&
+    bytes[3] === 0xa3
+  ) {
+    return { mime: "video/webm", ext: "webm" };
+  }
+  return null;
+}
+
+/**
  * Reads pixel dimensions from the image header. Returns null when the format
  * is not understood, and callers treat that as "accept": the gate exists to
  * drop 1x1 spacers and 32x32 icons, not to reject valid artwork.
@@ -214,6 +239,7 @@ async function readCapped(response: Response, maxBytes: number): Promise<Buffer 
 
 async function downloadImage(
   url: string,
+  options: { kind?: "image" | "video" } = {},
 ): Promise<{
   bytes: Buffer;
   mime: string;
@@ -221,16 +247,23 @@ async function downloadImage(
   width: number | null;
   height: number | null;
 } | null> {
+  const video = options.kind === "video";
+  const allowedMime = video ? ALLOWED_VIDEO_MIME : ALLOWED_MIME;
+  const maxBytes = video ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES;
+  const timeoutMs = video ? 180_000 : 20_000;
+  const detect = video ? detectVideo : detectImage;
   let current = url;
   for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
     const target = await assertPublicHttpsUrl(current);
     const response = await fetch(target, {
       redirect: "manual",
       cache: "no-store",
-      signal: AbortSignal.timeout(20_000),
+      signal: AbortSignal.timeout(timeoutMs),
       headers: {
         "user-agent": USER_AGENT,
-        accept: "image/png,image/jpeg,image/webp,image/gif",
+        accept: video
+          ? "video/mp4,video/webm"
+          : "image/png,image/jpeg,image/webp,image/gif",
       },
     });
     if (response.status >= 300 && response.status < 400) {
@@ -239,17 +272,17 @@ async function downloadImage(
       current = new URL(location, target).toString();
       continue;
     }
-    if (!response.ok) throw new Error(`图片返回 ${response.status}`);
+    if (!response.ok) throw new Error(`媒体返回 ${response.status}`);
     const contentType = (response.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
-    if (!ALLOWED_MIME.has(contentType)) throw new Error("图片类型不受支持");
-    const bytes = await readCapped(response, MAX_IMAGE_BYTES);
-    if (!bytes || bytes.length === 0) throw new Error("图片为空或超过 5MB");
-    const detected = detectImage(bytes);
-    if (!detected) throw new Error("图片文件格式不正确");
-    const size = probeImageSize(bytes, detected.mime);
+    if (!allowedMime.has(contentType)) throw new Error("媒体类型不受支持");
+    const bytes = await readCapped(response, maxBytes);
+    if (!bytes || bytes.length === 0) throw new Error("媒体为空或超过大小上限");
+    const detected = detect(bytes);
+    if (!detected) throw new Error("媒体文件格式不正确");
+    const size = video ? null : probeImageSize(bytes, detected.mime);
     return { bytes, ...detected, width: size?.width ?? null, height: size?.height ?? null };
   }
-  throw new Error("图片跳转过多");
+  throw new Error("媒体跳转过多");
 }
 
 async function storeRemoteImageInternal(url: string): Promise<StoredImageWithSize | null> {
@@ -446,4 +479,144 @@ export async function replaceProductImages(
 
 export function imagePublicPath(image: { hash: string; ext: string }): string {
   return `/api/shop/images/${image.hash}.${image.ext}`;
+}
+
+// ---------------------------------------------------------------------------
+// Embedded media for mirrored help articles.
+//
+// Tutorial clips and screenshots live on the supplier CDN. Hotlinking them
+// would leak the supplier and break whenever that CDN changes, so the help
+// sync downloads each one once and rewrites the article to our own route.
+// Videos get their own table because they are much larger than product images.
+// ---------------------------------------------------------------------------
+
+type StoredMedia = { hash: string; ext: string; mime: string };
+const remoteMediaMemory = new Map<string, StoredMedia>();
+
+async function loadMappedMedia(sourceUrl: string): Promise<StoredMedia | null> {
+  try {
+    const rows = await query<{ media_hash: string; ext: string; mime: string }>(
+      `SELECT sms.media_hash, sm.mime, sm.ext
+         FROM shop_media_sources sms
+         JOIN shop_media sm ON sm.hash = sms.media_hash
+        WHERE sms.source_url = $1
+        LIMIT 1`,
+      [sourceUrl],
+    );
+    const row = rows.rows[0];
+    if (!row) return null;
+    return { hash: row.media_hash, ext: row.ext, mime: row.mime };
+  } catch {
+    return null;
+  }
+}
+
+async function storeRemoteMediaInternal(sourceUrl: string): Promise<StoredMedia | null> {
+  const cached = remoteMediaMemory.get(sourceUrl);
+  if (cached) return cached;
+  const mapped = await loadMappedMedia(sourceUrl);
+  if (mapped) {
+    remoteMediaMemory.set(sourceUrl, mapped);
+    return mapped;
+  }
+  try {
+    const downloaded = await downloadImage(sourceUrl, { kind: "video" });
+    if (!downloaded) return null;
+    const hash = createHash("sha256").update(downloaded.bytes).digest("hex");
+    await query(
+      `INSERT INTO shop_media (hash, mime, ext, bytes, byte_size)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (hash) DO NOTHING`,
+      [hash, downloaded.mime, downloaded.ext, downloaded.bytes, downloaded.bytes.length],
+    );
+    await query(
+      `INSERT INTO shop_media_sources (source_url, media_hash, updated_at)
+       VALUES ($1, $2, now())
+       ON CONFLICT (source_url) DO UPDATE
+         SET media_hash = EXCLUDED.media_hash, updated_at = now()`,
+      [sourceUrl, hash],
+    );
+    const stored = { hash, ext: downloaded.ext, mime: downloaded.mime };
+    if (remoteMediaMemory.size >= REMOTE_IMAGE_MEMORY_LIMIT) {
+      const oldest = remoteMediaMemory.keys().next().value;
+      if (oldest) remoteMediaMemory.delete(oldest);
+    }
+    remoteMediaMemory.set(sourceUrl, stored);
+    return stored;
+  } catch (error) {
+    console.warn(
+      `[shop/media] 跳过媒体 ${sourceUrl}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    return null;
+  }
+}
+
+export function mediaPublicPath(media: { hash: string; ext: string }): string {
+  return `/api/shop/media/${media.hash}.${media.ext}`;
+}
+
+const EMBEDDED_TAG_PATTERN = /<(?:img|video|source|a)\b[^>]*>/gi;
+const MEDIA_ATTR_PATTERN = /\b(src|poster|href)\s*=\s*["']([^"']+)["']/gi;
+const MEDIA_FILE_PATTERN = /\.(mp4|webm|png|jpe?g|webp|gif)(?:[?#]|$)/i;
+
+type EmbeddedCandidate = { url: string; kind: "image" | "video" };
+
+function embeddedCandidates(html: string): EmbeddedCandidate[] {
+  const found = new Map<string, EmbeddedCandidate>();
+  for (const tag of html.matchAll(EMBEDDED_TAG_PATTERN)) {
+    const tagName = /^<([a-z]+)/i.exec(tag[0])?.[1]?.toLowerCase() ?? "";
+    for (const attr of tag[0].matchAll(MEDIA_ATTR_PATTERN)) {
+      const url = attr[2]?.trim() ?? "";
+      if (!/^https?:\/\//i.test(url) || found.has(url)) continue;
+      // The supplier wraps some clips in <a href="...mp4">. Only treat a
+      // link as media when the file extension says so; other links (tutorial
+      // pages, product sites) are left to the normal link scrubber.
+      if (tagName === "a" && !MEDIA_FILE_PATTERN.test(url)) continue;
+      const isImage =
+        tagName === "img" ||
+        attr[1].toLowerCase() === "poster" ||
+        (tagName === "a" && !/\.(?:mp4|webm)(?:[?#]|$)/i.test(url));
+      found.set(url, { url, kind: isImage ? "image" : "video" });
+    }
+  }
+  return [...found.values()];
+}
+
+/**
+ * Downloads every external image/video referenced by an article and points it
+ * at our own route. URLs that cannot be mirrored are left untouched; the
+ * public read path removes any non-first-party URL, so a failed clip degrades
+ * to "missing" instead of a hotlink.
+ */
+export async function mirrorEmbeddedMedia(html: string): Promise<string> {
+  if (!html) return html;
+  const candidates = embeddedCandidates(html);
+  if (candidates.length === 0) return html;
+
+  const mapping = new Map<string, string>();
+  await Promise.all(
+    candidates.map(async (candidate) => {
+      const stored =
+        candidate.kind === "image"
+          ? await storeRemoteImageInternal(candidate.url)
+          : await storeRemoteMediaInternal(candidate.url);
+      if (!stored) return;
+      mapping.set(
+        candidate.url,
+        candidate.kind === "image"
+          ? imagePublicPath({ hash: stored.hash, ext: stored.ext })
+          : mediaPublicPath({ hash: stored.hash, ext: stored.ext }),
+      );
+    }),
+  );
+  if (mapping.size === 0) return html;
+
+  return html.replace(EMBEDDED_TAG_PATTERN, (tag) =>
+    tag.replace(MEDIA_ATTR_PATTERN, (match, attr: string, value: string) => {
+      const local = mapping.get(value.trim());
+      return local ? `${attr}="${local}"` : match;
+    }),
+  );
 }

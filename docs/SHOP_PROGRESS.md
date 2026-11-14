@@ -19,6 +19,9 @@
 - 防泄露：公开读取二次清洗商品与帮助内容；内部接口错误只回固定错误码；
   `/admin`、`/api`、`/dashboard` 加 noindex + no-store；商品页限流 120/min。
   巡检脚本 `scripts/audit-supplier-leaks.mjs <baseUrl>`。
+- 帮助中心媒体：同步时把文章里的截图和教程视频下载到 `shop_media`
+  （≤60MB，magic bytes 校验），改写为 `/api/shop/media/<hash>.<ext>`；
+  视频路由支持 Range/206、ETag/304，文章页不再热链货源 CDN。
 
 ## 2026-11-14：zyanai 商品定时同步（每 6 小时）
 
