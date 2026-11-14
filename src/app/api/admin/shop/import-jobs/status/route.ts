@@ -13,7 +13,12 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export async function GET(request: Request): Promise<Response> {
   const user = await getCurrentUser();
   if (!user || user.role !== "admin") {
-    return Response.json({ error: "unauthorized" }, { status: 401 });
+    // Do not reveal that this admin endpoint exists. Non-admins get the same
+    // 404 they would for any unknown path.
+    return new Response("Not Found", {
+      status: 404,
+      headers: { "Cache-Control": "no-store" },
+    });
   }
 
   const jobId = new URL(request.url).searchParams.get("jobId") || "";

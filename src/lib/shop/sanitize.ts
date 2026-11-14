@@ -24,7 +24,7 @@ const OFFICIAL_HOSTS = [
   "muse.ai",
 ];
 
-function isAllowedHost(host: string): boolean {
+export function isAllowedHost(host: string): boolean {
   const clean = host.toLowerCase().replace(/^www\./, "");
   if (clean === "cokeai.cc.cd" || clean.endsWith(".cokeai.cc.cd")) return true;
   return OFFICIAL_HOSTS.some((allowed) => clean === allowed || clean.endsWith(`.${allowed}`));

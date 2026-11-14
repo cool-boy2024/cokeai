@@ -22,10 +22,7 @@ export async function POST(request: Request): Promise<Response> {
   } catch (error) {
     console.error("[pricing-sync]", error);
     return Response.json(
-      {
-        ok: false,
-        error: error instanceof Error ? error.message : "pricing_sync_failed",
-      },
+      { ok: false, error: "pricing_sync_failed" },
       { status: 500 },
     );
   }

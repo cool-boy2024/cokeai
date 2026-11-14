@@ -44,11 +44,9 @@ export async function POST(request: Request): Promise<Response> {
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {
+    console.error("[internal/shop/import-jobs/run]", error);
     return Response.json(
-      {
-        ok: false,
-        error: error instanceof Error ? error.message : "shop_import_failed",
-      },
+      { ok: false, error: "shop_import_failed" },
       { status: 500, headers: { "Cache-Control": "no-store" } },
     );
   }

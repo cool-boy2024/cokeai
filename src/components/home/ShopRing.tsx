@@ -218,7 +218,11 @@ export function ShopRing({ products }: { products: PublicShopProduct[] }) {
             }}
           >
             <Link href={`/shop/${product.slug}`} className="shop-ring-card">
-              <ProductCover variant={product.cover_variant} brand={product.brand} />
+              <ProductCover
+                variant={product.cover_variant}
+                brand={product.brand}
+                imageUrl={product.image_url}
+              />
               <div className="shop-ring-body">
                 <span className="shop-ring-brand">
                   {product.brand.toUpperCase()}

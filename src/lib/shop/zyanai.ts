@@ -1,16 +1,20 @@
 import { config } from "@/lib/config";
 import { query, withTransaction } from "@/lib/db";
 import { suggestRetailPrice } from "@/lib/shop/catalog";
+import { replaceProductImages } from "@/lib/shop/images";
 import { extractReadableText } from "@/lib/shop/readable";
+import { buildRichDescriptionHtml } from "@/lib/shop/rich-description";
 import { sanitizeSupplierCopy } from "@/lib/shop/sanitize";
 
 /**
  * zyanai.cc mirror.
  *
  * The supplier exposes a public JSON list and a public item page. We copy the
- * offer (title, price, stock) and the factual product description, but never
- * its images, contact handles or wholesale tiers. Purchases stay manual: an
- * operator buys the matching item on zyanai after our order is paid.
+ * offer (title, price, stock) and the factual product description. Product
+ * images are mirrored into our own storage (shop_images) and served from our
+ * own domain, so the shop never hotlinks the supplier. Contact handles and
+ * wholesale tiers are still stripped. Purchases stay manual: an operator buys
+ * the matching item on zyanai after our order is paid.
  */
 
 const BASE = "https://zyanai.cc";
@@ -28,6 +32,7 @@ export type ZyanaiItem = {
   hide?: number;
   cover?: string;
   category_id?: number;
+  category?: { id?: number; name?: string } | null;
   delivery_way?: number;
 };
 
@@ -38,6 +43,8 @@ export type ZyanaiProduct = {
   availability: "in_stock" | "low_stock" | "out_of_stock";
   url: string;
   description: string;
+  /** Original description markup, mirrored and scrubbed before it is stored. */
+  descriptionHtml: string;
   tags: string[];
   warrantyType: "first_login" | "days" | "none";
   warrantyDays: number;
@@ -45,6 +52,10 @@ export type ZyanaiProduct = {
   brand: "chatgpt" | "claude" | "gemini" | "grok" | "muse" | "other";
   category: "subscription" | "account" | "topup" | "giftcard";
   slug: string;
+  displayCategory: string;
+  coverUrl: string | null;
+  imageUrls: { url: string; alt: string }[];
+  helpArticleIds: string[];
 };
 
 export type ZyanaiSyncResult = {
@@ -104,9 +115,53 @@ function scanJson(html: string, marker: string): unknown | null {
   return null;
 }
 
+const IMG_SRC_PATTERN = /<img\b[^>]*\bsrc\s*=\s*["']([^"']+)["'][^>]*>/gi;
+const HELP_ARTICLE_PATTERN = /\/user\/help\/(article\.\d+)/g;
+const MAX_DESCRIPTION_IMAGES = 8;
+
+/** Resolves a supplier-relative URL and keeps only public web protocols. */
+function absoluteHttpUrl(raw: string, base: string): string | null {
+  const trimmed = raw.trim().replace(/&amp;/g, "&");
+  if (!trimmed) return null;
+  try {
+    const url = new URL(trimmed, base);
+    if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+function extractImageUrls(descriptionHtml: string): string[] {
+  const urls: string[] = [];
+  const seen = new Set<string>();
+  for (const match of descriptionHtml.matchAll(IMG_SRC_PATTERN)) {
+    const resolved = absoluteHttpUrl(match[1] ?? "", BASE);
+    if (!resolved || seen.has(resolved)) continue;
+    seen.add(resolved);
+    urls.push(resolved);
+    if (urls.length >= MAX_DESCRIPTION_IMAGES) break;
+  }
+  return urls;
+}
+
+function extractHelpArticleIds(html: string): string[] {
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  for (const match of html.matchAll(HELP_ARTICLE_PATTERN)) {
+    const id = match[1];
+    if (seen.has(id)) continue;
+    seen.add(id);
+    ids.push(id);
+  }
+  return ids;
+}
+
 export function parseItemPage(html: string): {
   item: ZyanaiItem | null;
   descriptionHtml: string;
+  imageUrls: string[];
+  helpArticleIds: string[];
 } {
   const item = scanJson(html, 'setVar("_var_item"') as ZyanaiItem | null;
   // The class list varies between themes, so anchor on the token rather than
@@ -121,7 +176,12 @@ export function parseItemPage(html: string): {
       sectionEnd > 0 ? sectionEnd : contentStart + 50_000,
     );
   }
-  return { item, descriptionHtml };
+  return {
+    item,
+    descriptionHtml,
+    imageUrls: extractImageUrls(descriptionHtml),
+    helpArticleIds: extractHelpArticleIds(html),
+  };
 }
 
 export function availabilityOf(stock: unknown): "in_stock" | "low_stock" | "out_of_stock" {
@@ -214,6 +274,24 @@ function detectBrand(title: string): ZyanaiProduct["brand"] {
   return "other";
 }
 
+const DISPLAY_CATEGORY: Record<string, string> = {
+  "GPT（pro额度全体翻倍）": "GPT",
+  谷歌: "谷歌",
+  "GROK-推特X-cursor": "Grok",
+  Claude: "Claude",
+  设计类AI: "设计类 AI",
+  CapCut: "CapCut",
+  "youtube-油管": "YouTube",
+  suno: "Suno",
+  Autodesk: "Autodesk",
+  heygen: "HeyGen",
+};
+
+function displayCategoryOf(item: ZyanaiItem): string {
+  const name = item.category?.name?.trim() || "";
+  return DISPLAY_CATEGORY[name] || "其他";
+}
+
 function detectCategory(title: string): ZyanaiProduct["category"] {
   if (/cdk|卡密|兑换码/i.test(title)) return "giftcard";
   if (/成品账号|账号|号\b|普号|邮箱/i.test(title)) return "account";
@@ -253,7 +331,23 @@ function slugFor(id: number, brand: string, title: string): string {
   return `zy-${id}${brand !== "other" ? `-${brand}` : ""}${ascii ? `-${ascii}` : ""}`.slice(0, 80);
 }
 
-export function toProduct(item: ZyanaiItem, descriptionHtml: string): ZyanaiProduct {
+function imageAlt(url: string): string {
+  try {
+    const name = decodeURIComponent(new URL(url).pathname.split("/").filter(Boolean).pop() || "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 120);
+    return name || "商品说明图片";
+  } catch {
+    return "商品说明图片";
+  }
+}
+
+export function toProduct(
+  item: ZyanaiItem,
+  descriptionHtml: string,
+  extras?: { imageUrls?: string[]; helpArticleIds?: string[] },
+): ZyanaiProduct {
   const title = cleanTitle(item.name || "");
   const rawDescription = scrubZyanaiCopy(extractReadableText(descriptionHtml));
   // Some listings ship almost no copy; a short but useful note beats an empty
@@ -270,6 +364,9 @@ export function toProduct(item: ZyanaiItem, descriptionHtml: string): ZyanaiProd
   const text = [title, tags.join(","), description].join("\n");
   const brand = detectBrand(title);
   const category = detectCategory(title);
+  const imageUrls = (extras?.imageUrls ?? [])
+    .slice(0, MAX_DESCRIPTION_IMAGES)
+    .map((url) => ({ url, alt: imageAlt(url) }));
   return {
     externalId: `zyanai:${item.id}`,
     title,
@@ -277,10 +374,15 @@ export function toProduct(item: ZyanaiItem, descriptionHtml: string): ZyanaiProd
     availability: availabilityOf(item.stock),
     url: `${BASE}/item/${item.id}`,
     description,
+    descriptionHtml: descriptionHtml.slice(0, 80_000),
     tags,
     brand,
     category,
     slug: slugFor(item.id, brand, title),
+    displayCategory: displayCategoryOf(item),
+    coverUrl: item.cover ? absoluteHttpUrl(item.cover, BASE) : null,
+    imageUrls,
+    helpArticleIds: extras?.helpArticleIds ?? [],
     ...detectWarranty(text),
   };
 }
@@ -337,7 +439,10 @@ export async function syncZyanaiProducts(options?: {
           result.skipped.push({ id: item.id, reason: "下架" });
           continue;
         }
-        const product = toProduct(merged, parsed.descriptionHtml);
+        const product = toProduct(merged, parsed.descriptionHtml, {
+          imageUrls: parsed.imageUrls,
+          helpArticleIds: parsed.helpArticleIds,
+        });
         if (!product.title || product.costMicros <= 0) {
           result.skipped.push({ id: item.id, reason: "标题或价格为空" });
           continue;
@@ -387,7 +492,7 @@ export async function syncZyanaiProducts(options?: {
 
 async function persistProduct(supplierId: string, product: ZyanaiProduct): Promise<void> {
   const retail = suggestRetailPrice(product.costMicros, config.shopImportTargetMarginBps);
-  await withTransaction(async (client) => {
+  const productId = await withTransaction(async (client) => {
     const offer = await client.query<{ id: string; price_micros: string }>(
       `INSERT INTO shop_offers
          (supplier_id, external_key, supplier_product_slug, source_store, source_title,
@@ -420,9 +525,9 @@ async function persistProduct(supplierId: string, product: ZyanaiProduct): Promi
       `INSERT INTO shop_products
          (slug, brand, category, product_type, name, subtitle, description, cover_variant,
           price_micros, delivery_method, eta_min_minutes, eta_max_minutes,
-          warranty_type, warranty_days, warranty_note, status, availability,
-          copy_ready, sort_order, published_at)
-       VALUES ($1,$2,$3,$3,$4,$5,$6,$2,$7,'manual',15,60,$8,$9,$10,'active',$11,TRUE,$12,
+          warranty_type, warranty_days, warranty_note, help_article_ids,
+          display_category, status, availability, copy_ready, sort_order, published_at)
+       VALUES ($1,$2,$3,$3,$4,$5,$6,$2,$7,'manual',15,60,$8,$9,$10,$13::jsonb,$14,'active',$11,TRUE,$12,
                CASE WHEN $11 = 'out_of_stock' THEN NULL ELSE now() END)
        ON CONFLICT (slug) DO UPDATE
          SET name = EXCLUDED.name, subtitle = EXCLUDED.subtitle,
@@ -430,6 +535,8 @@ async function persistProduct(supplierId: string, product: ZyanaiProduct): Promi
              warranty_type = EXCLUDED.warranty_type,
              warranty_days = EXCLUDED.warranty_days,
              warranty_note = EXCLUDED.warranty_note,
+             help_article_ids = EXCLUDED.help_article_ids,
+             display_category = EXCLUDED.display_category,
              availability = EXCLUDED.availability,
              -- Operators pause or archive a product on purpose. A scheduled
              -- supply sync may refresh copy and price, but it must never put
@@ -450,6 +557,8 @@ async function persistProduct(supplierId: string, product: ZyanaiProduct): Promi
         product.warrantyNote,
         product.availability,
         900 + Math.round(Number(product.externalId.split(":")[1] || 0) / 1000),
+        JSON.stringify(product.helpArticleIds),
+        product.displayCategory,
       ],
     );
     const productId = shopProduct.rows[0].id;
@@ -463,5 +572,37 @@ async function persistProduct(supplierId: string, product: ZyanaiProduct): Promi
              supplier_availability = EXCLUDED.supplier_availability, last_synced_at = now()`,
       [productId, offerId, product.costMicros, product.availability],
     );
+
+    return productId;
   });
+
+  // Best effort: mirroring supplier images must never fail the product sync.
+  // replaceProductImages swallows its own errors and keeps old rows when every
+  // download fails. Its mapping lets inline article images point at our copy.
+  const imageMap = await replaceProductImages(productId, {
+    coverUrl: product.coverUrl,
+    images: product.imageUrls,
+  });
+
+  try {
+    const richHtml = buildRichDescriptionHtml(product.descriptionHtml, {
+      imageMap,
+      base: BASE,
+      identities: [{ store: "zyanai", url: BASE }],
+    });
+    if (richHtml) {
+      await query("UPDATE shop_products SET description_html = $2 WHERE id = $1", [
+        productId,
+        richHtml,
+      ]);
+    }
+  } catch (error) {
+    // The plain-text description remains the fallback; never fail the sync
+    // because a formatting pass rejected one page.
+    console.warn(
+      `[shop/zyanai] 商品 ${product.externalId} 富文本排版失败: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
 }

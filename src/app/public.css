@@ -2565,6 +2565,196 @@ body {
   line-height: 20px;
 }
 
+/* Product → help center pointer. Mirrors the supplier's 售后须知 block. */
+.shop-help-entry {
+  margin: 8px 0 24px;
+}
+
+.public-main .shop-section .shop-help-banner {
+  margin: 0;
+  padding: 12px 16px;
+  border-left: 5px solid #ef4444;
+  border-radius: 9px;
+  background: #fef2f2;
+  color: #991b1b;
+  font-size: 15px;
+  line-height: 24px;
+  font-weight: 600;
+}
+
+.public-main .shop-section h2.shop-help-heading {
+  margin: 24px 0 8px;
+  padding-left: 13px;
+  border-left: 5px solid #2563eb;
+  color: var(--ink);
+  font-size: 20px;
+  line-height: 28px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.shop-help-links {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.shop-help-link {
+  color: #2563eb;
+  font-size: 15px;
+  line-height: 24px;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  overflow-wrap: anywhere;
+}
+
+.shop-help-link:hover {
+  color: #1d4ed8;
+}
+
+/* Mirrored supplier article. Inline formatting from the source page is kept,
+   so these rules only supply safe defaults for the container and media. */
+.shop-rich-content {
+  max-width: 730px;
+  color: var(--ink-soft);
+  font-size: 16px;
+  line-height: 1.85;
+  overflow-wrap: anywhere;
+}
+
+.shop-rich-content > :first-child {
+  margin-top: 0;
+}
+
+.shop-rich-content > :last-child {
+  margin-bottom: 0;
+}
+
+.public-main .shop-section .shop-rich-content p {
+  margin: 10px 0;
+  color: var(--ink-soft);
+  font-size: inherit;
+  line-height: inherit;
+}
+
+.public-main .shop-section .shop-rich-content h1,
+.public-main .shop-section .shop-rich-content h2,
+.public-main .shop-section .shop-rich-content h3,
+.public-main .shop-section .shop-rich-content h4,
+.public-main .shop-section .shop-rich-content h5,
+.public-main .shop-section .shop-rich-content h6 {
+  margin: 24px 0 10px;
+  color: var(--ink);
+  line-height: 1.5;
+  text-wrap: balance;
+}
+
+.shop-rich-content img {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  margin: 16px auto;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper);
+}
+
+.public-main .shop-section .shop-rich-content ul,
+.public-main .shop-section .shop-rich-content ol {
+  margin: 10px 0;
+  padding-left: 1.5em;
+  color: var(--ink-soft);
+  font-size: inherit;
+  line-height: inherit;
+}
+
+.shop-rich-content ul {
+  list-style: disc;
+}
+
+.shop-rich-content ol {
+  list-style: decimal;
+}
+
+.shop-rich-content li {
+  margin: 4px 0;
+}
+
+.shop-rich-content blockquote {
+  margin: 14px 0;
+  padding: 10px 16px;
+  border-left: 4px solid var(--line);
+  color: var(--ink-soft);
+  background: var(--surface);
+  border-radius: 0 10px 10px 0;
+}
+
+.shop-rich-content table {
+  display: block;
+  max-width: 100%;
+  margin: 14px 0;
+  border-collapse: collapse;
+  overflow-x: auto;
+}
+
+.shop-rich-content th,
+.shop-rich-content td {
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.shop-rich-content a {
+  color: #2563eb;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.shop-rich-content a:hover {
+  color: #1d4ed8;
+}
+
+.shop-rich-content hr {
+  margin: 20px 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+
+.shop-description-images {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin: 20px 0 0;
+}
+
+.shop-description-images figure {
+  min-width: 0;
+  margin: 0;
+}
+
+.shop-description-images img {
+  display: block;
+  width: 100%;
+  max-height: 520px;
+  object-fit: contain;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper);
+}
+
+@media (max-width: 680px) {
+  .shop-description-images {
+    grid-template-columns: 1fr;
+    gap: 12px;
+    margin-top: 14px;
+  }
+}
+
 .shop-tutorial-media {
   overflow: hidden;
   border: 1px solid var(--line);
@@ -4795,6 +4985,40 @@ body {
     padding: 12px;
   }
 
+  .public-main .shop-help-entry {
+    margin: 6px 0 16px;
+  }
+
+  .public-main .shop-section .shop-help-banner {
+    padding: 10px 12px;
+    border-left-width: 4px;
+    border-radius: 8px;
+    font-size: 13px;
+    line-height: 20px;
+  }
+
+  .public-main .shop-section h2.shop-help-heading {
+    margin: 16px 0 6px;
+    padding-left: 10px;
+    border-left-width: 4px;
+    font-size: 17px;
+    line-height: 23px;
+  }
+
+  .shop-help-links {
+    gap: 6px;
+  }
+
+  .shop-help-link {
+    font-size: 13px;
+    line-height: 20px;
+  }
+
+  .shop-description-images {
+    gap: 10px;
+    margin-top: 12px;
+  }
+
   .public-main .shop-notices {
     margin: 6px 0 16px;
     padding: 16px;
@@ -4973,4 +5197,138 @@ body {
 .footer-security.is-off .footer-security-dot {
   background: var(--muted);
   box-shadow: none;
+}
+
+/* --------------------------------------------------------------------------
+   Shop category rail
+   Primary category tabs sit above the brand pills. Paper-style underline on
+   desktop, a single scrollable row on narrow screens.
+   -------------------------------------------------------------------------- */
+
+.public-main .shop-catalog-filters {
+  display: flex;
+  min-width: 0;
+  max-width: 100%;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.public-main .shop-category-rail {
+  display: flex;
+  min-width: 0;
+  max-width: 100%;
+  align-items: center;
+  gap: 2px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  border-bottom: 1px solid var(--line);
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.public-main .shop-category-rail::-webkit-scrollbar {
+  display: none;
+}
+
+.public-main .shop-category-link {
+  position: relative;
+  display: inline-flex;
+  min-height: 44px;
+  flex: 0 0 auto;
+  align-items: baseline;
+  gap: 6px;
+  padding: 10px 12px 12px;
+  border-radius: 10px 10px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 550;
+  line-height: 20px;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background-color var(--dur-color) var(--ease-out-quint),
+    color var(--dur-color) var(--ease-out-quint);
+}
+
+.public-main .shop-category-link::after {
+  position: absolute;
+  right: 10px;
+  bottom: -1px;
+  left: 10px;
+  height: 2px;
+  border-radius: 999px;
+  background: transparent;
+  content: "";
+  transition: background-color var(--dur-color) var(--ease-out-quint);
+}
+
+.public-main .shop-category-link:hover {
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.public-main .shop-category-link.active {
+  color: var(--ink);
+  font-weight: 650;
+}
+
+.public-main .shop-category-link.active::after {
+  background: var(--ink);
+}
+
+.public-main .shop-category-link:focus-visible {
+  border-radius: 8px;
+  outline: 2px solid var(--green);
+  outline-offset: -2px;
+}
+
+.public-main .shop-category-count {
+  display: inline-flex;
+  min-width: 20px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 550;
+  line-height: 1;
+}
+
+.public-main .shop-category-link.active .shop-category-count {
+  background: var(--paper-deep);
+  color: var(--ink);
+}
+
+@media (max-width: 720px) {
+  .public-main .shop-catalog-filters {
+    width: 100%;
+    gap: 8px;
+  }
+
+  .public-main .shop-category-rail {
+    gap: 0;
+  }
+
+  .public-main .shop-category-link {
+    min-height: 40px;
+    gap: 5px;
+    padding: 8px 10px 10px;
+    font-size: 13px;
+  }
+
+  .public-main .shop-category-link::after {
+    right: 8px;
+    left: 8px;
+  }
+
+  .public-main .shop-category-count {
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    font-size: 10px;
+  }
 }

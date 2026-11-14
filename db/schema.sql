@@ -767,3 +767,41 @@ CREATE INDEX IF NOT EXISTS help_articles_public_idx
 
 INSERT INTO schema_migrations (version) VALUES ('006_help_articles')
 ON CONFLICT (version) DO NOTHING;
+
+-- Mirrored shop images. Supplier images are copied into Postgres (content
+-- addressed by sha256) and served from our own domain, so a product page never
+-- hotlinks a supplier. A stored image is immutable: the hash changes when the
+-- bytes do, which lets /api/shop/images cache forever. All DDL below must stay
+-- idempotent because schema.sql runs in full on every start.
+CREATE TABLE IF NOT EXISTS shop_images (
+  hash TEXT PRIMARY KEY,
+  mime TEXT NOT NULL,
+  ext TEXT NOT NULL,
+  bytes BYTEA NOT NULL,
+  byte_size INTEGER NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS shop_product_images (
+  product_id UUID NOT NULL REFERENCES shop_products(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL CHECK (kind IN ('cover', 'description')),
+  position INTEGER NOT NULL DEFAULT 0,
+  image_hash TEXT NOT NULL REFERENCES shop_images(hash) ON DELETE CASCADE,
+  alt TEXT NOT NULL DEFAULT '',
+  source_url TEXT NOT NULL DEFAULT '',
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (product_id, kind, position)
+);
+CREATE INDEX IF NOT EXISTS shop_product_images_product_idx
+  ON shop_product_images(product_id, kind, position);
+
+-- Help articles shown alongside a mirrored product.
+ALTER TABLE shop_products ADD COLUMN IF NOT EXISTS help_article_ids JSONB NOT NULL DEFAULT '[]'::jsonb;
+
+-- Public category rail. Mirrors the supplier's category taxonomy with our own
+-- neutral labels; empty falls back to the brand at read time.
+ALTER TABLE shop_products ADD COLUMN IF NOT EXISTS display_category TEXT NOT NULL DEFAULT '';
+
+-- Supplier article markup, scrubbed and with images mirrored to our domain.
+-- The plain-text description stays as the fallback for older rows.
+ALTER TABLE shop_products ADD COLUMN IF NOT EXISTS description_html TEXT NOT NULL DEFAULT '';

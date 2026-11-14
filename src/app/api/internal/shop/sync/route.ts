@@ -15,11 +15,11 @@ export async function POST(request: Request): Promise<Response> {
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {
+    // Keep supplier hosts and upstream wording out of the HTTP response; the
+    // details stay in server logs for operators.
+    console.error("[internal/shop/sync]", error);
     return Response.json(
-      {
-        ok: false,
-        error: error instanceof Error ? error.message : "shop_sync_failed",
-      },
+      { ok: false, error: "shop_sync_failed" },
       { status: 500, headers: { "Cache-Control": "no-store" } },
     );
   }

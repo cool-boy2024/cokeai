@@ -32,12 +32,25 @@ const COVER_IMAGES: Record<string, string> = {
 export function ProductCover({
   variant,
   brand,
+  imageUrl,
   className = "",
 }: {
   variant?: string | null;
   brand?: string | null;
+  imageUrl?: string | null;
   className?: string;
 }) {
+  if (imageUrl) {
+    return (
+      <div
+        className={`shop-cover shop-cover-image ${className}`.trim()}
+        aria-hidden="true"
+      >
+        <img src={imageUrl} alt="" loading="lazy" />
+      </div>
+    );
+  }
+
   const key = variant || brand || "neutral";
   const image = COVER_IMAGES[key];
   if (image) {
