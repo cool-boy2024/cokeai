@@ -301,6 +301,8 @@ node scripts/audit-supplier-leaks.mjs https://cokeai.cc.cd
 
 脚本会抓 `/shop`、`/help`、sitemap 里的商品/教程页，检查供应商域名、`supplier_cost`、`source_title`、`source_store`、`shop_offers`、`货源`、`供货商`、`上游供应商`，并顺带确认 robots.txt 的 Disallow 和 sitemap 不含 `/admin`、`/api`、`/dashboard`。发现泄露退出码为 1。
 
+请求默认间隔 600ms，低于小店 120 次/分钟的限流；遇到 429 会按 `Retry-After` 退避重试。重试后仍有页面读不到时，脚本输出 `INCOMPLETE` 并以 1 退出——只有全部发现的页面都被检查过才会报 `OK`。需要更慢时设 `AUDIT_DELAY_MS=1000`。
+
 补充人工检查（可选）：
 
 ```bash

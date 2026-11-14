@@ -12,8 +12,11 @@
  *   node scripts/audit-supplier-leaks.mjs http://127.0.0.1:3000
  *   AUDIT_BASE_URL=https://cokeai.cc.cd node scripts/audit-supplier-leaks.mjs
  *
- * Exit code: 0 = clean, 1 = leak (or the audit could not read /shop).
- * It only sends GET requests and never writes to the database.
+ * Exit code: 0 = clean, 1 = leak, an unreadable page, or a page the app
+ * rate-limited so it could not be checked. A green run therefore means every
+ * discovered page was actually inspected.
+ * It only sends GET requests and never writes to the database. Requests are
+ * paced below the shop rate limit and 429s are retried with backoff.
  */
 
 const args = process.argv.slice(2);
@@ -24,6 +27,11 @@ const BASE = (flagBase || positional || process.env.AUDIT_BASE_URL || "http://12
 const ORIGIN = new URL(BASE).origin;
 const MAX_TARGETS = 200;
 const TIMEOUT_MS = 15_000;
+// The shop enforces 120 requests/minute per client. 600ms between requests
+// keeps the audit at 100/min, under the limit, and every response is real
+// page HTML rather than a 429 body.
+const REQUEST_DELAY_MS = Math.max(0, Number(process.env.AUDIT_DELAY_MS ?? 600) || 0);
+const RATE_LIMIT_RETRIES = 3;
 
 const PATTERNS = [
   { name: "supplier domain zyanai.cc", re: /zyanai\.cc/i },
@@ -50,6 +58,19 @@ const SKIP_SHOP_PATHS = new Set([
 const leaks = [];
 const warnings = [];
 const checked = [];
+const incomplete = [];
+
+let lastRequestAt = 0;
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function pace() {
+  const wait = lastRequestAt + REQUEST_DELAY_MS - Date.now();
+  if (wait > 0) await sleep(wait);
+  lastRequestAt = Date.now();
+}
 
 function decodeEntities(input) {
   return input
@@ -93,18 +114,36 @@ function addTarget(targets, path) {
   targets.add(path);
 }
 
+function retryAfterMs(response, attempt) {
+  const header = Number(response.headers.get("retry-after"));
+  if (Number.isFinite(header) && header > 0) {
+    return Math.min(header * 1000, 15_000);
+  }
+  return Math.min(2000 * 2 ** attempt, 10_000);
+}
+
 async function fetchPage(path) {
   const url = path.startsWith("http") ? path : `${BASE}${path}`;
-  const response = await fetch(url, {
-    redirect: "follow",
-    headers: {
-      "user-agent": "CokeAI-Supplier-Leak-Audit/1.0 (+read-only)",
-      accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    },
-    signal: AbortSignal.timeout(TIMEOUT_MS),
-  });
-  const text = await response.text();
-  return { url, status: response.status, text };
+  for (let attempt = 0; ; attempt += 1) {
+    await pace();
+    const response = await fetch(url, {
+      redirect: "follow",
+      headers: {
+        "user-agent": "CokeAI-Supplier-Leak-Audit/1.0 (+read-only)",
+        accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      },
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+    if (response.status === 429 && attempt < RATE_LIMIT_RETRIES) {
+      const wait = retryAfterMs(response, attempt);
+      await response.text().catch(() => "");
+      console.log(`  rate-limited on ${path}; retrying in ${Math.round(wait / 1000)}s...`);
+      await sleep(wait);
+      continue;
+    }
+    const text = await response.text();
+    return { url, status: response.status, text };
+  }
 }
 
 function scanPage(path, text) {
@@ -157,6 +196,8 @@ async function main() {
     for (const link of discoverLinks(help.text)) {
       if (link.split("?")[0].startsWith("/help/")) addTarget(targets, link.split("?")[0]);
     }
+  } else if (help.status === 429 || help.status === 0 || help.status >= 500) {
+    incomplete.push(`/help returned ${help.status}; help pages were not audited.`);
   } else {
     warnings.push(`/help returned ${help.status}; skipped (help centre may be empty).`);
   }
@@ -182,6 +223,8 @@ async function main() {
         addTarget(targets, path.split("?")[0]);
       }
     }
+  } else if (sitemap.status === 429 || sitemap.status === 0 || sitemap.status >= 500) {
+    incomplete.push(`/sitemap.xml returned ${sitemap.status}; discovery is incomplete.`);
   } else {
     warnings.push(`/sitemap.xml returned ${sitemap.status}; product pages not discovered from it.`);
   }
@@ -208,7 +251,12 @@ async function main() {
       error,
     }));
     if (page.status !== 200) {
-      warnings.push(`${path} returned ${page.status}; skipped.`);
+      if (page.status === 429 || page.status === 0 || page.status >= 500) {
+        incomplete.push(`${path} returned ${page.status}; page not inspected.`);
+      } else {
+        // A 404 on a discovered link is stale markup, not a leak.
+        warnings.push(`${path} returned ${page.status}; skipped.`);
+      }
       continue;
     }
     checked.push(path);
@@ -240,8 +288,24 @@ async function main() {
     return;
   }
 
+  if (incomplete.length > 0) {
+    console.log("");
+    console.log(`INCOMPLETE: ${incomplete.length} page(s) could not be inspected.`);
+    for (const entry of incomplete) console.log(`  - ${entry}`);
+    console.log("");
+    console.log(
+      "No leak was seen on the pages that loaded, but coverage is incomplete. " +
+        "Retry when the app is under load or raise AUDIT_DELAY_MS.",
+    );
+    process.exitCode = 1;
+    return;
+  }
+
   console.log("");
-  console.log("OK: no supplier domains, cost/title fields, or sourcing vocabulary found.");
+  console.log(
+    `OK: no supplier domains, cost/title fields, or sourcing vocabulary found ` +
+      `in ${checked.length} public pages.`,
+  );
 }
 
 main().catch((error) => {
