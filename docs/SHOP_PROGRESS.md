@@ -1466,3 +1466,28 @@ UI 实测：浏览 → 登录 → 下单（人工）→ 后台确认到账 → �
 - 回滚：`docker tag cokeai-app:pre-publicpause cokeai-app:local && docker
   compose up -d app`；恢复公开 API 展示只需把 `PUBLIC_API_SALES_ENABLED`
   改回 `true`。
+
+### 2026-11-14 09:12 CST 发布：审计修复（安全、USDT 结算、同步状态、自动备份）
+
+本轮只处理审计中发现的缺陷；易支付未做任何改动。
+
+- 安全（PR #71，`292a0b5`）：跳转只允许站内路径；帮助中心同步正文过
+  `sanitize-html`；布尔环境变量统一走 `boolEnv`；限流取
+  `CF-Connecting-IP`；Redis 不可用时内存兜底；补 HSTS/CSP（CSP 先
+  Report-Only）；内网回调接口只认 `INTERNAL_API_SECRET`。
+- USDT 结算（PR #72，`9806617`）：扫描器先尝试给订单记账，再更新存款；
+  记账遇到 `ORDER_CLOSED` 时把存款置为 `manual`，保留金额/TXID/确认数并
+  告警，不再静默丢钱；已确认但订单仍待支付的存款可跨宽限期恢复；新增
+  `/admin/shop/deposits` 到账账本；扫描/过期任务失败会发运维告警。
+- zyanai 同步（PR #73，`ddad0b0`）：`ON CONFLICT` 不再把运营手工暂停/归档
+  的商品改回 active。
+- 自动备份（PR #74，`60e8a01`）：新增 `backup` 容器，每天把 `cokeai` 与
+  `n8n` 导出到 `/home/deploy/cokeai/backups`（目录 0700、文件 0600，保留
+  14 天）；部署路径统一为 `/home/deploy/cokeai`；rsync 排除 `backups`，
+  避免 `--delete` 清掉备份。
+- 生产验证：备份镜像 `cokeai-app:pre-audit-fixes`；app healthy；
+  `/`、`/shop`、`/help` 200，`/pricing`、`/docs` 307；HSTS 与 CSP
+  响应头已生效；内网建单/扫描接口无密钥返回 401；`backup` 首轮已写出
+  `cokeai-20261114T011029Z.sql.gz`（751 KB）和 `n8n-...sql.gz`
+  （6.5 MB），`gunzip -t` 通过。
+- 仍关闭：`USDT_ENABLED=false`，等真实 xpub；易支付备用通道未配置。
