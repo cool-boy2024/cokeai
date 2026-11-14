@@ -33,6 +33,12 @@ const userItems = [
 
 const adminItems = [
   { href: "/admin", label: "概览", icon: LayoutDashboard },
+  // Gateway and security stay near the overview on purpose: they are the
+  // first stops during an incident, and they must remain inside the initial
+  // viewport (the mobile nav scrolls horizontally, so trailing items are
+  // effectively hidden).
+  { href: "/admin/gateway", label: "网关", icon: Gauge },
+  { href: "/admin/security", label: "安全", icon: ShieldCheck },
   { href: "/admin/orders", label: "订单", icon: ReceiptText },
   { href: "/admin/payments", label: "收款设置", icon: CreditCard },
   { href: "/admin/shop", label: "小店", icon: ShoppingBag },
@@ -44,8 +50,6 @@ const adminItems = [
   { href: "/admin/help", label: "帮助中心", icon: BookOpen },
   { href: "/admin/plans", label: "充值包", icon: CreditCard },
   { href: "/admin/pricing", label: "定价", icon: SlidersHorizontal },
-  { href: "/admin/gateway", label: "网关", icon: Gauge },
-  { href: "/admin/security", label: "安全", icon: ShieldCheck },
 ];
 
 function isActive(href: string, pathname: string): boolean {
