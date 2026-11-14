@@ -16,14 +16,26 @@ jobs:
     # review and merge code, but only this account can trigger a deploy.
     if: vars.VPS_ENABLED == 'true' && github.actor == 'cool-boy2024'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
+      NEXT_TELEMETRY_DISABLED: "1"
       VPS_HOST: ${{ secrets.VPS_HOST }}
       VPS_USER: ${{ secrets.VPS_USER }}
       VPS_PORT: ${{ secrets.VPS_PORT || '22' }}
       APP_DIR: ${{ secrets.VPS_APP_DIR || '/home/deploy/cokeai' }}
     steps:
       - uses: actions/checkout@v5
+
+      # Build on the runner, never on the VPS. A Next.js build on the 2-vCPU
+      # production box starves Docker's embedded DNS and the Cloudflare
+      # tunnel: on 2026-11-14 that produced a ten-minute 502 outage. The
+      # server now only loads a finished image, so a deploy costs seconds of
+      # container restart instead of minutes of host saturation.
+      - name: Build production image
+        run: |
+          docker build -t cokeai-app:release .
+          docker save cokeai-app:release | gzip -1 > cokeai-app.tgz
+          ls -lh cokeai-app.tgz
 
       - name: Set up SSH
         uses: webfactory/ssh-agent@v0.9.0
@@ -44,11 +56,16 @@ jobs:
             --exclude=.env* \
             --exclude=node_modules \
             --exclude=.next \
+            --exclude=.local-data \
+            --exclude=.taste-skill \
             --exclude=backups \
+            --exclude='*.log' \
             -e "ssh -p $VPS_PORT" \
             ./ "$VPS_USER@$VPS_HOST:$APP_DIR/"
+          rsync -az -e "ssh -p $VPS_PORT" \
+            cokeai-app.tgz "$VPS_USER@$VPS_HOST:$APP_DIR/cokeai-app.tgz"
 
-      - name: Build and restart
+      - name: Load image and restart app
         run: |
           ssh -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "APP_DIR='$APP_DIR' bash -s" <<'REMOTE'
           set -euo pipefail
@@ -64,13 +81,48 @@ jobs:
           fi
           COMPOSE="docker compose -f docker-compose.yml -f ops/sub2api/compose.yaml"
           $COMPOSE config --quiet
-          $COMPOSE $PROFILE up -d --build
+
+          PREV_TAG="cokeai-app:pre-$(date +%Y%m%d%H%M%S)"
+          if docker image inspect cokeai-app:local >/dev/null 2>&1; then
+            docker tag cokeai-app:local "$PREV_TAG"
+          fi
+
+          gzip -dc cokeai-app.tgz | docker load
+          rm -f cokeai-app.tgz
+          docker tag cokeai-app:release cokeai-app:local
+          $COMPOSE $PROFILE up -d --no-build app
+
+          health=""
+          for _ in $(seq 1 30); do
+            if $COMPOSE exec -T app wget -qO- http://127.0.0.1:3000/api/health >/dev/null 2>&1; then
+              health="ok"
+              break
+            fi
+            sleep 2
+          done
+          if [ "$health" != "ok" ]; then
+            echo "Health check failed, rolling back to $PREV_TAG"
+            $COMPOSE logs app --tail 80 --no-color || true
+            if docker image inspect "$PREV_TAG" >/dev/null 2>&1; then
+              docker tag "$PREV_TAG" cokeai-app:local
+              $COMPOSE $PROFILE up -d --no-build app || true
+            fi
+            exit 1
+          fi
+
+          # Keep the two newest pre-deploy snapshots; older ones fill the
+          # 40 GB disk for no benefit. Sort on the full CreatedAt (a plain
+          # `sort -k2` only compares the date, not the time) and pass images
+          # to rmi one at a time: one batch call aborts silently partway.
+          docker images --format '{{.Repository}}:{{.Tag}}|{{.CreatedAt}}' cokeai-app \
+            | grep '^cokeai-app:pre-' | sort -t'|' -k2,2 | head -n -2 | cut -d'|' -f1 \
+            | xargs -r -n 1 docker rmi >/dev/null 2>&1 || true
+
           $COMPOSE ps
           REMOTE
 
       - name: Smoke check
         run: |
           ssh -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" \
-            "cd '$APP_DIR' && docker compose -f docker-compose.yml -f ops/sub2api/compose.yaml exec -T app wget -qO- http://127.0.0.1:3000/api/health"
-          ssh -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" \
             "cd '$APP_DIR' && docker compose -f docker-compose.yml -f ops/sub2api/compose.yaml exec -T edge wget -qO- http://127.0.0.1:8080/healthz"
+          curl -fsS --max-time 20 https://cokeai.cc.cd/api/health

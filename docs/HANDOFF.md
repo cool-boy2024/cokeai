@@ -20,7 +20,7 @@ CokeAI（https://cokeai.cc.cd）现在对外是一家**数字商品小店**：Mu
 
 | 项 | 状态 |
 |---|---|
-| 生产应用代码 | `8ac899d`（2026-11-14 发布，含安全加固、USDT 结算恢复、zyanai 状态保留、自动备份） |
+| 生产应用代码 | `c49d5b0`（2026-11-14 发布，含商品图片/原文镜像、分类栏、帮助中心视频镜像、zyanai 同步脚本） |
 | 生产目录 | `/home/deploy/cokeai`，SSH：`ssh -i ~/.ssh/cokeai_deploy deploy@47.83.178.22` |
 | 容器 | app、postgres、redis、backup、sub2api、sub2api-postgres、sub2api-redis、edge、cloudflared、n8n、aiclient2api；app 启动后 healthy |
 | 自动备份 | `backup` 容器每天导出 `cokeai`/`n8n` 到 `/home/deploy/cokeai/backups`（目录 0700、文件 0600，保留 14 天） |
@@ -32,7 +32,7 @@ CokeAI（https://cokeai.cc.cd）现在对外是一家**数字商品小店**：Mu
 | AI 上架 | 后台货源页可单条/批量“AI 上架”，任务入队后后台执行，完成后自动打开审核页；n8n 每 2 分钟兜底。`SHOP_IMPORT_AI_*` 未配置，当前走规则提取 |
 | 商品 | active 14 个、archived 1 个（旧 Muse 商品）、草稿约 50 个 |
 | 订单 | 只有 2 笔过期测试单，无真实成交 |
-| 回滚镜像 | `cokeai-app:pre-audit-fixes`；更早的 `pre-hero-copy`、`pre-publicpause`、`pre-muse-tiers` 等仍在 |
+| 回滚镜像 | Deploy 工作流每次自动打 `cokeai-app:pre-<时间戳>` 并保留最近两个；更早的 `pre-audit-fixes`、`pre-hero-copy`、`pre-publicpause`、`pre-muse-tiers` 视磁盘情况在 |
 
 active 的 14 个商品：
 
@@ -76,35 +76,28 @@ active 的 14 个商品：
 
 `main` 只接受 PR，CI 必须过 `build`、`e2e`、`compose-smoke`，用 Squash and merge，然后本地 `git switch main && git pull --ff-only`。
 
-生产发布：
+生产发布**走 GitHub Actions 的 Deploy 工作流**，不要在 VPS 上构建：
 
 ```bash
-# 0. 建议先备份镜像
-ssh -i ~/.ssh/cokeai_deploy deploy@47.83.178.22 \
-  'cd /home/deploy/cokeai && docker tag $(docker compose images -q app) cokeai-app:pre-<变更名>'
-
-# 1. 同步代码（保留服务器 .env 和备份文件）
-rsync -az --delete \
-  --exclude '.git' --exclude '.next' --exclude 'node_modules' \
-  --exclude '.env' --exclude '.env.*' --exclude '.local-data' \
-  --exclude '.taste-skill' --exclude '*.log' --exclude 'backups' \
-  -e "ssh -i ~/.ssh/cokeai_deploy" ./ deploy@47.83.178.22:/home/deploy/cokeai/
-
-# 2. 构建并重启（backups 目录必须先由 deploy 用户创建）
-ssh -i ~/.ssh/cokeai_deploy deploy@47.83.178.22 \
-  'cd /home/deploy/cokeai && mkdir -p backups && docker compose build app && docker compose up -d app'
-
-# 3. 等待 healthy，回源验证
-ssh -i ~/.ssh/cokeai_deploy deploy@47.83.178.22 \
-  'curl -s -o /dev/null -w "%{http_code} %{time_total}s\n" -H "Host: cokeai.cc.cd" http://127.0.0.1:3000/'
+gh workflow run deploy.yml --ref main   # 等价于 npm run deploy:prod
+gh run list --workflow deploy.yml --limit 1
+gh run watch <run-id>
 ```
+
+工作流会：在 GitHub runner 上 `docker build` → `docker save` 成 tar.gz → rsync 代码和镜像到服务器 → 服务器 `docker load`、把旧镜像存成 `cokeai-app:pre-<时间戳>`、`docker compose up -d --no-build app` → 健康检查，失败自动回滚 → 只保留最近两个 `pre-*` 镜像 → 从外部再验 `/api/health`。
+
+**不要在服务器上运行 `docker compose build` / `up -d --build`。** 这台机器只有 2 vCPU / 3.6 GB 内存，Next.js 构建会把 Docker 内置 DNS 和 cloudflared 一起拖死：2026-11-14 10:45–10:57 CST 就是这样出现约 10 分钟的 Cloudflare 502（`lookup app on 127.0.0.11:53: i/o timeout`），同期 SSH 在 banner exchange 阶段超时。构建放到 runner 后，服务器只做 `docker load` + 重启，几秒完成。
 
 回滚：
 
 ```bash
 ssh -i ~/.ssh/cokeai_deploy deploy@47.83.178.22 \
-  'cd /home/deploy/cokeai && docker tag cokeai-app:pre-<变更名> cokeai-app:local && docker compose up -d app'
+  'cd /home/deploy/cokeai && docker tag cokeai-app:pre-<时间戳> cokeai-app:local && docker compose up -d --no-build app'
 ```
+
+可用快照：`docker images cokeai-app`。自动保留最近两个 `pre-*`；更早的若还在也可 `docker tag` 恢复，被清理后只能重发旧代码。
+
+可用性监控：`.github/workflows/uptime.yml` 每小时从 GitHub 外部探测 `/api/health` 与 `/shop`，连续失败会开一个带 `uptime-watch` 标记的 issue（GitHub 会发邮件），恢复后自动评论并关闭。它和站点不在同一台机器，主机整体失联时仍然有效。小时级偏慢；若需要分钟级告警，在 Cloudflare 面板给 `cokeai.cc.cd` 配 Health Check + 通知渠道。
 
 数据库备份容器会每天向 `/home/deploy/cokeai/backups/`（0700 目录、0600 文件）写入 `cokeai-*.sql.gz` 与 `n8n-*.sql.gz`，默认保留 14 天；`docker compose logs backup` 可查看执行结果。旧路径 `/home/deploy/backups/` 的历史备份仍在，可手动迁移。涉及商品/订单的发布，先做 `shop_products`、`shop_product_sources` 的 SQL 备份。
 

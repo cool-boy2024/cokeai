@@ -1513,3 +1513,29 @@ UI 实测：浏览 → 登录 → 下单（人工）→ 后台确认到账 → �
   `cokeai-20261114T011029Z.sql.gz`（751 KB）和 `n8n-...sql.gz`
   （6.5 MB），`gunzip -t` 通过。
 - 仍关闭：`USDT_ENABLED=false`，等真实 xpub；易支付备用通道未配置。
+
+### 2026-11-14 11:05 CST 发布：商品原文/图片镜像与帮助中心视频站内播放上线
+
+- PR #77（`f52b98e`）、#78（`d8d2e3e`）、#79（`c49d5b0`）合并并部署到
+  `cokeai-app:local`。
+- 生产验证：38 款商品 68 张站内图片（31 商品 + 37 帮助截图）、3 个教程视频
+  （97 MB）；`/help/article.10` 返回站内 `<video>`，`Range: bytes=0-1023`
+  经 Cloudflare 返回 206；`/`、`/shop`、商品页、`/help` 均 200；
+  `scripts/audit-supplier-leaks.mjs https://cokeai.cc.cd` 无货源
+  域名/字段/措辞。
+- 同步：zyanai 商品同步与帮助中心同步各跑一轮；帮助文章 9 篇更新，
+  媒体下载成功。
+
+### 2026-11-14 10:45–10:57 CST 事故：在 VPS 上构建导致 502
+
+- 现象：Cloudflare 返回 502（Error code 502），cloudflared 日志为
+  `lookup app on 127.0.0.11:53: i/o timeout`，SSH 在 banner exchange 阶段
+  超时；持续约 10 分钟，应用容器重建后恢复。
+- 原因：部署脚本在 2 vCPU / 3.6 GB 的 VPS 上执行 `docker compose build`，
+  Next.js 构建占满 CPU/IO，Docker 内置 DNS 与 cloudflared 无法响应。
+- 处置：Deploy 工作流改为在 GitHub runner 构建镜像，`docker save` 后随代码
+  一起传到服务器，服务器只 `docker load` + `up -d --no-build app`；健康检查
+  失败自动回滚，保留最近两个 `pre-*` 快照。新增 `uptime.yml` 每小时从
+  GitHub 外部探测，持续失败时自动开 issue。
+- 规则：**不要在服务器上 `docker compose build` 或 `up -d --build`**；
+  发布统一用 `gh workflow run deploy.yml --ref main`（`npm run deploy:prod`）。
