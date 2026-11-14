@@ -119,8 +119,11 @@ jobs:
           STALE=$(docker images --format '{{.Repository}}:{{.Tag}}|{{.CreatedAt}}' cokeai-app \
             | grep '^cokeai-app:pre-' | sort -t'|' -k2,2 | head -n -2 | cut -d'|' -f1 || true)
           if [ -n "$STALE" ]; then
-            echo "Pruning old snapshots: $STALE"
-            echo "$STALE" | xargs -r -n 1 docker rmi >/dev/null 2>&1 || true
+            echo "Pruning old snapshots:"
+            echo "$STALE" | while IFS= read -r image; do
+              [ -n "$image" ] || continue
+              docker rmi "$image" || echo "could not remove $image"
+            done
           fi
 
           $COMPOSE ps
