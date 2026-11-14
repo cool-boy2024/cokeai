@@ -7,6 +7,7 @@ import {
   adminMarkShopPaidAction,
   adminOutOfStockShopAction,
   adminRefundShopAction,
+  adminRequestShopRefundAction,
   adminStartProcurementAction,
 } from "@/app/actions/admin-shop";
 import { DeliveryFields } from "@/components/admin-shop/DeliveryFields";
@@ -76,6 +77,10 @@ export default async function AdminShopOrderDetailPage({
         ).rows[0] ?? null
       : null;
   const canProcure = order.status === "paid" || order.status === "procuring";
+  const canRefund =
+    order.status === "paid" ||
+    order.status === "procuring" ||
+    order.status === "refund_pending";
   const canPay = order.status === "pending_payment" && ["manual", "alipay_manual"].includes(order.payment_provider);
   const procurementText = [
     "[CokeAI 采购单]",
@@ -93,6 +98,17 @@ export default async function AdminShopOrderDetailPage({
   ]
     .filter(Boolean)
     .join("\n");
+
+  const refundText = [
+    "[CokeAI 退款协商]",
+    `订单：${order.order_no}`,
+    `商品：${order.product_name}`,
+    `订单金额：${formatCny(order.amount_micros)}`,
+    `下单时间：${formatDateTime(order.created_at)}`,
+    "",
+    "你好，我们已收到这单的退款申请。请把支付宝收款码发给我们（收款码需与实名一致），并告诉我们收款姓名。",
+    "运营核对订单与金额后按协商结果退款，退款完成前请不要重复申请。如果方便，也请说明退款原因，便于我们改进。",
+  ].join("\n");
 
   const paymentProviderLabel =
     PAYMENT_PROVIDER_LABELS[order.payment_provider] || order.payment_provider;
@@ -388,12 +404,12 @@ export default async function AdminShopOrderDetailPage({
             </section>
           ) : null}
 
-          {canProcure ? (
+          {canRefund ? (
             <section className="panel">
               <div className="panel-head">
                 <div>
                   <h2>缺货 / 退款</h2>
-                  <p>异常处理，操作前请先与客户确认</p>
+                  <p>异常处理，操作前请先与客户确认；退款一律协商后人工退回</p>
                 </div>
               </div>
               <div className="panel-body shop-panel-stack">
@@ -408,9 +424,35 @@ export default async function AdminShopOrderDetailPage({
                     标记缺货并转退款
                   </button>
                 </form>
+
+                <div className="shop-admin-form shop-form-section">
+                  <h3>协商退款</h3>
+                  <p className="shop-muted">
+                    先和客户确认退款金额与原因，请客户发支付宝收款码（需与实名一致）和收款姓名；
+                    运营线下退回后，再在下方登记并标记已退款。
+                  </p>
+                  <div className="shop-form-actions">
+                    <ProcurementCopy text={refundText} label="复制退款说明" />
+                  </div>
+                  <form action={adminRequestShopRefundAction} className="shop-panel-stack">
+                    <input type="hidden" name="orderId" value={order.id} />
+                    <label className="shop-field">
+                      <span>协商备注（内部）</span>
+                      <input name="reason" placeholder="已与客户协商退款，等待收款码" maxLength={500} />
+                    </label>
+                    <button
+                      className="btn btn-light btn-block"
+                      type="submit"
+                      disabled={order.status === "refund_pending"}
+                    >
+                      {order.status === "refund_pending" ? "已进入退款处理中" : "转退款处理中"}
+                    </button>
+                  </form>
+                </div>
+
                 <form action={adminRefundShopAction} className="shop-admin-form shop-form-section">
                   <input type="hidden" name="orderId" value={order.id} />
-                  <h3>直接退款</h3>
+                  <h3>登记已退款</h3>
                   <div className="shop-form-grid">
                     <label className="shop-field">
                       <span>退款金额（元）</span>
@@ -428,10 +470,14 @@ export default async function AdminShopOrderDetailPage({
                     </label>
                   </div>
                   <label className="shop-field">
+                    <span>客户收款账户（备注）</span>
+                    <input name="customerAccount" placeholder="支付宝姓名 / 收款码备注，仅内部记录" maxLength={120} />
+                  </label>
+                  <label className="shop-field">
                     <span>退款原因</span>
                     <input name="reason" maxLength={500} />
                   </label>
-                  <button className="btn btn-light btn-block" type="submit">
+                  <button className="btn btn-primary btn-block" type="submit">
                     标记已退款
                   </button>
                 </form>

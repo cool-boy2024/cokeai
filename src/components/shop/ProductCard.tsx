@@ -30,7 +30,10 @@ export function ProductCard({
       <div className="shop-product-card-body">
         <div className="shop-product-card-top">
           <span className="shop-product-brand">{product.brand.toUpperCase()}</span>
-          <AvailabilityBadge availability={product.availability} />
+          <AvailabilityBadge
+            availability={product.availability}
+            preorder={product.preorder}
+          />
         </div>
         <h3>{product.name}</h3>
         <p>{product.subtitle}</p>
@@ -38,7 +41,12 @@ export function ProductCard({
           <div>
             <strong>{productPriceLabel(product.price_micros)}</strong>
             <span>
-              {etaLabel(product.eta_min_minutes, product.eta_max_minutes)} ·{" "}
+              {etaLabel(
+                product.eta_min_minutes,
+                product.eta_max_minutes,
+                product.preorder,
+              )}{" "}
+              ·{" "}
               {warrantyShortLabel(
                 product.warranty_type,
                 product.warranty_days,

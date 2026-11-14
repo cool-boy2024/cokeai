@@ -124,7 +124,13 @@ export function BuyForm({
       <div className="shop-buy-panel">
         <div className="shop-buy-price">
           <strong>{productPriceLabel(product.price_micros)}</strong>
-          <span>{available ? SHOP_COPY.availability[product.availability as "in_stock" | "low_stock"] : "补货中"}</span>
+          <span>
+            {product.preorder
+              ? SHOP_COPY.preorder.availability
+              : available
+                ? SHOP_COPY.availability[product.availability as "in_stock" | "low_stock"]
+                : "补货中"}
+          </span>
         </div>
         <Link className="btn btn-primary btn-block" href={`/login?next=/shop/${product.slug}`}>
           登录后购买
@@ -139,7 +145,13 @@ export function BuyForm({
       <div className="shop-buy-panel">
         <div className="shop-buy-price">
           <strong>{productPriceLabel(product.price_micros)}</strong>
-          <span>{available ? "含人工服务" : "补货中"}</span>
+          <span>
+            {product.preorder
+              ? SHOP_COPY.preorder.eta
+              : available
+                ? "含人工服务"
+                : "补货中"}
+          </span>
         </div>
         <button
           className="btn btn-primary btn-block"
@@ -157,7 +169,10 @@ export function BuyForm({
           <div className="shop-form-error">收款通道配置中，暂不可下单。</div>
         ) : null}
         <p className="shop-buy-fine">
-          <ShieldCheck size={13} /> 数字商品，人工交付。付款后可在订单页查看进度。
+          <ShieldCheck size={13} />{" "}
+          {product.preorder
+            ? "数字商品，预定单。付款后按预定顺序采购，进度可在订单页查看。"
+            : "数字商品，人工交付。付款后可在订单页查看进度。"}
         </p>
         <p className="shop-buy-fine">
           <LockSimple size={13} /> 账号类信息加密保存，交付完成后 7 天自动清除。

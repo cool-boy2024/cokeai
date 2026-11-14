@@ -1,5 +1,6 @@
 import { query } from "@/lib/db";
 import { parseInputFields, parseStringList, type ShopInputField } from "./copy";
+import { PREORDER_MARKER } from "./preorder";
 import { sanitizeStoredRichHtml } from "./rich-description";
 import {
   sanitizeSupplierCopy,
@@ -52,6 +53,8 @@ export type PublicShopProduct = {
   refund_policy: string;
   input_fields: ShopInputField[];
   availability: string;
+  /** Supplier sells this listing as a preorder; overrides stock/ETA labels. */
+  preorder: boolean;
   featured: boolean;
   sort_order: number;
   display_category: string;
@@ -99,6 +102,7 @@ function hydrate(row: RawProduct): PublicShopProduct {
     eta_max_minutes: Number(row.eta_max_minutes),
     warranty_days: Number(row.warranty_days),
     sort_order: Number(row.sort_order),
+    preorder: Boolean(row.preorder),
     featured: Boolean(row.featured),
     includes: parseStringList(row.includes),
     usage_notes: parseStringList(row.usage_notes),
@@ -256,7 +260,10 @@ const PUBLIC_COLUMNS = `
   cover_variant, price_micros, delivery_method, eta_min_minutes, eta_max_minutes,
   warranty_type, warranty_days, warranty_note, includes, usage_notes, customer_notice,
   refund_policy, input_fields, availability, featured, sort_order, help_article_ids,
-  display_category
+  display_category,
+  -- Preorder is stored as a marker in availability_reason so no shipment or
+  -- schema change is needed; only the derived boolean reaches public types.
+  (availability_reason = '${PREORDER_MARKER}') AS preorder
 `;
 const DETAIL_COLUMNS = `${PUBLIC_COLUMNS}, description_html`;
 
@@ -400,5 +407,9 @@ export async function getAdminProduct(id: string): Promise<AdminShopProduct | nu
 export function suggestRetailPrice(costMicros: number, targetMarginBps = 2_200): number {
   if (costMicros <= 0) return 0;
   const margin = Math.min(Math.max(targetMarginBps, 0), 9_000);
-  return Math.ceil((costMicros * 10_000) / (10_000 - margin));
+  const raw = Math.ceil((costMicros * 10_000) / (10_000 - margin));
+  // Orders store micros, but customers see and pay two decimal places; a
+  // sub-cent price can never be matched by a bank transfer. Round up to
+  // whole cents. Legacy rows keep their old price until the next sync.
+  return Math.ceil(raw / 10_000) * 10_000;
 }

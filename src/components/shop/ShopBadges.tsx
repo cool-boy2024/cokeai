@@ -10,13 +10,16 @@ import {
 
 export function AvailabilityBadge({
   availability,
+  preorder = false,
   className = "",
 }: {
   availability: string;
+  preorder?: boolean;
   className?: string;
 }) {
-  const tone =
-    availability === "in_stock"
+  const tone = preorder
+    ? "shop-badge-muted"
+    : availability === "in_stock"
       ? "shop-badge-green"
       : availability === "low_stock"
         ? "shop-badge-yellow"
@@ -24,13 +27,21 @@ export function AvailabilityBadge({
   return (
     <span className={`shop-badge ${tone} ${className}`.trim()}>
       <i />
-      {availabilityLabel(availability)}
+      {availabilityLabel(availability, preorder)}
     </span>
   );
 }
 
-export function DeliveryBadge({ method }: { method: ShopDeliveryMethod | string }) {
-  return <span className="shop-badge shop-badge-muted">{deliveryLabel(method)}</span>;
+export function DeliveryBadge({
+  method,
+  preorder = false,
+}: {
+  method: ShopDeliveryMethod | string;
+  preorder?: boolean;
+}) {
+  return (
+    <span className="shop-badge shop-badge-muted">{deliveryLabel(method, preorder)}</span>
+  );
 }
 
 export function WarrantyBadge({
@@ -47,8 +58,18 @@ export function WarrantyBadge({
   );
 }
 
-export function EtaBadge({ min, max }: { min: number; max: number }) {
-  return <span className="shop-badge shop-badge-muted">{etaLabel(min, max)}</span>;
+export function EtaBadge({
+  min,
+  max,
+  preorder = false,
+}: {
+  min: number;
+  max: number;
+  preorder?: boolean;
+}) {
+  return (
+    <span className="shop-badge shop-badge-muted">{etaLabel(min, max, preorder)}</span>
+  );
 }
 
 export function AvailabilityLegend() {

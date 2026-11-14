@@ -2,6 +2,24 @@
 
 更新时间：2026-11-14
 
+## 2026-11-14：预定单同步、人工到账按分匹配、协商退款
+
+- 预定单同步：货源标记「库存不足，可预订」时（`reservation_enabled` 且无现货，
+  或商品页 `tokyo-reservation-notice` 为 `is-active`），商品写入
+  `availability_reason='preorder'`，公开页统一显示「预定 / 按预定顺序发货」，
+  不再显示现货和 15–60 分钟时效；恢复现货后同步自动清除该标记，不覆盖其他
+  熔断原因。规则集中在 `src/lib/shop/preorder.ts`，公开类型只暴露布尔
+  `preorder`，不需要迁移。测试：`npm run test:shop:preorder`。
+- 人工到账金额：`manual`、`alipay_manual` 改为按「分」比较（四舍五入到分），
+  解决显示 ¥107.14、订单实际为 107142858 micros 时确认报 `AMOUNT_MISMATCH`；
+  USDT 等自动渠道仍严格按 micros 比较。自动定价结果同步取整到分，旧数据在
+  下次同步后自然收敛。
+- 协商退款：后台订单页新增「协商退款」面板，可复制退款说明（请客户提供实名
+  支付宝收款码与姓名），把 `paid/procuring` 转为 `refund_pending`（幂等）；
+  客户订单页显示退款协商提示和可退金额。运营实际退款后在「登记退款」填写
+  收款账户，金额自动封顶为订单金额。状态机测试：
+  `npm run test:shop:payments`。
+
 ## 2026-11-14：单层分类轨、本站教程、邮箱/接码草稿
 
 - 分类：`/shop` 改为固定单层分类轨 —— 全部 / ChatGPT / Claude / Gemini /
