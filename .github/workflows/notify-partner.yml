@@ -1,0 +1,67 @@
+name: Notify partner
+
+# Sends one of the predefined operational notes to the partner mailbox through
+# the app's encrypted alert channel. SMTP credentials stay on the server: this
+# workflow only calls the internal endpoint with the container's secret.
+on:
+  workflow_dispatch:
+    inputs:
+      note:
+        description: "Predefined note to email to the partner"
+        required: true
+        type: choice
+        options:
+          - balance-order-update-failed-explainer
+
+permissions:
+  contents: read
+
+jobs:
+  notify:
+    if: >-
+      vars.VPS_ENABLED == 'true' &&
+      contains(fromJSON('["cool-boy2024","wjlwww"]'), github.actor)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+      VPS_USER: ${{ secrets.VPS_USER }}
+      VPS_PORT: ${{ secrets.VPS_PORT || '22' }}
+      APP_DIR: ${{ secrets.VPS_APP_DIR || '/home/deploy/cokeai' }}
+      NOTE: ${{ inputs.note }}
+    steps:
+      - name: Set up SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.VPS_SSH_KEY }}
+
+      - name: Trust host
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -p "$VPS_PORT" -H "$VPS_HOST" >> ~/.ssh/known_hosts
+
+      - name: Email the note to the partner
+        run: |
+          ssh -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "APP_DIR='$APP_DIR' NOTE='$NOTE' bash -s" <<'REMOTE'
+          set -euo pipefail
+          cd "$APP_DIR"
+          COMPOSE="docker compose -f docker-compose.yml -f ops/sub2api/compose.yaml"
+          $COMPOSE exec -T -e NOTE="$NOTE" app node -e '
+            fetch("http://127.0.0.1:3000/api/internal/partner-note", {
+              method: "POST",
+              headers: {
+                "content-type": "application/json",
+                "x-internal-secret": process.env.INTERNAL_API_SECRET || "",
+              },
+              body: JSON.stringify({ note: process.env.NOTE }),
+            })
+              .then(async (response) => {
+                console.log(response.status, await response.text());
+                process.exit(response.ok ? 0 : 1);
+              })
+              .catch((error) => {
+                console.error("request failed", error.message);
+                process.exit(1);
+              });
+          ' </dev/null
+          REMOTE
