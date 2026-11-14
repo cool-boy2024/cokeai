@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowUpRight, ReceiptText } from "lucide-react";
+import { ArrowUpRight, MonitorPlay, ReceiptText } from "lucide-react";
 import { ChannelBreakdown, ProductRanking, TrendChart } from "@/components/admin-shop/AnalyticsPanels";
 import { requireAdmin } from "@/lib/auth";
 import { formatDateTime } from "@/lib/format";
@@ -70,6 +70,12 @@ export default async function AdminShopAnalyticsPage() {
           </span>
           <Link className="btn btn-light btn-sm" href="/admin/shop">
             小店概览
+          </Link>
+          <Link
+            className="btn btn-light btn-sm"
+            href="/admin/shop/analytics/screen"
+          >
+            <MonitorPlay size={14} /> 大屏模式
           </Link>
           <Link className="btn btn-dark btn-sm" href="/admin/shop/orders">
             订单明细 <ArrowUpRight size={14} />
