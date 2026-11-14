@@ -98,6 +98,15 @@ const nextConfig: NextConfig = {
           { key: "Cache-Control", value: "public, max-age=31536000, immutable" },
         ],
       },
+      // Mirrored tutorial clips are content-addressed too. Range requests
+      // from the <video> element must not be revalidated on every seek.
+      {
+        source: "/api/shop/media/:path*",
+        headers: [
+          { key: "X-Robots-Tag", value: "noindex, nofollow, noarchive" },
+          { key: "Cache-Control", value: "public, max-age=31536000, immutable" },
+        ],
+      },
     ];
   },
 };

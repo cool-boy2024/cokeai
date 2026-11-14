@@ -805,3 +805,23 @@ ALTER TABLE shop_products ADD COLUMN IF NOT EXISTS display_category TEXT NOT NUL
 -- Supplier article markup, scrubbed and with images mirrored to our domain.
 -- The plain-text description stays as the fallback for older rows.
 ALTER TABLE shop_products ADD COLUMN IF NOT EXISTS description_html TEXT NOT NULL DEFAULT '';
+
+-- Embedded media for mirrored help articles (tutorial videos and screenshots).
+-- Kept separate from shop_images so product cards never scan video rows; the
+-- public URL is /api/shop/media/<hash>.<ext> and the route supports Range.
+CREATE TABLE IF NOT EXISTS shop_media (
+  hash TEXT PRIMARY KEY,
+  mime TEXT NOT NULL,
+  ext TEXT NOT NULL,
+  bytes BYTEA NOT NULL,
+  byte_size INTEGER NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Source URL -> stored media. Lets the hourly help sync reuse a 10 MB clip
+-- instead of downloading it again on every run.
+CREATE TABLE IF NOT EXISTS shop_media_sources (
+  source_url TEXT PRIMARY KEY,
+  media_hash TEXT NOT NULL REFERENCES shop_media(hash) ON DELETE CASCADE,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);

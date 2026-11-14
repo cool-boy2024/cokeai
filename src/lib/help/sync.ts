@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import sanitizeHtml from "sanitize-html";
 import { query } from "@/lib/db";
+import { mirrorEmbeddedMedia } from "@/lib/shop/images";
 import { sanitizeSupplierCopy } from "@/lib/shop/sanitize";
 
 /**
@@ -318,10 +319,17 @@ export async function syncHelpArticles(): Promise<HelpSyncResult> {
       continue;
     }
     const rawBody = extractContainer(html, "help-article-content") ?? "";
-    const bodyHtml = sanitize(rawBody);
+    let bodyHtml = sanitize(rawBody);
     if (!bodyHtml) {
       errors.push(`${safeTitle}：正文为空，已跳过`);
       continue;
+    }
+    // Screenshots and tutorial clips are downloaded once and served from our
+    // own route, so the public page never hotlinks the supplier CDN.
+    try {
+      bodyHtml = await mirrorEmbeddedMedia(bodyHtml);
+    } catch (error) {
+      console.warn("[help-sync] media mirror failed", entry.id, error);
     }
     if (bodyHtml.length > 600_000) {
       errors.push(`${safeTitle}：正文超过 600 KB，已跳过`);

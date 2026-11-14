@@ -36,9 +36,35 @@ function isSafeHelpUrl(value: string): boolean {
   }
 }
 
+// sanitize-html does not expose a player's child tags to exclusiveFilter, so a
+// <video> whose URL lives in its <source> child looks empty and gets dropped.
+// Copy the first mirrored <source> up onto the <video> itself first; the same
+// pass unwraps a link around the player so clicking it never leaves the site.
+function promoteVideoSources(html: string): string {
+  const withSrc = html.replace(
+    /<video\b([^>]*)>([\s\S]*?)<\/video>/gi,
+    (whole, attrs: string, inner: string) => {
+      if (/\bsrc\s*=/i.test(attrs)) return whole;
+      const source = /<source\b[^>]*\bsrc\s*=\s*["']([^"']+)["']/i.exec(inner);
+      if (!source) return whole;
+      return `<video${attrs} src="${source[1]}"></video>`;
+    },
+  );
+  return withSrc.replace(
+    /<a\b([^>]*)>([\s\S]*?)<\/a>/gi,
+    (whole, attrs: string, inner: string) => {
+      if (!/<video\b/i.test(inner)) return whole;
+      const href = /\bhref\s*=\s*["']([^"']+)["']/i.exec(attrs)?.[1] ?? "";
+      // Keep the player and its label, drop the file link they were wrapped
+      // in so pressing play can never navigate away from the article.
+      return /\.(?:mp4|webm)(?:[?#]|$)/i.test(href) ? inner : whole;
+    },
+  );
+}
+
 function sanitizeHelpHtml(html: string): string {
   if (!html) return "";
-  const parsed = sanitizeHtml(html, {
+  const parsed = sanitizeHtml(promoteVideoSources(html), {
     allowedTags: HELP_ALLOWED_TAGS,
     allowedAttributes: {
       a: ["href", "title", "target", "rel"],
@@ -87,6 +113,8 @@ function sanitizeHelpHtml(html: string): string {
     },
     exclusiveFilter: (frame) =>
       (frame.tag === "img" && !frame.attribs.src) ||
+      // promoteVideoSources() has already moved the mirrored URL onto the
+      // player, so a <video> without src really has no playable source.
       (frame.tag === "video" && !frame.attribs.src) ||
       (frame.tag === "source" && !frame.attribs.src),
   });
