@@ -1,6 +1,6 @@
 # 交接说明
 
-最后核对：2026-10-30 11:00 CST（服务器 + 仓库实测）。之后线上可能已经变化，动手前请按本文的“验证”一节重新核对。
+最后核对：2026-11-14 09:12 CST（服务器 + 仓库实测）。之后线上可能已经变化，动手前请按本文的“验证”一节重新核对。
 
 这份文档写给接手的伙伴，以及帮伙伴读项目的 AI。目标是让你在不碰生产的前提下，先搞清楚现在是什么状态、哪些不能动、下一步该做什么。
 
@@ -16,22 +16,23 @@
 
 CokeAI（https://cokeai.cc.cd）现在对外是一家**数字商品小店**：Muse 成品号、Codex 单次接码、ChatGPT/Claude 卡密与代充。原有的 AI API 中转业务**暂时不在公开页面销售**，但后端、`/v1` 网关和后台模型管理仍在，随时可以用一个开关恢复展示。
 
-## 当前线上状态（2026-10-30 11:00 CST）
+## 当前线上状态（2026-11-14 09:12 CST）
 
 | 项 | 状态 |
 |---|---|
-| 生产应用代码 | `9d40457`（2026-10-30 发布） |
+| 生产应用代码 | `8ac899d`（2026-11-14 发布，含安全加固、USDT 结算恢复、zyanai 状态保留、自动备份） |
 | 生产目录 | `/home/deploy/cokeai`，SSH：`ssh -i ~/.ssh/cokeai_deploy deploy@47.83.178.22` |
-| 容器 | app、postgres、redis、sub2api、sub2api-postgres、sub2api-redis、edge、cloudflared、n8n、aiclient2api；app 启动后 healthy |
+| 容器 | app、postgres、redis、backup、sub2api、sub2api-postgres、sub2api-redis、edge、cloudflared、n8n、aiclient2api；app 启动后 healthy |
+| 自动备份 | `backup` 容器每天导出 `cokeai`/`n8n` 到 `/home/deploy/cokeai/backups`（目录 0700、文件 0600，保留 14 天） |
 | 公开 API 销售 | 关闭（`src/lib/public-features.ts` 的 `PUBLIC_API_SALES_ENABLED=false`） |
 | `/pricing`、`/docs` | 307 跳 `/shop`；导航、页脚、sitemap、metadata 已是小店口径 |
 | 首页 | 保留 HeroOrbit 品牌环绕、TaglineReveal 逐词点亮、ShopRing 环形商品舞台；文案是“订阅、账号、接码”。**这是运营明确要求保留的门面，不要重排** |
-| USDT 支付 | 代码就绪，生产 `USDT_ENABLED=false`，顾客看不到二维码/倒计时 |
+| USDT 支付 | 代码就绪，生产 `USDT_ENABLED=false`，顾客看不到二维码/倒计时；到账异常可在后台 `/admin/shop/deposits` 查看，已确认但订单关闭的存款会标为 `manual` 并告警 |
 | 易支付备用通道 | `SHOP_EASYPAY_ENABLED=false`，未配置服务商凭据 |
 | AI 上架 | 后台货源页可单条/批量“AI 上架”，任务入队后后台执行，完成后自动打开审核页；n8n 每 2 分钟兜底。`SHOP_IMPORT_AI_*` 未配置，当前走规则提取 |
 | 商品 | active 14 个、archived 1 个（旧 Muse 商品）、草稿约 50 个 |
 | 订单 | 只有 2 笔过期测试单，无真实成交 |
-| 回滚镜像 | `cokeai-app:pre-hero-copy`；更早的 `pre-publicpause`、`pre-muse-tiers` 等仍在 |
+| 回滚镜像 | `cokeai-app:pre-audit-fixes`；更早的 `pre-hero-copy`、`pre-publicpause`、`pre-muse-tiers` 等仍在 |
 
 active 的 14 个商品：
 
@@ -141,8 +142,11 @@ curl -s -o /dev/null -w "health %{http_code}\n" http://127.0.0.1:3000/api/health
 - **Next.js 16** 与训练数据不同，写代码前先读 `node_modules/next/dist/docs/`。
 - **本地开发**：Postgres/Redis 端口只在 `.local-data/compose.local.yml` 里临时暴露；本地是空库，不要导入生产数据。曾经占用 3011 端口跑 dev。
 
-## 安全（2026-10-30）
+## 安全（2026-11-14）
 
+- 响应头已补 `Strict-Transport-Security`、`X-Content-Type-Options`、`X-Frame-Options`、
+  `Referrer-Policy`、`Permissions-Policy`；CSP 目前是 `Content-Security-Policy-Report-Only`，
+  观察无报错后再切强制模式。站内跳转只允许同源路径；帮助中心同步正文经过 HTML 清洗。
 - 当前真正生效的只有应用层防护：`src/proxy.ts` 的扫描拦截，登录/注册/小店/API/Server Action 按 IP 限流；事件写 Redis，管理员页 `/admin/security`；n8n 每 5 分钟拉取摘要，应用把告警发到后台配置的通道。
 - **Cloudflare Tunnel 仍指向 `app:3000`**，边缘 Caddy 限流不在公网链路上；CrowdSec、Anubis、WAF 均未启用。`ops/edge/` 的限流预案默认关闭，启用前必须单独审批并验证回滚。
 - 告警阈值默认 60 次 / 15 分钟（`SECURITY_ATTACK_THRESHOLD`），冷却 30 分钟（`SECURITY_ALERT_COOLDOWN_MINUTES`）。管理员页可“测试告警”“把当前摘要发到告警通道”，也可临时收紧限流（`sec:strict`，默认 60 分钟自动恢复）。
