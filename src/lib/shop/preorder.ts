@@ -23,6 +23,14 @@
 export const PREORDER_MARKER = "preorder";
 
 /**
+ * Operator-forced preorder column. Kept separate from the supplier marker in
+ * availability_reason so a scheduled sync can refresh stock without clearing
+ * a decision the operator made: some listings are bought on demand even while
+ * the supplier shows stock.
+ */
+export const PREORDER_MANUAL_COLUMN = "preorder_manual";
+
+/**
  * Operated brands that are always sold as preorders, whatever the supplier's
  * stock flag says. Muse stock is purchased on request, so an `in_stock` flag
  * on a Muse product must not be shown as immediate stock.
@@ -38,10 +46,13 @@ export function isPreorderBrand(brand: unknown): boolean {
  * SQL predicate for the public/admin `preorder` boolean. `alias` is the table
  * alias including the trailing dot (for example `p.`). Every interpolation is
  * a module constant, never user input.
+ *
+ * Three sources, in order of authority: an operator's per-product switch, the
+ * supplier's own reservation marker, and the always-preorder brands.
  */
 export function preorderSql(alias = ""): string {
   const brands = PREORDER_BRANDS.map((brand) => `'${brand}'`).join(", ");
-  return `(${alias}availability_reason = '${PREORDER_MARKER}' OR lower(coalesce(${alias}brand, '')) IN (${brands}))`;
+  return `(${alias}${PREORDER_MANUAL_COLUMN} = TRUE OR ${alias}availability_reason = '${PREORDER_MARKER}' OR lower(coalesce(${alias}brand, '')) IN (${brands}))`;
 }
 
 export type PreorderStockSignals = {

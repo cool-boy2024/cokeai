@@ -264,6 +264,20 @@ export default async function AdminShopProductEditPage({
               </label>
             </div>
 
+            <label className="shop-compliance">
+              <input
+                type="checkbox"
+                name="preorderManual"
+                value="1"
+                defaultChecked={product.preorder_manual}
+              />
+              <span>
+                按预定单销售（无现货，按预约顺序采购）。勾选后商品页显示「预定」，
+                下单前提示发货可能延迟；不受供货商库存和定时同步影响。
+                Muse 品牌默认即为预定，无需勾选。
+              </span>
+            </label>
+
             <p className="shop-muted">
               {product.price_locked
                 ? "当前售价已锁定，货源同步只更新成本，不会覆盖售价。"

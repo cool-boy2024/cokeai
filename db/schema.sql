@@ -841,3 +841,8 @@ CREATE TABLE IF NOT EXISTS shop_media_sources (
 -- price in the admin form sets this flag; "恢复自动定价" clears it.
 ALTER TABLE shop_products ADD COLUMN IF NOT EXISTS price_locked BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE shop_products ADD COLUMN IF NOT EXISTS price_locked_at TIMESTAMPTZ;
+
+-- Operator-forced preorder (预定单). Some listings are sourced on demand even
+-- while the supplier shows stock. Kept in its own column so scheduled syncs can
+-- refresh availability and the supplier marker without clearing this switch.
+ALTER TABLE shop_products ADD COLUMN IF NOT EXISTS preorder_manual BOOLEAN NOT NULL DEFAULT FALSE;

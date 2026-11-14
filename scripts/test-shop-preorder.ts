@@ -36,6 +36,10 @@ assert(
     preorderSql("p.").includes("'muse'"),
   "SQL predicate covers the supplier marker and Muse brand",
 );
+assert(
+  preorderSql("p.").includes("p.preorder_manual = TRUE"),
+  "operator-forced preorder is part of the derived boolean",
+);
 
 // --- Stock signal rule -----------------------------------------------------
 

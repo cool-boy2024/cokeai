@@ -543,6 +543,8 @@ export async function adminSaveShopProductAction(formData: FormData): Promise<vo
   const displayCategory =
     SHOP_PRODUCT_CATEGORIES.find((item) => item.label === displayCategoryValue)?.label || "";
   const complianceAck = formData.get("complianceAck") === "1";
+  // Independent switch: supplier stock or the next sync must not clear it.
+  const preorderManual = formData.get("preorderManual") === "1";
 
   const copyReady =
     Boolean(name && subtitle && description) &&
@@ -575,6 +577,7 @@ export async function adminSaveShopProductAction(formData: FormData): Promise<vo
             warranty_type = $12, warranty_days = $13, warranty_note = $14,
             copy_ready = $15,
             display_category = $19,
+            preorder_manual = $20,
             status = $16,
             compliance_ack_at = CASE
               WHEN $16 = 'active' AND $17 = TRUE THEN COALESCE(compliance_ack_at, now())
@@ -610,6 +613,7 @@ export async function adminSaveShopProductAction(formData: FormData): Promise<vo
       complianceAck,
       admin.id,
       displayCategory,
+      preorderManual,
     ],
   );
   revalidatePath("/admin/shop/products");
