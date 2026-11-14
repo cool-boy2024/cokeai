@@ -6,6 +6,7 @@ import { AuthForm } from "@/components/AuthForm";
 import { AuthGalaxy } from "@/components/auth/AuthGalaxy";
 import { Logo } from "@/components/Logo";
 import { getCurrentUser } from "@/lib/auth";
+import { safeNextPath } from "@/lib/redirects";
 import "../auth-galaxy.css";
 
 export const metadata: Metadata = {
@@ -23,8 +24,7 @@ export default async function LoginPage({
   const user = await getCurrentUser();
   if (user) redirect(user.role === "admin" ? "/admin" : "/dashboard");
   const { next } = await searchParams;
-  const safeNext =
-    next && next.startsWith("/") && !next.startsWith("//") ? next : undefined;
+  const safeNext = next ? safeNextPath(next, "") || undefined : undefined;
 
   return (
     <div className="auth-page auth-page-simple auth-space">

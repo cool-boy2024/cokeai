@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import sanitizeHtml from "sanitize-html";
 import { query } from "@/lib/db";
 
 /**
@@ -182,37 +183,81 @@ function absolutize(html: string): string {
     );
 }
 
+function isSafeHelpUrl(value: string): boolean {
+  return /^(?:https?:\/\/|mailto:|tel:|#|data:image\/)/i.test(value.trim());
+}
+
+const HELP_ALLOWED_TAGS = [
+  "h1", "h2", "h3", "h4", "h5", "h6",
+  "p", "br", "hr", "strong", "b", "em", "i", "u", "s",
+  "blockquote", "code", "pre", "ul", "ol", "li",
+  "table", "thead", "tbody", "tfoot", "tr", "th", "td", "caption",
+  "a", "img", "video", "source", "figure", "figcaption",
+  "span", "div", "small", "sub", "sup",
+];
+
 function sanitize(html: string): string {
-  let out = html;
-  // Drop executable or framing elements with their content.
-  out = out.replace(/<(script|style|iframe|object|embed|noscript)\b[\s\S]*?<\/\1>/gi, "");
-  out = out.replace(/<(script|style|iframe|object|embed|noscript|link|meta|base)\b[^>]*\/?>/gi, "");
-  // Forms are never wanted inside an article.
-  out = out.replace(/<form\b[\s\S]*?<\/form>/gi, "");
-  out = out.replace(/<form\b[^>]*\/?>/gi, "");
-  // Inline event handlers and javascript: URLs.
-  out = out.replace(/\son[a-z]+\s*=\s*("([^"]*)"|'([^']*)'|[^\s>]+)/gi, "");
-  out = out.replace(/\b(href|src|action)\s*=\s*("|')\s*javascript:[^"']*\2/gi, '$1="#"');
-  // Inline styles may still be present in the source. Drop positioning so a
-  // mirrored article can never turn into a fixed overlay over our own chrome.
-  out = out.replace(
-    /\sstyle\s*=\s*("([^"]*)"|'([^']*)')/gi,
-    (_match, _quoted: string, doubleQuoted?: string, singleQuoted?: string) => {
-      const css = (doubleQuoted ?? singleQuoted ?? "")
-        .replace(/(?:^|;)\s*(?:position|z-index|inset)\s*:[^;]*/gi, "");
-      return css.trim() ? ` style="${css.trim()}"` : "";
+  // absolutize() runs first so links and media keep working; the allow-list
+  // parser then removes every tag, attribute and URL scheme that is not
+  // explicitly permitted. Regex stripping was bypassable (for example
+  // `<img/src=x/onerror=...>`), so the mirrored body must go through a real
+  // HTML parser.
+  return sanitizeHtml(absolutize(html), {
+    allowedTags: HELP_ALLOWED_TAGS,
+    allowedAttributes: {
+      a: ["href", "title", "target", "rel"],
+      img: ["src", "alt", "title", "width", "height", "loading"],
+      video: ["src", "poster", "controls", "playsinline", "preload", "width", "height"],
+      source: ["src", "type"],
+      td: ["colspan", "rowspan"],
+      th: ["colspan", "rowspan"],
     },
-  );
-  out = absolutize(out);
-  // Videos must stay playable and inline.
-  out = out.replace(/<video\b([^>]*)>/gi, (_match, attrs: string) => {
-    let next = attrs;
-    if (!/\bcontrols\b/i.test(next)) next += " controls";
-    if (!/\bplaysinline\b/i.test(next)) next += ' playsinline';
-    if (!/\bpreload=/i.test(next)) next += ' preload="metadata"';
-    return `<video${next}>`;
-  });
-  return out.trim();
+    allowedSchemes: ["http", "https", "mailto", "tel"],
+    allowedSchemesByTag: {
+      img: ["http", "https", "data"],
+      video: ["http", "https"],
+      source: ["http", "https"],
+    },
+    allowProtocolRelative: false,
+    transformTags: {
+      a: (_tagName, attribs) => {
+        const next = { ...attribs };
+        if (next.href && !isSafeHelpUrl(next.href)) delete next.href;
+        return {
+          tagName: "a",
+          attribs: {
+            ...next,
+            rel: "noopener noreferrer nofollow",
+            ...(next.href?.startsWith("/") ? {} : { target: "_blank" }),
+          },
+        };
+      },
+      img: (_tagName, attribs) => {
+        const next = { ...attribs };
+        if (next.src && !isSafeHelpUrl(next.src)) delete next.src;
+        return { tagName: "img", attribs: next };
+      },
+      video: (_tagName, attribs) => {
+        const next = { ...attribs };
+        if (next.src && !isSafeHelpUrl(next.src)) delete next.src;
+        if (next.poster && !isSafeHelpUrl(next.poster)) delete next.poster;
+        return {
+          tagName: "video",
+          attribs: {
+            ...next,
+            controls: "controls",
+            playsinline: "playsinline",
+            preload: next.preload || "metadata",
+          },
+        };
+      },
+      source: (_tagName, attribs) => {
+        const next = { ...attribs };
+        if (next.src && !isSafeHelpUrl(next.src)) delete next.src;
+        return { tagName: "source", attribs: next };
+      },
+    },
+  }).trim();
 }
 
 function sha256(value: string): string {

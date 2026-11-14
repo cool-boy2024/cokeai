@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useActionState, useCallback, useEffect, useRef, useState } from "react";
 import { LockSimple, ShieldCheck } from "@phosphor-icons/react";
 import { createShopCheckoutAction, type ShopCheckoutState } from "@/app/actions/shop";
@@ -47,6 +48,7 @@ export function BuyForm({
   initialCaptcha?: Captcha | null;
 }) {
   const [state, action, pending] = useActionState(createShopCheckoutAction, initial);
+  const router = useRouter();
   const [step, setStep] = useState<"idle" | "method">("idle");
   const [qty, setQty] = useState(1);
   // The first captcha is rendered with the page, so opening the payment step is
@@ -98,7 +100,13 @@ export function BuyForm({
     if (state.error?.includes("验证码")) {
       setCaptchaVersion((value) => value + 1);
     }
-  }, [state.error]);
+    // The hidden expectedPriceMicros still holds the old price. Refresh the
+    // server component so the next submit uses the current price instead of
+    // failing with the same message forever.
+    if (state.error?.includes("价格已更新")) {
+      router.refresh();
+    }
+  }, [state.error, router]);
 
   const methods = [
     ...paymentOptions.usdtNetworks.map((network) => ({

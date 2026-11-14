@@ -137,9 +137,15 @@ export async function requireAdmin(): Promise<SessionUser> {
 
 export async function getClientIp(): Promise<string> {
   const headerStore = await headers();
-  const forwarded = headerStore.get("x-forwarded-for");
-  if (forwarded) return forwarded.split(",")[0].trim();
-  return headerStore.get("cf-connecting-ip") || headerStore.get("x-real-ip") || "local";
+  // Cloudflare overwrites CF-Connecting-IP with the real client address. The
+  // first X-Forwarded-For entry, by contrast, can be supplied by the caller
+  // when the edge does not strip it, so it is only a fallback.
+  return (
+    headerStore.get("cf-connecting-ip") ||
+    headerStore.get("x-real-ip") ||
+    headerStore.get("x-forwarded-for")?.split(",")[0].trim() ||
+    "local"
+  );
 }
 
 export type ApiKeyUser = {
