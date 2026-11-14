@@ -111,8 +111,8 @@ export default async function UsdtPaymentPage({
             </h2>
             <p className="muted">
               {creditApplied
-                ? `${formatCny(Number(order.credits_micros))} 额度已到账。`
-                : "额度正在入账，通常几分钟内自动补齐。刷新页面可查看最新状态。"}
+                ? `${formatCny(Number(order.credits_micros))} 余额已到账。`
+                : "余额正在入账，通常几分钟内自动补齐。刷新页面可查看最新状态。"}
             </p>
             <Link className="btn btn-primary" href="/dashboard">
               返回概览
@@ -195,7 +195,7 @@ export default async function UsdtPaymentPage({
                 </div>
               </div>
               <div className="small muted" style={{ marginTop: 16 }}>
-                应付人民币：{formatCny(Number(order.amount_micros))} · 到账额度：
+                应付人民币：{formatCny(Number(order.amount_micros))} · 到账余额：
                 {formatCny(Number(order.credits_micros))}
               </div>
             </div>

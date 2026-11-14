@@ -41,14 +41,14 @@ export default async function LoginPage({
       <main id="main-content" className="auth-main">
         <div className="auth-stage">
           <aside className="auth-intro" aria-label="CokeAI 介绍">
-            <p className="auth-kicker">CokeAI · AI 生态</p>
+            <p className="auth-kicker">CokeAI · 数字小店</p>
             <p className="auth-display">
               欢迎来到
               <span className="auth-display-brand">CokeAI</span>
             </p>
             <p className="auth-intro-foot">
               <span className="auth-intro-dot" />
-              AI API · 数字商品
+              数字商品 · 人工发货
             </p>
           </aside>
           <section className="auth-card" aria-labelledby="auth-title">
@@ -58,7 +58,7 @@ export default async function LoginPage({
               </p>
               <p className="auth-eyebrow">安全入口 · AUTH</p>
               <h1 id="auth-title">登录</h1>
-              <p className="auth-sub">继续管理你的 API Key 和余额。</p>
+              <p className="auth-sub">继续查看余额和小店订单。</p>
             </div>
             <AuthForm mode="login" next={safeNext} />
             <p className="auth-switch">

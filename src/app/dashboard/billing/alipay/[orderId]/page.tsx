@@ -35,6 +35,6 @@ export default async function AlipayPage({ params }: { params: Promise<{ orderId
       <section className="panel"><div className="panel-head"><div><h2>提交付款信息</h2><p>商家核实真实到账后完成订单。</p></div></div><div className="panel-body">
         <ManualPaymentClaimForm orderId={order.id} reference={order.reported_reference || ""} note={order.payer_note || ""} />
       </div></section>
-    </div> : <section className="panel"><div className="panel-body"><h2>{order.status === "paid" ? "付款已确认" : "订单已关闭"}</h2><p>{order.status === "paid" ? order.credit_status === "applied" ? "额度已到账。" : "额度正在入账，请稍后查看。" : "请勿向此订单继续付款。如已转账，请联系商家核实。"}</p></div></section>}
+    </div> : <section className="panel"><div className="panel-body"><h2>{order.status === "paid" ? "付款已确认" : "订单已关闭"}</h2><p>{order.status === "paid" ? order.credit_status === "applied" ? "余额已到账。" : "余额正在入账，请稍后查看。" : "请勿向此订单继续付款。如已转账，请联系商家核实。"}</p></div></section>}
   </>;
 }

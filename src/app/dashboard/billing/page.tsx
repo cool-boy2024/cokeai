@@ -26,6 +26,18 @@ type PlanRow = {
   highlight: boolean;
 };
 
+// Plan names and taglines live in the database. These display-only overrides
+// keep the recharge page in balance/shop language without changing plan data.
+const BALANCE_TAGLINES: Record<string, string> = {
+  starter: "先充一点，体验一次小店下单",
+  basic: "日常购买，余额随时可用",
+  pro: "多笔订单和长期使用，一次备足",
+};
+
+function displayTagline(plan: PlanRow): string {
+  return BALANCE_TAGLINES[plan.id] ?? "充值到账户余额，可用于小店订单";
+}
+
 type OrderRow = {
   id: string;
   plan_name: string;
@@ -113,7 +125,7 @@ export default async function BillingPage({
       <div className="page-head">
         <div>
           <h1>充值</h1>
-          <p>1 元 = 1 额度，余额不过期。</p>
+          <p>充值到账户余额，余额不过期。</p>
         </div>
         <div className="page-head-actions">
           <span className="badge badge-dark">余额 {formatCny(balanceResult.balance * 1_000_000)}</span>
@@ -123,7 +135,7 @@ export default async function BillingPage({
       {params.welcome === "1" ? (
         <div className="notice notice-green">
           <CheckCircle2 size={16} />
-          <div>账户已创建。充值后即可创建 Key 并调用 API。</div>
+          <div>账户已创建。充值后即可在小店下单。</div>
         </div>
       ) : null}
 
@@ -163,13 +175,13 @@ export default async function BillingPage({
         <div className="panel-head">
           <div>
             <h2>当前余额</h2>
-            <p>用于抵扣模型调用费用。</p>
+            <p>可用于小店订单支付。</p>
           </div>
           <Wallet size={17} />
         </div>
         <div className="panel-body">
           <div className="balance-amount">{formatCny(balanceResult.balance * 1_000_000)}</div>
-          <div className="small muted mt-8">人民币额度</div>
+          <div className="small muted mt-8">账户余额</div>
         </div>
       </section>
 
@@ -193,13 +205,13 @@ export default async function BillingPage({
           >
             {plan.highlight ? <span className="plan-badge">推荐</span> : null}
             <h3 className="plan-name">{plan.name}</h3>
-            <p className="plan-tagline">{plan.tagline}</p>
+            <p className="plan-tagline">{displayTagline(plan)}</p>
             <div className="plan-price">
               <strong>{formatCny(Number(plan.price_micros)).replace("¥", "")}</strong>
               <span>元</span>
             </div>
             <div className="plan-credit">
-              <span>到账额度</span>
+              <span>到账余额</span>
               <strong>{formatCny(Number(plan.credits_micros))}</strong>
             </div>
             <div className="plan-actions">
@@ -282,7 +294,7 @@ export default async function BillingPage({
                       <td className="small">{providerLabel(order.payment_provider)}</td>
                       <td>
                         {creditPending ? (
-                          <span className="badge badge-yellow">额度待入账</span>
+                          <span className="badge badge-yellow">余额待入账</span>
                         ) : (
                           <span className={`badge ${status.className}`}>{status.label}</span>
                         )}

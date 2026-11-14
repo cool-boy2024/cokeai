@@ -3,30 +3,29 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  Activity,
   BookOpen,
   ClipboardList,
   CreditCard,
-  KeyRound,
   LayoutDashboard,
   Megaphone,
   PackageSearch,
   ReceiptText,
   ShieldCheck,
   ShoppingBag,
+  Store,
   UserRound,
   Users,
   Wallet,
 } from "lucide-react";
 
+// The customer console is shop-focused: balance, recharge, shop orders and
+// settings only. API key and usage management is no longer exposed here.
 const userItems = [
   { href: "/dashboard", label: "概览", icon: LayoutDashboard },
-  { href: "/dashboard/keys", label: "API Key", icon: KeyRound },
-  { href: "/dashboard/usage", label: "用量", icon: Activity },
   { href: "/dashboard/billing", label: "充值", icon: CreditCard },
   { href: "/dashboard/shop", label: "我的订单", icon: ShoppingBag },
+  { href: "/shop", label: "小店", icon: Store },
   { href: "/dashboard/settings", label: "设置", icon: UserRound },
-  { href: "/docs", label: "接入教程", icon: BookOpen },
 ];
 
 // The shop owns the day-to-day operations now. Legacy API recharge pages

@@ -1,85 +1,85 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import {
-  Activity,
   ArrowRight,
-  BookOpen,
-  KeyRound,
-  Sparkles,
+  Clock3,
+  Megaphone,
+  Plus,
+  ReceiptText,
+  ShoppingBag,
+  Store,
   Wallet,
 } from "lucide-react";
 import { requireUser } from "@/lib/auth";
+import { announcementLevelLabel } from "@/lib/announcement-types";
+import { listActiveAnnouncements } from "@/lib/announcements";
 import { config } from "@/lib/config";
-import { formatDateTime, formatNumber } from "@/lib/format";
-import { getGatewayBalanceForRequest as getGatewayBalance } from "@/lib/gateway-credits";
-import { formatCny, formatCnyPrecise } from "@/lib/money";
-import { ensureGatewayIdentityReady } from "@/lib/sub2api/identity";
-import { getUserDashboardStats, getUserUsageTrend, listUserUsage } from "@/lib/sub2api/usage";
+import { formatDateTime } from "@/lib/format";
+import { getGatewayBalanceForRequest } from "@/lib/gateway-credits";
+import { formatCny } from "@/lib/money";
+import { SHOP_COPY } from "@/lib/shop/copy";
+import { listUserShopOrders, type ShopOrderStatus } from "@/lib/shop/orders";
 
 export const metadata: Metadata = { title: "概览" };
 export const dynamic = "force-dynamic";
 
-function shanghaiDate(offsetDays = 0): string {
-  const date = new Date(Date.now() + offsetDays * 86_400_000);
-  return date.toLocaleDateString("en-CA", { timeZone: "Asia/Shanghai" });
-}
+const OPEN_ORDER_STATUSES: ShopOrderStatus[] = [
+  "pending_payment",
+  "paid",
+  "procuring",
+  "refund_pending",
+];
+
+const PAID_ORDER_STATUSES: ShopOrderStatus[] = [
+  "paid",
+  "procuring",
+  "delivered",
+  "refund_pending",
+];
 
 export default async function DashboardPage() {
   const user = await requireUser();
 
-  let balance = user.balance_micros / 1_000_000;
-  let stats = null as Awaited<ReturnType<typeof getUserDashboardStats>> | null;
-  let recent = [] as Awaited<ReturnType<typeof listUserUsage>>["items"];
-  let trend = [] as Awaited<ReturnType<typeof getUserUsageTrend>>;
-  let gatewayError: string | null = null;
+  const [balanceResult, orders, announcements] = await Promise.all([
+    getGatewayBalanceForRequest(user.id).catch(() => ({
+      balance: user.balance_micros / 1_000_000,
+    })),
+    listUserShopOrders(user.id).catch(() => []),
+    listActiveAnnouncements(3).catch(() => []),
+  ]);
 
-  try {
-    const identity = await ensureGatewayIdentityReady(user.id);
-    const [balanceResult, statsResult, recentResult, trendResult] = await Promise.all([
-      getGatewayBalance(user.id),
-      getUserDashboardStats(identity),
-      listUserUsage(identity, { pageSize: 5 }),
-      getUserUsageTrend(identity, shanghaiDate(-13), shanghaiDate(0)),
-    ]);
-    balance = balanceResult.balance;
-    stats = statsResult;
-    recent = recentResult.items || [];
-    trend = trendResult;
-  } catch (error) {
-    gatewayError = error instanceof Error ? error.message : "网关暂不可用";
-  }
-
-  const maxTrend = Math.max(...trend.map((point) => point.actual_cost), 0.000001);
+  const balance = balanceResult.balance;
+  const recentOrders = orders.slice(0, 5);
+  const openOrderCount = orders.filter((order) =>
+    OPEN_ORDER_STATUSES.includes(order.status),
+  ).length;
+  const spentMicros = orders
+    .filter((order) => PAID_ORDER_STATUSES.includes(order.status))
+    .reduce((sum, order) => sum + order.amount_micros, 0);
 
   return (
     <>
       <div className="page-head">
         <div>
           <h1>概览</h1>
-          <p>余额、用量和接入信息。</p>
+          <p>账户余额、小店订单和最新公告。</p>
         </div>
         <div className="page-head-actions">
-          <Link className="btn btn-ghost btn-sm" href="/docs">
-            <BookOpen size={14} /> 接入教程
+          <Link className="btn btn-ghost btn-sm" href="/shop">
+            <Store size={14} /> 去小店
           </Link>
-          <Link className="btn btn-dark btn-sm" href="/dashboard/keys">
-            <KeyRound size={14} /> 创建 Key
+          <Link className="btn btn-dark btn-sm" href="/dashboard/billing">
+            <Plus size={14} /> 充值
           </Link>
         </div>
       </div>
 
-      {gatewayError ? (
-        <div className="notice notice-red">
-          <Activity size={16} />
-          <div>网关状态暂不可用：{gatewayError}。余额和用量可能不是最新。</div>
-        </div>
-      ) : null}
-
-      {!gatewayError && balance < config.lowBalanceCny ? (
+      {balance < config.lowBalanceCny ? (
         <div className="notice">
           <Wallet size={16} />
           <div>
-            余额低于 {formatCny(config.lowBalanceCny * 1_000_000)}。
+            账户余额低于 {formatCny(config.lowBalanceCny * 1_000_000)}。
+            小店订单使用账户余额支付，
             <Link className="text-link" href="/dashboard/billing" style={{ marginLeft: 8 }}>
               立即充值 →
             </Link>
@@ -93,32 +93,28 @@ export default async function DashboardPage() {
             可用余额 <Wallet size={15} />
           </div>
           <div className="stat-value">{formatCny(balance * 1_000_000)}</div>
-          <div className="stat-foot">人民币额度</div>
+          <div className="stat-foot">可用于小店订单</div>
         </div>
         <div className="stat-card">
           <div className="stat-label">
-            今日消费 <Sparkles size={15} />
+            小店订单 <ShoppingBag size={15} />
           </div>
-          <div className="stat-value">
-            {formatCny((stats?.today_actual_cost || 0) * 1_000_000)}
-          </div>
-          <div className="stat-foot">{formatNumber(stats?.today_requests || 0)} 次请求</div>
+          <div className="stat-value">{orders.length}</div>
+          <div className="stat-foot">累计下单</div>
         </div>
         <div className="stat-card">
           <div className="stat-label">
-            累计请求 <Activity size={15} />
+            进行中 <Clock3 size={15} />
           </div>
-          <div className="stat-value">{formatNumber(stats?.total_requests || 0)}</div>
-          <div className="stat-foot">{formatNumber(stats?.active_api_keys || 0)} 个有效 Key</div>
+          <div className="stat-value">{openOrderCount}</div>
+          <div className="stat-foot">待支付或处理中的订单</div>
         </div>
         <div className="stat-card">
-          <div className="stat-label">近 14 天消费</div>
-          <div className="stat-value">
-            {formatCny(
-              trend.reduce((sum, point) => sum + point.actual_cost, 0) * 1_000_000,
-            )}
+          <div className="stat-label">
+            累计消费 <ReceiptText size={15} />
           </div>
-          <div className="stat-foot">按实际用量</div>
+          <div className="stat-value">{formatCny(spentMicros)}</div>
+          <div className="stat-foot">已支付订单金额</div>
         </div>
       </div>
 
@@ -127,76 +123,88 @@ export default async function DashboardPage() {
           <section className="panel">
             <div className="panel-head">
               <div>
-                <h2>近 14 天</h2>
-                <p>每日消费</p>
+                <h2>最近小店订单</h2>
+                <p>最近 5 笔</p>
               </div>
-              <Link className="text-link small" href="/dashboard/usage">
-                全部用量 →
+              <Link className="text-link small" href="/dashboard/shop">
+                全部订单 →
               </Link>
             </div>
-            <div className="panel-body">
-              {trend.length === 0 ? (
-                <div className="empty">暂无用量</div>
-              ) : (
-                <div className="mini-bars" aria-label="近 14 天消费趋势">
-                  {trend.map((point) => (
-                    <div className="mini-bar" key={point.date}>
-                      <div
-                        className="mini-bar-fill"
-                        style={{
-                          height: `${Math.max(4, (point.actual_cost / maxTrend) * 100)}%`,
-                        }}
-                        title={`${point.date}: ${formatCnyPrecise(
-                          point.actual_cost * 1_000_000,
-                        )}`}
-                      />
-                      <span>{point.date.slice(5)}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </section>
-
-          <section className="panel">
-            <div className="panel-head">
-              <div>
-                <h2>最近请求</h2>
-                <p>最近 5 条</p>
+            {recentOrders.length === 0 ? (
+              <div className="empty">
+                还没有小店订单。去 <Link href="/shop">小店</Link> 看看。
               </div>
-            </div>
-            {recent.length === 0 ? (
-              <div className="empty">还没有调用记录。</div>
             ) : (
               <div className="table-scroll">
                 <table>
                   <thead>
                     <tr>
-                      <th>时间</th>
-                      <th>模型</th>
-                      <th>Token</th>
-                      <th>费用</th>
+                      <th>订单</th>
+                      <th>商品</th>
+                      <th>金额</th>
+                      <th>状态</th>
+                      <th>下单时间</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {recent.map((event) => (
-                      <tr key={event.id}>
+                    {recentOrders.map((order) => (
+                      <tr key={order.id}>
                         <td className="mono small nowrap">
-                          {formatDateTime(event.created_at)}
+                          <Link className="text-link" href={`/shop/orders/${order.order_no}`}>
+                            {order.order_no}
+                          </Link>
                         </td>
-                        <td className="mono small">{event.model || "—"}</td>
-                        <td className="mono small">
-                          {formatNumber(
-                            (event.input_tokens || 0) + (event.output_tokens || 0),
-                          )}
+                        <td>{order.product_name}</td>
+                        <td className="nowrap">{formatCny(order.amount_micros)}</td>
+                        <td>
+                          <span className={`shop-status shop-status-${order.status}`}>
+                            {SHOP_COPY.orderStatus[order.status]}
+                          </span>
                         </td>
-                        <td className="mono small">
-                          {formatCnyPrecise((event.actual_cost || 0) * 1_000_000)}
+                        <td className="mono small nowrap">
+                          {formatDateTime(order.created_at)}
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
+              </div>
+            )}
+          </section>
+
+          <section className="panel">
+            <div className="panel-head">
+              <div>
+                <h2>公告</h2>
+                <p>服务变更与处理时效</p>
+              </div>
+              <Megaphone size={15} className="muted" />
+            </div>
+            {announcements.length === 0 ? (
+              <div className="empty">暂无公告。</div>
+            ) : (
+              <div className="panel-body">
+                {announcements.map((item, index) => (
+                  <div key={item.id} className={index > 0 ? "mt-16" : undefined}>
+                    <div className="flex-between">
+                      <strong className="small">{item.title}</strong>
+                      <span className={`badge announcement-badge-${item.level}`}>
+                        {announcementLevelLabel(item.level)}
+                      </span>
+                    </div>
+                    {item.body ? (
+                      <p className="small muted" style={{ margin: "6px 0 0" }}>
+                        {item.body}
+                      </p>
+                    ) : null}
+                  </div>
+                ))}
+                <Link
+                  className="btn btn-ghost btn-sm btn-block mt-16"
+                  href="/announcements"
+                >
+                  查看全部公告 <ArrowRight size={13} />
+                </Link>
               </div>
             )}
           </section>
@@ -206,18 +214,25 @@ export default async function DashboardPage() {
           <section className="panel">
             <div className="panel-head">
               <div>
-                <h2>接入教程</h2>
-                <p>第一次调用从这里开始</p>
+                <h2>当前余额</h2>
+                <p>充值后即可用于小店订单</p>
               </div>
-              <BookOpen size={15} className="muted" />
+              <Wallet size={17} />
             </div>
             <div className="panel-body">
-              <p className="small muted" style={{ margin: 0 }}>
-                Base URL、鉴权方式、流式输出和 Python / Node.js 示例，
-                都整理在接入教程里。
-              </p>
-              <Link className="btn btn-ghost btn-sm btn-block mt-16" href="/docs">
-                打开接入教程 <ArrowRight size={13} />
+              <div className="balance-amount">{formatCny(balance * 1_000_000)}</div>
+              <div className="small muted mt-8">余额不过期</div>
+              <Link
+                className="btn btn-dark btn-sm btn-block mt-16"
+                href="/dashboard/billing"
+              >
+                充值 <Plus size={13} />
+              </Link>
+              <Link
+                className="btn btn-ghost btn-sm btn-block mt-8"
+                href="/dashboard/shop"
+              >
+                查看我的订单 <ArrowRight size={13} />
               </Link>
             </div>
           </section>
