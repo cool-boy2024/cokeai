@@ -1,0 +1,98 @@
+name: Uptime
+
+# External probe for the public site. It runs on a GitHub runner, so it still
+# reports when the VPS itself is unresponsive (the case on 2026-11-14, when a
+# build starved the host and Cloudflare served 502s for ten minutes).
+#
+# Cadence is hourly: every-5-minute checks would cost 8,640 Actions minutes a
+# month on a private repository whose free allowance is 2,000. For minute-level
+# alerting, add a Cloudflare Health Check notification for cokeai.cc.cd plus an
+# alert channel; this workflow is the zero-setup backstop.
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: uptime-check
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      HEALTH_URL: https://cokeai.cc.cd/api/health
+      SHOP_URL: https://cokeai.cc.cd/shop
+    steps:
+      - name: Probe public endpoints
+        id: probe
+        run: |
+          ok=false
+          detail=""
+          for attempt in 1 2 3; do
+            health=$(curl -sS --max-time 15 -w '\n%{http_code}' "$HEALTH_URL" 2>&1 || true)
+            code=$(printf '%s' "$health" | tail -n 1)
+            body=$(printf '%s' "$health" | sed '$d' | head -c 300)
+            shop=$(curl -sS -o /dev/null --max-time 15 -w '%{http_code}' "$SHOP_URL" 2>&1 || true)
+            if [ "$code" = "200" ] && printf '%s' "$body" | grep -q '"status":"ok"' && [ "$shop" = "200" ]; then
+              ok=true
+              break
+            fi
+            detail="health http=$code shop http=$shop body=$body"
+            sleep 20
+          done
+          echo "ok=$ok" >> "$GITHUB_OUTPUT"
+          {
+            echo "detail<<EOF"
+            echo "$detail"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          echo "$detail"
+
+      - name: Open outage issue
+        if: steps.probe.outputs.ok != 'true'
+        run: |
+          existing=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open \
+            --search '"uptime-watch" in:body' --json number -q '.[0].number')
+          if [ -n "$existing" ]; then
+            echo "Outage already tracked in #$existing"
+            exit 0
+          fi
+          body=$(cat <<EOF
+          <!-- uptime-watch -->
+          自动检测在 $(date -u '+%Y-%m-%d %H:%M UTC') 无法正常访问生产站点。
+
+          - \`https://cokeai.cc.cd/api/health\`
+          - \`https://cokeai.cc.cd/shop\`
+
+          探测结果：
+          \`\`\`
+          ${{ steps.probe.outputs.detail }}
+          \`\`\`
+
+          排查顺序：Cloudflare 面板看是否 502 → SSH 能否登录 → \`docker compose ps\` → \`docker compose logs app --tail 100\`。部署请走 Deploy 工作流，不要在服务器上 \`docker compose build\`。
+          EOF
+          )
+          gh issue create --repo "$GITHUB_REPOSITORY" \
+            --title "生产站点不可达（自动检测 $(date -u +%H:%M UTC)）" \
+            --body "$body"
+
+      - name: Close recovered issue
+        if: steps.probe.outputs.ok == 'true'
+        run: |
+          existing=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open \
+            --search '"uptime-watch" in:body' --json number -q '.[0].number')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --repo "$GITHUB_REPOSITORY" \
+              --body "站点已恢复，健康检查与小店页均返回 200。"
+            gh issue close "$existing" --repo "$GITHUB_REPOSITORY"
+          else
+            echo "Site healthy"
+          fi
