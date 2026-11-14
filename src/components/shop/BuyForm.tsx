@@ -115,7 +115,7 @@ export function BuyForm({
       hint: network.hint,
     })),
     paymentOptions.alipay ? { key: "alipay", label: "支付宝（易支付）", hint: "第三方网关 · 即时到账" } : null,
-    paymentOptions.alipayManual ? { key: "alipay_manual", label: "支付宝", hint: "商家核实到账" } : null,
+    paymentOptions.alipayManual ? { key: "alipay_manual", label: "支付宝（人工核实）", hint: "扫码付款 · 商家核实后安排交付" } : null,
     paymentOptions.manual ? { key: "manual", label: "人工到账", hint: "联系客服" } : null,
   ].filter(Boolean) as Array<{ key: string; label: string; hint: string }>;
 

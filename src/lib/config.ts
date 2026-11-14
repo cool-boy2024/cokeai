@@ -122,6 +122,9 @@ export const config = {
   shopMaxCostIncreaseBps: intEnv("SHOP_MAX_COST_INCREASE_BPS", 2_500),
   shopMissingRunsLimit: intEnv("SHOP_MISSING_RUNS_LIMIT", 3),
   shopOrderExpireMinutes: intEnv("SHOP_ORDER_EXPIRE_MINUTES", 30),
+  // Manual Alipay is reviewed by a person, so it needs a much longer window
+  // than a USDT quote. An order the buyer already reported is never expired.
+  shopAlipayManualExpireMinutes: intEnv("SHOP_ALIPAY_MANUAL_EXPIRE_MINUTES", 1_440),
   shopUsdtGraceHours: intEnv("SHOP_USDT_GRACE_HOURS", 24),
   shopMaxQty: intEnv("SHOP_MAX_QTY", 5),
   shopMaxOpenOrders: intEnv("SHOP_MAX_OPEN_ORDERS", 3),

@@ -23,6 +23,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { config } from "@/lib/config";
 import { isEasyPayConfigured } from "@/lib/payments/easypay";
 import { USDT_NETWORKS } from "@/lib/payments/networks";
+import { getManualAlipaySettings } from "@/lib/payments/settings";
 import { configuredUsdtNetworks } from "@/lib/payments/usdt";
 import { getPublicProduct } from "@/lib/shop/catalog";
 import { createShopCaptcha } from "@/lib/shop/captcha";
@@ -51,10 +52,11 @@ export default async function ShopProductPage({
 }) {
   if (!config.shopEnabled) notFound();
   const { slug } = await params;
-  const [product, user, usdtNetworkIds] = await Promise.all([
+  const [product, user, usdtNetworkIds, manualAlipay] = await Promise.all([
     getPublicProduct(slug),
     getCurrentUser(),
     configuredUsdtNetworks(),
+    getManualAlipaySettings(),
   ]);
   if (!product) notFound();
 
@@ -127,7 +129,7 @@ export default async function ShopProductPage({
                   <div className="shop-step">
                     <span>01</span>
                     <strong>下单付款</strong>
-                    <p>确认商品信息，完成 USDT 支付。</p>
+                    <p>确认商品信息，选择 USDT 或支付宝付款。</p>
                   </div>
                   <div className="shop-step">
                     <span>02</span>
@@ -169,9 +171,11 @@ export default async function ShopProductPage({
                 qtyMax={config.shopMaxQty}
                 initialCaptcha={initialCaptcha}
                 paymentOptions={{
-                  // Personal Alipay QR and manual transfers stay off. The
-                  // merchant EasyPay option appears only when configured.
-                  alipayManual: false,
+                  // The operator's personal Alipay QR appears only once it is
+                  // enabled with both a QR image and a payee name.
+                  alipayManual:
+                    manualAlipay.enabled &&
+                    Boolean(manualAlipay.qrDataUrl && manualAlipay.payee),
                   alipay: config.shopEasypayEnabled && isEasyPayConfigured(),
                   usdtNetworks: usdtNetworkIds.map((id) => ({
                     provider: USDT_NETWORKS[id].provider,

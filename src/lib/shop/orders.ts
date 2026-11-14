@@ -248,7 +248,11 @@ export async function createShopOrder(input: {
     const source = sourceResult.rows[0];
 
     const orderNo = newOrderNo();
-    const expiresAt = new Date(Date.now() + config.shopOrderExpireMinutes * 60_000);
+    const expireMinutes =
+      input.paymentProvider === "alipay_manual"
+        ? config.shopAlipayManualExpireMinutes
+        : config.shopOrderExpireMinutes;
+    const expiresAt = new Date(Date.now() + expireMinutes * 60_000);
     const orderResult = await client.query<{ id: string }>(
       `INSERT INTO shop_orders
          (order_no, user_id, status, subtotal_micros, amount_micros,
@@ -701,6 +705,15 @@ export async function expireShopOrders(): Promise<number> {
         AND NOT EXISTS (
           SELECT 1 FROM shop_usdt_deposits d
            WHERE d.order_id = o.id AND d.received_usdt > 0
+        )
+        -- The buyer says they paid: wait for the operator instead of expiring
+        -- an order whose money may already be in the merchant account.
+        AND NOT (
+          o.payment_provider = 'alipay_manual'
+          AND EXISTS (
+            SELECT 1 FROM manual_alipay_payments m
+             WHERE m.order_id = o.id AND m.reported_at IS NOT NULL
+          )
         )
         -- Cancel a USDT order only after the scanner explicitly found no
         -- funds. A TronGrid outage must leave it pending for the next scan.
