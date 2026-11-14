@@ -15,6 +15,7 @@ type OrderRow = {
   email: string;
   user_name: string;
   plan_name: string;
+  plan_kind: string;
   amount_micros: string;
   credits_micros: string;
   status: string;
@@ -64,6 +65,7 @@ export default async function AdminOrdersPage({
 
   const result = await query<OrderRow>(
     `SELECT o.id, u.email, u.name AS user_name, p.name AS plan_name,
+            p.kind AS plan_kind,
             o.amount_micros, o.credits_micros, o.status, o.payment_provider,
             o.provider_ref, o.created_at, o.paid_at, g.status AS credit_status
        FROM orders o
@@ -130,10 +132,10 @@ export default async function AdminOrdersPage({
                 <tr>
                   <th>订单</th>
                   <th>用户</th>
-                  <th>充值包</th>
+                  <th>充值包 / 会员</th>
                   <th>金额 / 额度</th>
                   <th>支付方式</th>
-                  <th>额度入账</th>
+                  <th>入账 / 会员</th>
                   <th>创建时间</th>
                   <th>状态</th>
                   <th>操作</th>
@@ -142,7 +144,8 @@ export default async function AdminOrdersPage({
               <tbody>
                 {result.rows.map((order) => {
                   const statusInfo = orderStatusLabel(order.status);
-                  const credit = creditBadge(order.credit_status);
+                  const isMembership = order.plan_kind === "membership";
+                  const credit = isMembership ? null : creditBadge(order.credit_status);
                   return (
                     <tr key={order.id}>
                       <td>
@@ -167,14 +170,20 @@ export default async function AdminOrdersPage({
                       <td>
                         <div className="mono small">{formatCny(order.amount_micros)}</div>
                         <div className="small muted" style={{ fontSize: 9 }}>
-                          额度 {formatCny(order.credits_micros)}
+                          {isMembership ? "会员计划" : `额度 ${formatCny(order.credits_micros)}`}
                         </div>
                       </td>
                       <td className="small">
                         {providerLabels[order.payment_provider] || order.payment_provider}
                       </td>
                       <td>
-                        {credit ? (
+                        {isMembership ? (
+                          order.status === "paid" ? (
+                            <span className="badge badge-green">会员已开通</span>
+                          ) : (
+                            <span className="small muted">待开通</span>
+                          )
+                        ) : credit ? (
                           <span className={`badge ${credit.className}`}>{credit.label}</span>
                         ) : (
                           <span className="small muted">—</span>

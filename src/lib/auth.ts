@@ -18,6 +18,8 @@ export type SessionUser = {
   plan_id: string | null;
   plan_name: string | null;
   plan_tier: number | null;
+  plan_kind: "topup" | "membership" | null;
+  plan_discount_bps: number | null;
   plan_expires_at: string | null;
   plan_active: boolean;
   referral_code: string;
@@ -35,6 +37,8 @@ type UserDbRow = {
   plan_id: string | null;
   plan_name: string | null;
   plan_tier: string | number | null;
+  plan_kind: string | null;
+  plan_discount_bps: string | number | null;
   plan_expires_at: string | null;
   referral_code: string;
   referred_by: string | null;
@@ -52,6 +56,12 @@ function mapUser(row: UserDbRow): SessionUser {
     plan_id: row.plan_id,
     plan_name: row.plan_name,
     plan_tier: row.plan_tier === null ? null : toNumber(row.plan_tier),
+    plan_kind:
+      row.plan_kind === "membership" || row.plan_kind === "topup"
+        ? row.plan_kind
+        : null,
+    plan_discount_bps:
+      row.plan_discount_bps === null ? null : toNumber(row.plan_discount_bps),
     plan_expires_at: row.plan_expires_at,
     plan_active: isPlanActive(row.plan_expires_at),
     referral_code: row.referral_code,
@@ -188,6 +198,7 @@ export const getCurrentUser = cache(async (): Promise<SessionUser | null> => {
   const result = await query<UserDbRow>(
     `SELECT u.id, u.email, u.name, u.role, u.status, u.balance_micros,
             u.plan_id, p.name AS plan_name, p.tier AS plan_tier,
+            p.kind AS plan_kind, p.shop_discount_bps AS plan_discount_bps,
             u.plan_expires_at, u.referral_code, u.referred_by, u.created_at
        FROM sessions s
        JOIN users u ON u.id = s.user_id

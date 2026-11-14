@@ -14,6 +14,8 @@ export function CheckoutButton({
   provider,
   label,
   className = "btn btn-primary btn-block",
+  flow = "billing",
+  amountYuan,
 }: {
   planId: string;
   provider:
@@ -27,6 +29,10 @@ export function CheckoutButton({
     | "usdt_polygon";
   label: string;
   className?: string;
+  /** Where manual/bank orders return: recharge history or the membership page. */
+  flow?: "billing" | "membership";
+  /** Only used by the hidden "custom" recharge plan. */
+  amountYuan?: string;
 }) {
   const [state, formAction, pending] = useActionState(
     createCheckoutAction,
@@ -37,6 +43,10 @@ export function CheckoutButton({
     <form action={formAction}>
       <input type="hidden" name="planId" value={planId} />
       <input type="hidden" name="provider" value={provider} />
+      <input type="hidden" name="flow" value={flow} />
+      {amountYuan ? (
+        <input type="hidden" name="amountYuan" value={amountYuan} />
+      ) : null}
       <button className={className} type="submit" disabled={pending}>
         {pending ? "正在创建订单…" : label}
         {!pending ? <ArrowUpRight size={14} /> : null}

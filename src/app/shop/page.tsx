@@ -13,8 +13,10 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { Reveal } from "@/components/Reveal";
 import { ProductCard } from "@/components/shop/ProductCard";
 import { AvailabilityLegend } from "@/components/shop/ShopBadges";
+import { getCurrentUser } from "@/lib/auth";
 import { config } from "@/lib/config";
 import { listPublicProducts } from "@/lib/shop/catalog";
+import { applyMemberPricing } from "@/lib/shop/member-pricing";
 import {
   filterProductsByCategory,
   isShopCategorySlug,
@@ -49,7 +51,13 @@ export default async function ShopPage({
     ? params.category
     : "all";
 
-  const allProducts = await listPublicProducts();
+  const [catalog, user] = await Promise.all([
+    listPublicProducts(),
+    getCurrentUser(),
+  ]);
+  // Members see their discounted price everywhere in the catalog; the order
+  // action recomputes it server-side, so the displayed price is never trusted.
+  const allProducts = await applyMemberPricing(catalog, user);
   const categoryCounts = new Map<ShopCategorySlug, number>(
     SHOP_CATEGORY_RAIL.map((item) => [item.slug, 0]),
   );

@@ -39,7 +39,14 @@ export function ProductCard({
         <p>{product.subtitle}</p>
         <div className="shop-product-card-foot">
           <div>
-            <strong>{productPriceLabel(product.price_micros)}</strong>
+            <strong>
+              {productPriceLabel(product.price_micros)}
+              {product.list_price_micros ? (
+                <s className="shop-price-was">
+                  {productPriceLabel(product.list_price_micros)}
+                </s>
+              ) : null}
+            </strong>
             <span>
               {etaLabel(
                 product.eta_min_minutes,

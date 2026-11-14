@@ -9,6 +9,11 @@ import { getManualAlipaySettings } from "@/lib/payments/settings";
 import { buildEasyPayCheckout, easyPayConfigError } from "@/lib/payments/easypay";
 import { networkForProvider } from "@/lib/payments/networks";
 import { createUsdtDeposit, isUsdtNetworkConfigured } from "@/lib/payments/usdt";
+import {
+  CUSTOM_RECHARGE_PLAN_ID,
+  customRechargeError,
+  parseCustomRechargeMicros,
+} from "@/lib/recharge";
 import { createStripeCheckout } from "@/lib/stripe";
 
 export type BillingState = { error?: string };
@@ -24,14 +29,22 @@ export async function createCheckoutAction(
   const provider = postedProvider === "usdt" ? "usdt_trc20" : postedProvider;
   const usdtNetwork = networkForProvider(provider);
 
+  // Where the user returns after a manual/bank order: recharge history lives
+  // on the billing page, membership orders on the membership page.
+  const returnPath =
+    String(formData.get("flow") || "") === "membership"
+      ? "/dashboard/membership"
+      : "/dashboard/billing";
+
   const planResult = await query<{
     id: string;
     name: string;
     price_micros: string;
     credits_micros: string;
     duration_days: number;
+    kind: string;
   }>(
-    `SELECT id, name, price_micros, credits_micros, duration_days
+    `SELECT id, name, price_micros, credits_micros, duration_days, kind
        FROM plans
       WHERE id = $1 AND active = TRUE
       LIMIT 1`,
@@ -39,6 +52,22 @@ export async function createCheckoutAction(
   );
   const plan = planResult.rows[0];
   if (!plan) return { error: "充值包不存在或已下架" };
+
+  // "custom" is a hidden placeholder row: the amount comes from the form and
+  // is validated here, never trusted from the browser. The user tops up a
+  // balance, so one yuan buys one yuan of balance.
+  let amountMicros = toNumber(plan.price_micros);
+  let creditsMicros = toNumber(plan.credits_micros);
+  if (plan.id === CUSTOM_RECHARGE_PLAN_ID) {
+    const parsed = parseCustomRechargeMicros(String(formData.get("amountYuan") || ""));
+    if (parsed === null) return { error: customRechargeError() };
+    amountMicros = parsed;
+    creditsMicros = parsed;
+  } else if (plan.kind === "membership") {
+    // Membership is paid access to member pricing, not a balance top-up.
+    creditsMicros = 0;
+    if (amountMicros <= 0) return { error: "会员价格尚未配置，请联系客服。" };
+  }
 
   if (provider === "stripe" && !config.stripeEnabled) {
     return { error: "在线支付尚未配置，请使用其他方式。" };
@@ -67,14 +96,14 @@ export async function createCheckoutAction(
       const result = await client.query<{ id: string }>(
         `INSERT INTO orders (user_id, plan_id, amount_micros, credits_micros, duration_days, payment_provider)
          VALUES ($1,$2,$3,$4,$5,'alipay_manual') RETURNING id`,
-        [user.id, plan.id, plan.price_micros, plan.credits_micros, plan.duration_days],
+        [user.id, plan.id, amountMicros, creditsMicros, plan.duration_days],
       );
       const orderId = result.rows[0].id;
       await client.query("INSERT INTO manual_alipay_payments (order_id, qr_data_url, payee) VALUES ($1,$2,$3)", [orderId, settings.qrDataUrl, settings.payee]);
       return orderId;
     });
-    revalidatePath("/dashboard/billing");
-    redirect(`/dashboard/billing/alipay/${id}`);
+    revalidatePath(returnPath);
+    redirect(`/dashboard/billing/alipay/${id}?flow=${plan.kind === "membership" ? "membership" : "billing"}`);
   }
 
   const paymentProvider = provider === "easypay" ? "alipay_easypay" : provider;
@@ -86,8 +115,8 @@ export async function createCheckoutAction(
     [
       user.id,
       plan.id,
-      plan.price_micros,
-      plan.credits_micros,
+      amountMicros,
+      creditsMicros,
       plan.duration_days,
       paymentProvider,
     ],
@@ -95,8 +124,8 @@ export async function createCheckoutAction(
   const orderId = inserted.rows[0].id;
 
   if (provider === "manual") {
-    revalidatePath("/dashboard/billing");
-    redirect(`/dashboard/billing?order=${orderId}&manual=1`);
+    revalidatePath(returnPath);
+    redirect(`${returnPath}?order=${orderId}&manual=1`);
   }
 
   if (provider === "easypay") {
@@ -104,7 +133,7 @@ export async function createCheckoutAction(
     try {
       const checkout = buildEasyPayCheckout({
         orderId,
-        amountYuan: toNumber(plan.price_micros) / 1_000_000,
+        amountYuan: amountMicros / 1_000_000,
         productName: `${config.appName} ${plan.name}`,
       });
       // provider_ref prevents a local cancel while the payment page is live.
@@ -119,10 +148,10 @@ export async function createCheckoutAction(
         "UPDATE orders SET status = 'cancelled', updated_at = now() WHERE id = $1 AND status = 'pending'",
         [orderId],
       );
-      revalidatePath("/dashboard/billing");
+      revalidatePath(returnPath);
       return { error: "创建支付宝支付失败，请稍后重试。" };
     }
-    revalidatePath("/dashboard/billing");
+    revalidatePath(returnPath);
     redirect(checkoutUrl);
   }
 
@@ -130,7 +159,7 @@ export async function createCheckoutAction(
     try {
       await createUsdtDeposit({
         orderId,
-        amountYuan: toNumber(plan.price_micros) / 1_000_000,
+        amountYuan: amountMicros / 1_000_000,
         network: usdtNetwork,
       });
     } catch (error) {
@@ -139,11 +168,13 @@ export async function createCheckoutAction(
         "UPDATE orders SET status = 'cancelled', updated_at = now() WHERE id = $1 AND status = 'pending'",
         [orderId],
       );
-      revalidatePath("/dashboard/billing");
+      revalidatePath(returnPath);
       return { error: error instanceof Error ? error.message : "创建 USDT 订单失败。" };
     }
-    revalidatePath("/dashboard/billing");
-    redirect(`/dashboard/billing/usdt/${orderId}`);
+    revalidatePath(returnPath);
+    redirect(
+      `/dashboard/billing/usdt/${orderId}?flow=${plan.kind === "membership" ? "membership" : "billing"}`,
+    );
   }
 
   let checkoutUrl: string;
@@ -153,7 +184,7 @@ export async function createCheckoutAction(
       userId: user.id,
       planId: plan.id,
       planName: plan.name,
-      amountMicros: toNumber(plan.price_micros),
+      amountMicros,
       email: user.email,
     });
     await query(
@@ -169,11 +200,11 @@ export async function createCheckoutAction(
       "UPDATE orders SET status = 'cancelled', updated_at = now() WHERE id = $1 AND status = 'pending'",
       [orderId],
     );
-    revalidatePath("/dashboard/billing");
+    revalidatePath(returnPath);
     return { error: "创建支付页面失败，请稍后重试。" };
   }
 
-  revalidatePath("/dashboard/billing");
+  revalidatePath(returnPath);
   redirect(checkoutUrl);
 }
 
@@ -204,4 +235,5 @@ export async function cancelOrderAction(formData: FormData): Promise<void> {
     [orderId, user.id],
   );
   revalidatePath("/dashboard/billing");
+  revalidatePath("/dashboard/membership");
 }

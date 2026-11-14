@@ -11,6 +11,15 @@ import { isPurchasable, productPriceLabel, SHOP_COPY } from "@/lib/shop/copy";
 
 const initial: ShopCheckoutState = {};
 
+function MemberPriceNote({ product }: { product: PublicShopProduct }) {
+  if (!product.list_price_micros) return null;
+  return (
+    <p className="shop-member-note">
+      会员价已生效 · 原价 <s>{productPriceLabel(product.list_price_micros)}</s>
+    </p>
+  );
+}
+
 type Captcha = { token: string; image: string };
 
 function captchaExpiresAt(token: string | undefined): number {
@@ -189,6 +198,7 @@ export function BuyForm({
                 : "补货中"}
           </span>
         </div>
+        <MemberPriceNote product={product} />
         <Link className="btn btn-primary btn-block" href={`/login?next=/shop/${product.slug}`}>
           登录后购买
         </Link>
@@ -211,6 +221,7 @@ export function BuyForm({
                   : "补货中"}
             </span>
           </div>
+          <MemberPriceNote product={product} />
           {product.preorder ? (
             <div className="shop-preorder-reminder">
               <strong>预定单提醒</strong>
@@ -348,6 +359,7 @@ export function BuyForm({
                 : "补货中"}
         </span>
       </div>
+      <MemberPriceNote product={product} />
 
       <div className="shop-pay-step-head">
         <h2>选择支付方式</h2>

@@ -5,6 +5,7 @@ import { claimPersonalAlipayReceipt } from "@/lib/payments/receipts";
 import { decryptSecret, encryptSecret } from "@/lib/crypto";
 import { query, toNumber, withTransaction } from "@/lib/db";
 import { isPurchasable, type ShopInputField } from "./copy";
+import { getMembershipInfo, memberPriceMicros } from "./membership";
 
 export type ShopOrderStatus =
   | "pending_payment"
@@ -210,7 +211,47 @@ export async function createShopOrder(input: {
       throw new Error("商品暂时缺货");
     }
 
-    const priceMicros = toNumber(product.price_micros);
+    const membershipResult = await client.query<{
+      plan_kind: string | null;
+      plan_expires_at: string | null;
+      plan_discount_bps: number | null;
+    }>(
+      `SELECT p.kind AS plan_kind, u.plan_expires_at,
+              p.shop_discount_bps AS plan_discount_bps
+         FROM users u
+         LEFT JOIN plans p ON p.id = u.plan_id
+        WHERE u.id = $1
+        LIMIT 1`,
+      [input.userId],
+    );
+    const membership = getMembershipInfo(membershipResult.rows[0] || null);
+
+    const sourceResult = await client.query<{
+      offer_id: string;
+      source_title: string;
+      supplier_cost_micros: string | number;
+      supplier_availability: string;
+    }>(
+      `SELECT s.offer_id, o.source_title, s.supplier_cost_micros, s.supplier_availability
+         FROM shop_product_sources s
+         JOIN shop_offers o ON o.id = s.offer_id
+        WHERE s.product_id = $1 AND s.active = TRUE
+        ORDER BY CASE s.role WHEN 'primary' THEN 0 ELSE 1 END, s.created_at
+        LIMIT 1`,
+      [product.id],
+    );
+    const source = sourceResult.rows[0];
+
+    // The browser sends the price it rendered, but the amount charged is
+    // recomputed here. A member gets the discount, never below source cost.
+    const retailMicros = toNumber(product.price_micros);
+    const priceMicros = membership.active
+      ? memberPriceMicros(
+          retailMicros,
+          toNumber(source?.supplier_cost_micros || 0),
+          membership.discountBps,
+        )
+      : retailMicros;
     if (priceMicros !== input.expectedPriceMicros) {
       throw new Error("PRICE_CHANGED");
     }
@@ -246,22 +287,6 @@ export async function createShopOrder(input: {
       if (contactEmail.length > 254) throw new Error("联系邮箱过长");
       customerInput.contactEmail = contactEmail;
     }
-
-    const sourceResult = await client.query<{
-      offer_id: string;
-      source_title: string;
-      supplier_cost_micros: string | number;
-      supplier_availability: string;
-    }>(
-      `SELECT s.offer_id, o.source_title, s.supplier_cost_micros, s.supplier_availability
-         FROM shop_product_sources s
-         JOIN shop_offers o ON o.id = s.offer_id
-        WHERE s.product_id = $1 AND s.active = TRUE
-        ORDER BY CASE s.role WHEN 'primary' THEN 0 ELSE 1 END, s.created_at
-        LIMIT 1`,
-      [product.id],
-    );
-    const source = sourceResult.rows[0];
 
     const orderNo = newOrderNo();
     const expireMinutes =

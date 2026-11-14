@@ -15,11 +15,13 @@ import { HeroBrandStrip } from "@/components/home/HeroBrandStrip";
 import { HeroOrbit } from "@/components/home/HeroOrbit";
 import { ShopRing } from "@/components/home/ShopRing";
 import { ProductCard } from "@/components/shop/ProductCard";
+import { getCurrentUser } from "@/lib/auth";
 import { query } from "@/lib/db";
 import { listCatalogModels } from "@/lib/model-catalog";
 import { formatCny } from "@/lib/money";
 import { PUBLIC_API_SALES_ENABLED } from "@/lib/public-features";
 import { listPublicProducts } from "@/lib/shop/catalog";
+import { applyMemberPricing } from "@/lib/shop/member-pricing";
 
 export const dynamic = "force-dynamic";
 
@@ -98,14 +100,22 @@ const FAQ_SCHEMA = {
 };
 
 export default async function HomePage() {
-  const [models, planResult, shopProducts] = await Promise.all([
+  const [models, planResult, catalog, user] = await Promise.all([
     listCatalogModels(),
+    // Only top-up packs belong here; membership is sold on its own page and the
+    // hidden "custom" row only exists to satisfy orders.plan_id.
     query<LandingPlan>(
       `SELECT id, name, tagline, price_micros, credits_micros, highlight
-         FROM plans WHERE active = TRUE ORDER BY sort_order`,
+         FROM plans
+        WHERE active = TRUE AND kind = 'topup' AND id <> 'custom'
+        ORDER BY sort_order`,
     ),
     listPublicProducts().catch(() => []),
+    getCurrentUser(),
   ]);
+  // Members see their discounted price on the home page cards too; the order
+  // action recomputes it server-side before charging.
+  const shopProducts = await applyMemberPricing(catalog, user);
 
   const showcase = models.slice(0, 8);
   const newProducts = shopProducts.slice(0, 3);

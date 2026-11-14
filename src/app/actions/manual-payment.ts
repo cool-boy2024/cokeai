@@ -61,6 +61,7 @@ export async function reviewManualPaymentAction(form: FormData): Promise<void> {
   if (errorMessage) redirect(`/admin/payments/review/${orderId}?error=${encodeURIComponent(errorMessage)}`);
   revalidatePath("/admin/orders");
   revalidatePath("/dashboard/billing");
+  revalidatePath("/dashboard/membership");
   revalidatePath(`/dashboard/billing/alipay/${orderId}`);
   redirect(`/admin/orders?saved=1${pending ? "&creditPending=1" : ""}`);
 }
