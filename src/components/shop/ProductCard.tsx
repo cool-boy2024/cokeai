@@ -21,6 +21,11 @@ export function ProductCard({
         variant={product.cover_variant}
         brand={product.brand}
         imageUrl={product.image_url}
+        sizes={
+          featured
+            ? "(max-width: 680px) 92vw, 560px"
+            : "(max-width: 680px) 46vw, 300px"
+        }
       />
       <div className="shop-product-card-body">
         <div className="shop-product-card-top">

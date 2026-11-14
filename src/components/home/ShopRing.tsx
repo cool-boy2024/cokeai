@@ -222,6 +222,7 @@ export function ShopRing({ products }: { products: PublicShopProduct[] }) {
                 variant={product.cover_variant}
                 brand={product.brand}
                 imageUrl={product.image_url}
+                sizes="180px"
               />
               <div className="shop-ring-body">
                 <span className="shop-ring-brand">

@@ -18,7 +18,7 @@ import {
  */
 
 type Policy = {
-  type: "captcha" | "shop-api" | "auth-page" | "shop-page" | "shop-dashboard" | "api" | "server-action";
+  type: "captcha" | "shop-media" | "shop-api" | "auth-page" | "shop-page" | "shop-dashboard" | "api" | "server-action";
   limit: number;
   windowSeconds: number;
 };
@@ -35,6 +35,16 @@ const POLICIES: Array<{ test: (pathname: string) => boolean; policy: Policy }> =
     policy: { type: "captcha", limit: 30, windowSeconds: 60 },
   },
   {
+    // Image URLs end in a file extension, so the matcher below currently keeps
+    // them out of this middleware. Keep an explicit media budget anyway: if the
+    // media URL shape ever changes, a catalogue visit (a page plus 20+ covers)
+    // must not be charged against the 120/min API allowance.
+    test: (pathname) =>
+      pathname.startsWith("/api/shop/images/") ||
+      pathname.startsWith("/api/shop/media/"),
+    policy: { type: "shop-media", limit: 600, windowSeconds: 60 },
+  },
+  {
     test: (pathname) => pathname.startsWith("/api/shop/"),
     policy: { type: "shop-api", limit: 120, windowSeconds: 60 },
   },
@@ -44,9 +54,9 @@ const POLICIES: Array<{ test: (pathname: string) => boolean; policy: Policy }> =
   },
   {
     // Public catalogue pages are the most attractive crawl target because
-    // supplier-derived copy and links live there. 120/min per IP still covers
-    // normal browsing (a page plus its images is well under this) while
-    // stopping bulk mirroring. Product images are counted by /api/shop/*.
+    // supplier-derived copy and links live there. 120/min per IP covers normal
+    // browsing while stopping bulk mirroring. Product images have their own
+    // media budget above, so one page view does not consume this allowance.
     test: (pathname) => pathname === "/shop" || pathname.startsWith("/shop/"),
     policy: { type: "shop-page", limit: 120, windowSeconds: 60 },
   },
