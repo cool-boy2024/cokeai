@@ -5965,6 +5965,7 @@ body {
 
 .public-main .shop-feature-copy h2 {
   margin: 0;
+  color: var(--paper);
   font-size: 30px;
   font-weight: 600;
   letter-spacing: -0.03em;
