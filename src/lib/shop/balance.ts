@@ -179,6 +179,16 @@ export async function settleShopBalanceOrder(input: {
         order.order_no,
         error instanceof Error ? error.message : error,
       );
+      await notifyShopOpsOnce(
+        `shop-balance-order-update-failed:${input.orderId}`,
+        [
+          "【CokeAI 小店】余额已扣款但订单状态更新失败，需要核对",
+          `订单号：${order.order_no}`,
+          `用户：${input.userId}`,
+          `金额：¥${(amountMicros / 1_000_000).toFixed(2)}`,
+          "客户重试结算会按流水核对，不会重复扣款；请确认订单最终置为已支付。",
+        ].join("\n"),
+      );
       return {
         ok: false,
         code: "PROCESSING",
