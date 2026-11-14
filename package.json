@@ -27,7 +27,8 @@
     "test:shop:pay": "tsx scripts/test-shop-easypay.ts",
     "test:shop:usdt": "tsx scripts/test-shop-usdt.ts",
     "test:shop:sync": "tsx scripts/test-shop-sync.ts",
-    "test:shop:manual": "tsx scripts/test-shop-manual-alipay.ts"
+    "test:shop:manual": "tsx scripts/test-shop-manual-alipay.ts",
+    "test:shop:categories": "tsx scripts/test-shop-categories.ts"
   },
   "dependencies": {
     "@noble/hashes": "^2.4.0",

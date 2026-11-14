@@ -1,5 +1,6 @@
 import { query, withTransaction } from "@/lib/db";
 import { suggestRetailPrice } from "@/lib/shop/catalog";
+import { normalizeDisplayCategory } from "@/lib/shop/categories";
 import { getShopTargetMarginBps } from "@/lib/shop/settings";
 import { replaceProductImages } from "@/lib/shop/images";
 import { extractReadableText } from "@/lib/shop/readable";
@@ -274,22 +275,24 @@ function detectBrand(title: string): ZyanaiProduct["brand"] {
   return "other";
 }
 
+// Canonical labels understood by lib/shop/categories.ts. Only ChatGPT, Claude,
+// Gemini and Grok have their own rail entries; the rest share 其他.
 const DISPLAY_CATEGORY: Record<string, string> = {
-  "GPT（pro额度全体翻倍）": "GPT",
-  谷歌: "谷歌",
+  "GPT（pro额度全体翻倍）": "ChatGPT",
+  谷歌: "Gemini",
   "GROK-推特X-cursor": "Grok",
   Claude: "Claude",
-  设计类AI: "设计类 AI",
-  CapCut: "CapCut",
-  "youtube-油管": "YouTube",
-  suno: "Suno",
-  Autodesk: "Autodesk",
-  heygen: "HeyGen",
+  设计类AI: "其他",
+  CapCut: "其他",
+  "youtube-油管": "其他",
+  suno: "其他",
+  Autodesk: "其他",
+  heygen: "其他",
 };
 
 function displayCategoryOf(item: ZyanaiItem): string {
   const name = item.category?.name?.trim() || "";
-  return DISPLAY_CATEGORY[name] || "其他";
+  return DISPLAY_CATEGORY[name] || normalizeDisplayCategory(name);
 }
 
 function detectCategory(title: string): ZyanaiProduct["category"] {

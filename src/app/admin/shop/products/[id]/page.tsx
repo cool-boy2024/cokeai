@@ -12,6 +12,10 @@ import { query } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { formatCny } from "@/lib/money";
 import { getAdminProduct, suggestRetailPrice } from "@/lib/shop/catalog";
+import {
+  normalizeDisplayCategory,
+  SHOP_PRODUCT_CATEGORIES,
+} from "@/lib/shop/categories";
 import { getShopTargetMarginBps } from "@/lib/shop/settings";
 import { offerAvailabilityLabel, validateProductCopy } from "@/lib/shop/copy";
 
@@ -140,6 +144,24 @@ export default async function AdminShopProductEditPage({
               <label className="shop-field">
                 <span>副标题</span>
                 <input name="subtitle" defaultValue={product.subtitle} maxLength={200} />
+              </label>
+              <label className="shop-field">
+                <span>展示分类（/shop 分类轨）</span>
+                <select
+                  name="displayCategory"
+                  defaultValue={
+                    product.display_category
+                      ? normalizeDisplayCategory(product.display_category)
+                      : ""
+                  }
+                >
+                  <option value="">自动（按品牌）</option>
+                  {SHOP_PRODUCT_CATEGORIES.map((item) => (
+                    <option key={item.slug} value={item.label}>
+                      {item.label}
+                    </option>
+                  ))}
+                </select>
               </label>
             </div>
 

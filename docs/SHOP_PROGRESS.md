@@ -2,6 +2,31 @@
 
 更新时间：2026-11-14
 
+## 2026-11-14：单层分类轨、本站教程、邮箱/接码草稿
+
+- 分类：`/shop` 改为固定单层分类轨 —— 全部 / ChatGPT / Claude / Gemini /
+  Grok / 邮箱 / 接码 / 其他，取消品牌筛选；旧 `?brand=` 链接直接忽略。
+  分类始终 8 个都显示（无货显示 0），顺序固定。归类规则集中在
+  `src/lib/shop/categories.ts`：`display_category` 优先，旧值
+  （`GPT`、`谷歌`、`设计类 AI`、`Muse`、`CapCut` 等）由 `CATEGORY_ALIASES`
+  收敛；未识别落「其他」；brand 只在没有分类时兜底。
+- 货源映射：zyanai 适配器只写新标签（`ChatGPT` / `Gemini` / `Grok` /
+  `Claude` / `其他`），未知分类走 `normalizeDisplayCategory` 落「其他」。
+  未来供应商 API 适配器同样只用这两个函数，不改分类轨。
+- 后台：商品编辑页新增「展示分类」下拉，空值表示按品牌自动；运营可纠正
+  AI 导入或历史数据。
+- 邮箱 / 接码：`offer-classify.ts` 增加 `email` 分类（标题含 AI 品牌词的
+  账号仍归 `account`），`/admin/shop/sources` 自动出现「邮箱」筛选。
+  批量 AI 上架生成的草稿会写 `display_category='邮箱' / '接码'`，仍只生成
+  `draft`，必须人工核价、审文案后手动发布。
+- 教程：新增 7 篇本站自建教程 `guide.gpt|claude|gemini|grok|email|sms|other`，
+  内容维护在 `scripts/guides.mjs`，seed 时 UPSERT 到 `help_articles`。
+  商品页自动带上对应分类教程，再接货源文章；帮助同步的失效隐藏只处理
+  `article.*`，不会把 `guide.*` 置为隐藏。`/help/<id>` 同时接受两种前缀。
+- 授权边界：对齐的是通用品类口径；不抓取、不镜像 PriceAI 或其他参考站的
+  商品、图片、教程文案。接入其正式 API 前需取得书面授权。
+- 测试：`npm run test:shop:categories`（纯函数，无需数据库）。
+
 ## 2026-11-14：商品详情复刻货源文章、图片与分类
 
 - 富文本：`shop_products.description_html` 保存清洗后的货源文章，详情页用

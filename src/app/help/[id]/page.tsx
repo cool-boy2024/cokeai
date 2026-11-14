@@ -14,7 +14,9 @@ type PageProps = { params: Promise<{ id: string }> };
 
 function normalizeId(value: string): string | null {
   const decoded = decodeURIComponent(value).trim();
-  return /^article\.\d+$/.test(decoded) ? decoded : null;
+  // Mirrored supplier articles use article.N; first-party tutorials use
+  // guide.<slug> and are seeded from scripts/guides.mjs.
+  return /^(?:article\.\d+|guide\.[a-z0-9-]+)$/.test(decoded) ? decoded : null;
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {

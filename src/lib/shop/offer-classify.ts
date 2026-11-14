@@ -5,6 +5,7 @@
  */
 export type OfferCategory =
   | "sms"
+  | "email"
   | "account"
   | "subscription"
   | "topup"
@@ -14,6 +15,7 @@ export type OfferCategory =
 
 export const OFFER_CATEGORIES: { key: OfferCategory; label: string; hint: string }[] = [
   { key: "sms", label: "接码", hint: "短信验证码、收码号码" },
+  { key: "email", label: "邮箱", hint: "独立邮箱账号、Gmail/Outlook 等" },
   { key: "account", label: "账号", hint: "成品号、独享/共享账号" },
   { key: "subscription", label: "订阅", hint: "Plus、Pro、Max 等会员" },
   { key: "topup", label: "充值", hint: "代充、续费、直充" },
@@ -30,6 +32,15 @@ const CATEGORY_RULES: { key: OfferCategory; patterns: RegExp[] }[] = [
   {
     key: "sms",
     patterns: [/接码/, /收码/, /验证码/, /短信/, /号码/, /\bsms\b/i, /codex\s*(接码|收码)/],
+  },
+  {
+    // Standalone mailboxes only. A title such as "ChatGPT 成品号（带邮箱）"
+    // is an AI account, so AI brand words veto this rule and it falls through
+    // to 账号 below.
+    key: "email",
+    patterns: [
+      /^(?!(?:.*(?:chatgpt|gpt|claude|gemini|grok|muse|openai|anthropic))).*(?:邮箱|邮件|e-?mail|gmail|outlook|hotmail|proton)/i,
+    ],
   },
   {
     key: "account",
