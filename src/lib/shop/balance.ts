@@ -186,7 +186,8 @@ export async function settleShopBalanceOrder(input: {
           `订单号：${order.order_no}`,
           `用户：${input.userId}`,
           `金额：¥${(amountMicros / 1_000_000).toFixed(2)}`,
-          "客户重试结算会按流水核对，不会重复扣款；请确认订单最终置为已支付。",
+          "处理：1) 后台核对余额流水已扣；2) 把订单确认为已支付；3) 不要让客户再付一次。",
+          "客户重试结算会按流水核对，不会重复扣款。",
         ].join("\n"),
       );
       return {
