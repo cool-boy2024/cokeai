@@ -263,8 +263,8 @@ const PUBLIC_COLUMNS = `
   warranty_type, warranty_days, warranty_note, includes, usage_notes, customer_notice,
   refund_policy, input_fields, availability, featured, sort_order, help_article_ids,
   display_category,
-  -- Preorder is stored as a marker in availability_reason so no shipment or
-  -- schema change is needed; Muse is always a preorder by operating policy.
+  -- Preorder has three sources: the operator switch (preorder_manual), the
+  -- supplier marker in availability_reason, and Muse's operating policy.
   -- Only the derived boolean reaches public types.
   ${preorderSql()} AS preorder
 `;
@@ -351,6 +351,8 @@ export type AdminShopProduct = PublicShopProduct & {
   published_at: string | null;
   price_locked: boolean;
   price_locked_at: string | null;
+  /** Operator-forced preorder, independent of supplier stock. */
+  preorder_manual: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -360,7 +362,7 @@ export async function listAdminProducts(): Promise<AdminShopProduct[]> {
     `SELECT ${DETAIL_COLUMNS},
             status, availability_reason, pricing_review_required, copy_ready,
             compliance_ack_at, published_at, price_locked, price_locked_at,
-            created_at, updated_at
+            preorder_manual, created_at, updated_at
        FROM shop_products
       ORDER BY sort_order ASC, created_at DESC`,
   );
@@ -374,6 +376,7 @@ export async function listAdminProducts(): Promise<AdminShopProduct[]> {
     published_at: row.published_at,
     price_locked: Boolean(row.price_locked),
     price_locked_at: row.price_locked_at,
+    preorder_manual: Boolean(row.preorder_manual),
     created_at: row.created_at,
     updated_at: row.updated_at,
   }));
@@ -384,7 +387,7 @@ export async function getAdminProduct(id: string): Promise<AdminShopProduct | nu
     `SELECT ${DETAIL_COLUMNS},
             status, availability_reason, pricing_review_required, copy_ready,
             compliance_ack_at, published_at, price_locked, price_locked_at,
-            created_at, updated_at
+            preorder_manual, created_at, updated_at
        FROM shop_products
       WHERE id = $1
       LIMIT 1`,
@@ -402,6 +405,7 @@ export async function getAdminProduct(id: string): Promise<AdminShopProduct | nu
     published_at: row.published_at,
     price_locked: Boolean(row.price_locked),
     price_locked_at: row.price_locked_at,
+    preorder_manual: Boolean(row.preorder_manual),
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
