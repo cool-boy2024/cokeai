@@ -70,6 +70,65 @@ export async function notifyShopOrderPaid(orderId: string): Promise<void> {
   }
 }
 
+/**
+ * The buyer says they paid by scanning the operator's Alipay QR. Nobody should
+ * learn about that only by opening the console: send the transaction number to
+ * the same operator channel used for paid orders.
+ */
+export async function notifyShopManualPaymentReported(orderId: string): Promise<void> {
+  try {
+    const result = await query<{
+      order_no: string;
+      amount_micros: string | number;
+      product_name: string;
+      qty: number;
+      email: string;
+      reported_reference: string | null;
+      payer_note: string | null;
+    }>(
+      `SELECT o.order_no, o.amount_micros, i.product_name, i.qty, u.email,
+              m.reported_reference, m.payer_note
+         FROM shop_orders o
+         JOIN shop_order_items i ON i.order_id = o.id
+         JOIN users u ON u.id = o.user_id
+         JOIN manual_alipay_payments m
+           ON m.order_id = o.id AND m.order_kind = 'shop'
+        WHERE o.id = $1
+        LIMIT 1`,
+      [orderId],
+    );
+    const row = result.rows[0];
+    if (!row) return;
+
+    const text = [
+      "【CokeAI 小店】客户已上报支付宝付款",
+      `订单号：${row.order_no}`,
+      `商品：${row.product_name} × ${Number(row.qty)}`,
+      `金额：${formatCny(toNumber(row.amount_micros))}`,
+      `客户：${row.email}`,
+      `交易号：${row.reported_reference || "未填写"}`,
+      row.payer_note ? `客户备注：${row.payer_note}` : null,
+      `后台：${config.appUrl}/admin/shop/orders/${orderId}`,
+      "下一步：到支付宝账单核对交易号与金额，再在后台确认到账。",
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    const sent = await sendAlert(text, {
+      event: "shop_manual_payment_reported",
+      orderNo: row.order_no,
+    });
+    if (!sent.ok) {
+      console.warn("[shop] manual payment alert not delivered:", sent.error);
+    }
+  } catch (error) {
+    console.warn(
+      "[shop] manual payment alert failed",
+      error instanceof Error ? error.message : error,
+    );
+  }
+}
+
 function formatUsdt(value: number): string {
   return value.toFixed(6).replace(/\.?0+$/, "");
 }

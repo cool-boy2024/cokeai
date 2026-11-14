@@ -6,6 +6,7 @@ import { requireAdmin, requireUser } from "@/lib/auth";
 import { withTransaction } from "@/lib/db";
 import { fulfillOrder } from "@/lib/orders";
 import { parseYuanMicros, receiptReference, validOrderId } from "@/lib/payments/validation";
+import { notifyShopManualPaymentReported } from "@/lib/shop/notify";
 
 export type ManualPaymentState = { error?: string; saved?: boolean };
 
@@ -32,6 +33,8 @@ export async function submitManualPaymentClaimAction(_prev: ManualPaymentState, 
   } catch (error) {
     return { error: error instanceof Error && !('code' in error) ? error.message : "提交失败，请稍后重试" };
   }
+  // The operator must verify in the Alipay bill; tell them a claim arrived.
+  if (shop) void notifyShopManualPaymentReported(orderId);
   revalidatePath(`/dashboard/billing/alipay/${orderId}`);
   revalidatePath("/admin/orders");
   revalidatePath("/shop/checkout/[orderNo]", "page");
