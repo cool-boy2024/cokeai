@@ -29,57 +29,6 @@ const WORK_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "cokeai-tutorial-"));
 
 const TUTORIALS = [
   {
-    file: "muse-tutorial",
-    brand: "Muse",
-    slides: [
-      {
-        title: "Muse 账号登录与换绑",
-        body: "1 分钟操作演示，实际页面以 Muse 官网为准。",
-        narration: "Muse 账号登录与换绑，一分钟看完。",
-      },
-      {
-        step: "01",
-        title: "打开 Muse 官网，输入发货邮箱",
-        body: "在 Muse 官网的登录框里，填写我们交付给您的临时邮箱地址。",
-        narration:
-          "第一步，打开 Muse 官网，在登录框里输入我们发给你的临时邮箱。",
-      },
-      {
-        step: "02",
-        title: "打开接码链接，填入验证码",
-        body: "邮箱会收到一条接码链接，打开后复制验证码，再填回登录页。",
-        narration:
-          "第二步，邮箱里会收到一条接码链接，打开链接复制验证码，再填回登录页面。",
-      },
-      {
-        step: "03",
-        title: "登录成功后，先检查额度",
-        body: "进入账号后先确认套餐额度是否正常。有问题请先联系客服，再继续操作。",
-        narration:
-          "第三步，登录成功后先检查额度，确认套餐正常。有问题先联系客服，不要自己继续操作。",
-      },
-      {
-        step: "04",
-        title: "换绑成你自己的邮箱",
-        body: "必须是从来没有注册过 Muse 的 Gmail 或 Hotmail，其他邮箱无法绑定。",
-        narration:
-          "第四步，把账号换绑成你自己的邮箱。必须是从来没有注册过 Muse 的 Gmail 或者 Hotmail，其他邮箱绑不上。",
-      },
-      {
-        step: "05",
-        title: "换绑成功后，下掉原邮箱",
-        body: "把交付给您的临时邮箱移除。不下掉的话，账号大概率被找回，找回后无法售后。",
-        narration:
-          "第五步，换绑成功后一定要把原来的临时邮箱下掉。不下掉大概率会被找回，找回了我们无法售后。",
-      },
-      {
-        title: "遇到问题先联系客服",
-        body: "在订单页留言说明情况，不要重复下单。",
-        narration: "遇到问题请在订单页联系客服，不要重复下单。操作演示到此结束。",
-      },
-    ],
-  },
-  {
     file: "codex-sms-tutorial",
     brand: "Codex",
     slides: [

@@ -1,12 +1,14 @@
 /**
- * In-site tutorial media. The supplier used to link its own help centre; the
- * pages now play a locally hosted walkthrough so buyers never leave the shop.
- * Only products listed here get a tutorial block.
+ * In-site tutorial content. The supplier used to link its own help centre;
+ * these blocks keep the walkthrough on our own product page. Only products
+ * listed here get a tutorial block. `video` is optional — Muse is text-only
+ * because the generated slides read as filler next to the real screenshots in
+ * the help centre.
  */
 export type ShopTutorial = {
   title: string;
-  video: string;
-  poster: string;
+  video?: string;
+  poster?: string;
   caption: string;
   steps: string[];
   image?: { src: string; alt: string; caption: string };
@@ -14,9 +16,7 @@ export type ShopTutorial = {
 
 const MUSE_TUTORIAL: ShopTutorial = {
   title: "Muse 登录与换绑",
-  video: "/media/muse-tutorial.mp4",
-  poster: "/media/muse-tutorial-poster.jpg",
-  caption: "按商品流程整理的操作演示，约 1 分钟。实际页面以 Muse 官网为准。",
+  caption: "按商品流程整理的操作步骤。实际页面以 Muse 官网为准。",
   steps: [
     "打开 Muse 官网，输入发货给您的临时邮箱。",
     "打开邮箱里的接码链接，把验证码填回登录页。",
