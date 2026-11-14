@@ -9,7 +9,8 @@ if [[ "$(id -u)" -ne 0 ]]; then
 fi
 
 SSH_PORT="${SSH_PORT:-22}"
-APP_DIR="${APP_DIR:-/opt/cokeai}"
+APP_DIR="${APP_DIR:-/home/deploy/cokeai}"
+DEPLOY_USER="${DEPLOY_USER:-deploy}"
 
 echo "==> Installing base packages"
 apt-get update -y
@@ -42,8 +43,15 @@ JSON
 systemctl restart docker
 
 echo "==> Preparing application directory"
-mkdir -p "${APP_DIR}/n8n/workflows"
+mkdir -p "${APP_DIR}/n8n/workflows" "${APP_DIR}/backups"
 chmod 755 "${APP_DIR}"
+# The backup container runs as the deploy user's uid so it can write dumps.
+chmod 700 "${APP_DIR}/backups"
+if id "${DEPLOY_USER}" >/dev/null 2>&1; then
+  chown -R "${DEPLOY_USER}:" "${APP_DIR}"
+elif [[ -n "${SUDO_USER:-}" && "${SUDO_USER}" != "root" ]]; then
+  chown -R "${SUDO_USER}:" "${APP_DIR}"
+fi
 
 echo "==> Configuring firewall"
 ufw allow "${SSH_PORT}/tcp"

@@ -21,7 +21,7 @@ jobs:
       VPS_HOST: ${{ secrets.VPS_HOST }}
       VPS_USER: ${{ secrets.VPS_USER }}
       VPS_PORT: ${{ secrets.VPS_PORT || '22' }}
-      APP_DIR: ${{ secrets.VPS_APP_DIR || '/opt/cokeai' }}
+      APP_DIR: ${{ secrets.VPS_APP_DIR || '/home/deploy/cokeai' }}
     steps:
       - uses: actions/checkout@v5
 
@@ -44,6 +44,7 @@ jobs:
             --exclude=.env* \
             --exclude=node_modules \
             --exclude=.next \
+            --exclude=backups \
             -e "ssh -p $VPS_PORT" \
             ./ "$VPS_USER@$VPS_HOST:$APP_DIR/"
 
@@ -53,6 +54,10 @@ jobs:
           set -euo pipefail
           cd "$APP_DIR"
           test -f .env || { echo "Missing .env on server"; exit 1; }
+          # Docker would create this as root, leaving the backup container
+          # unable to write. Create it as the deploy user first.
+          mkdir -p backups
+          chmod 700 backups
           PROFILE=""
           if grep -Eq '^CLOUDFLARE_TUNNEL_TOKEN=.+' .env; then
             PROFILE="--profile tunnel"

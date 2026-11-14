@@ -65,7 +65,7 @@ npm run rollback:prepare # 回滚前把 Sub2API 余额写回本地用户表
 
 ```bash
 sudo bash ops/bootstrap-vps.sh
-cd /opt/cokeai
+cd /home/deploy/cokeai
 bash ops/generate-env.sh
 # 编辑 .env：Cloudflare token、Sub2API 镜像 digest、分组 ID、支付参数
 docker compose -f docker-compose.yml -f ops/sub2api/compose.yaml \

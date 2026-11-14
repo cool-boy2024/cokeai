@@ -78,6 +78,51 @@ services:
       - cokeai
     logging: *default-logging
 
+  # Daily logical backups of the CokeAI and n8n databases. Runs as the host
+  # deploy user (default 1000) so ./backups stays readable/writable without
+  # root. Set BACKUP_UID/BACKUP_GID when the deploy user has another id.
+  backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    user: "${BACKUP_UID:-1000}:${BACKUP_GID:-1000}"
+    environment:
+      PGHOST: postgres
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-86400}
+      TZ: Asia/Shanghai
+    volumes:
+      - ./backups:/backups
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -eu
+        umask 077
+        mkdir -p /backups
+        while true; do
+          stamp="$$(date -u +%Y%m%dT%H%M%SZ)"
+          for db in cokeai n8n; do
+            tmp="/backups/$${db}-$${stamp}.sql.gz.part"
+            out="/backups/$${db}-$${stamp}.sql.gz"
+            if pg_dump -U cokeai -d "$$db" --clean --if-exists | gzip > "$$tmp"; then
+              mv "$$tmp" "$$out"
+              echo "[backup] wrote $$out"
+            else
+              rm -f "$$tmp"
+              echo "[backup] failed for $$db" >&2
+            fi
+          done
+          find /backups -maxdepth 1 -type f -name '*.sql.gz' \
+            -mtime +"$${BACKUP_RETENTION_DAYS}" -delete
+          sleep "$${BACKUP_INTERVAL_SECONDS}"
+        done
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - cokeai
+    logging: *default-logging
+
   # Single ingress for both the Next.js app and the Sub2API gateway.
   # Route /v1/* and /v1beta/* to Sub2API; everything else to the app.
   # Port 8080 is bound to loopback for local debugging only; Cloudflare Tunnel

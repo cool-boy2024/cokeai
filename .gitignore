@@ -22,6 +22,11 @@ aiclient2api-data/
 *.sqlite
 *.db
 
+# Database backups (the directory is deployed so the backup container can
+# write into it without root; its contents never enter Git)
+backups/*
+!backups/.gitkeep
+
 # Local tooling and generated data
 .venv/
 **/.venv/

@@ -60,7 +60,7 @@ n8n.cokeai.cc.cd ──► n8n:5678 (保持现状，建议 Zero Trust Access)
 
 ```bash
 sudo bash ops/bootstrap-vps.sh
-cd /opt/cokeai
+cd /home/deploy/cokeai
 bash ops/generate-env.sh
 chmod 600 .env
 ```
@@ -481,6 +481,31 @@ node scripts/smoke-production.mjs
 
 ### 8.1 备份
 
+**自动备份（默认开启）**
+
+`docker-compose.yml` 里的 `backup` 服务随正常 `up -d` 启动，每天一次：
+
+- 写入宿主机 `./backups/`（生产为 `/home/deploy/cokeai/backups/`）
+- 文件：`cokeai-YYYYMMDDTHHMMSSZ.sql.gz`、`n8n-YYYYMMDDTHHMMSSZ.sql.gz`
+- 目录 0700、文件 0600，默认保留 14 天
+- 启动时立即先备份一次，之后每 24 小时一次
+- 查看：`docker compose logs --tail=20 backup`；状态：`docker compose ps backup`
+
+可调 `.env`：
+
+```text
+BACKUP_RETENTION_DAYS=14
+BACKUP_INTERVAL_SECONDS=86400
+# 容器默认以 uid/gid 1000 运行；部署用户不是 1000 时改成实际值
+BACKUP_UID=1000
+BACKUP_GID=1000
+```
+
+`backups/` 已在 rsync 部署中排除，发布不会删除历史备份。自动备份只覆盖
+CokeAI 主库和 n8n；Sub2API 独立库仍需按下面命令单独备份。
+
+**手动备份**
+
 ```bash
 # CokeAI 主库
 docker compose exec -T postgres pg_dump -U cokeai -d cokeai -Fc \
@@ -520,9 +545,17 @@ $COMPOSE stop edge cloudflared app sub2api
 2. 恢复 CokeAI 主库：
 
 ```bash
+# 自动备份（纯 SQL + gzip）
+gunzip -c /home/deploy/cokeai/backups/cokeai-YYYYMMDDTHHMMSSZ.sql.gz | \
+  $COMPOSE exec -T postgres psql -U cokeai -d cokeai
+
+# 手动备份（pg_dump -Fc）
 $COMPOSE exec -T postgres pg_restore -U cokeai -d cokeai --clean --if-exists \
   < cokeai-YYYY-MM-DD.dump
 ```
+
+恢复 n8n 时把数据库名换成 `n8n`。自动备份的 dump 自带 `--clean --if-exists`，
+可直接覆盖现有库；恢复会断开当前连接，先按第 1 步停掉写入方。
 
 3. 恢复 Sub2API 库：
 
