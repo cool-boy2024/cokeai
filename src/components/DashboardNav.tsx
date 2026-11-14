@@ -30,17 +30,16 @@ const userItems = [
 ];
 
 // The shop owns the day-to-day operations now. Legacy API recharge pages
-// (gateway / plans / pricing) stay reachable by URL for rollback, but they are
-// no longer part of the operator's navigation.
+// (overview / gateway / plans / pricing) stay reachable by URL for rollback,
+// but they are no longer part of the operator's navigation.
 const adminItems = [
-  { href: "/admin", label: "概览", icon: LayoutDashboard },
+  { href: "/admin/shop", label: "小店概览", icon: LayoutDashboard },
   // Security stays near the overview on purpose: it is the first stop during
   // an incident, and it must remain inside the initial viewport (the mobile
   // nav scrolls horizontally, so trailing items are effectively hidden).
   { href: "/admin/security", label: "安全", icon: ShieldCheck },
   { href: "/admin/shop/orders", label: "订单", icon: ReceiptText },
   { href: "/admin/payments", label: "收款设置", icon: CreditCard },
-  { href: "/admin/shop", label: "小店", icon: ShoppingBag },
   { href: "/admin/shop/queue", label: "采购队列", icon: ClipboardList },
   { href: "/admin/shop/deposits", label: "USDT 到账", icon: Wallet },
   { href: "/admin/shop/sources", label: "货源", icon: PackageSearch },
