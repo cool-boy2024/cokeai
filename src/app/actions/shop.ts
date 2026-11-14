@@ -18,7 +18,11 @@ import { recordSecurityEventOnce } from "@/lib/security";
 import { verifyShopCaptcha } from "@/lib/shop/captcha";
 import { createShopEasyPayCheckout } from "@/lib/shop/payments";
 import { createShopOrder, revealShopDelivery } from "@/lib/shop/orders";
-import { notifyShopOrderCreated } from "@/lib/shop/notify";
+import {
+  settleShopBalanceOrder,
+  type ShopBalanceSettlement,
+} from "@/lib/shop/balance";
+import { notifyShopOrderCreated, notifyShopOrderPaid } from "@/lib/shop/notify";
 
 export type ShopCheckoutState = { error?: string };
 
@@ -40,8 +44,14 @@ export async function createShopCheckoutAction(
     return { error: "商品价格异常，请刷新后重试。" };
   }
   // The shop accepts USDT on configured networks, EasyPay when configured,
-  // and the operator's personal Alipay QR when it is enabled.
-  if (!isUsdt && provider !== "alipay" && provider !== "alipay_manual") {
+  // the operator's personal Alipay QR when it is enabled, and the account
+  // balance (API credit) for logged-in buyers.
+  if (
+    !isUsdt &&
+    provider !== "alipay" &&
+    provider !== "alipay_manual" &&
+    provider !== "balance"
+  ) {
     return { error: "支付方式无效。" };
   }
 
@@ -131,12 +141,41 @@ export async function createShopCheckoutAction(
           ? providerForNetwork(usdtNetwork)
           : provider === "alipay_manual"
             ? "alipay_manual"
-            : "alipay_easypay",
+            : provider === "balance"
+              ? "balance"
+              : "alipay_easypay",
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "下单失败";
     if (message === "PRICE_CHANGED") return { error: "价格已更新，请确认新价格后重新下单。" };
     return { error: message };
+  }
+
+  if (provider === "balance") {
+    let settlement: ShopBalanceSettlement;
+    try {
+      settlement = await settleShopBalanceOrder({
+        orderId: created.id,
+        userId: user.id,
+      });
+    } catch (error) {
+      console.error(
+        "[shop] balance checkout failed",
+        created.orderNo,
+        error instanceof Error ? error.message : error,
+      );
+      revalidatePath("/dashboard/shop");
+      redirect(`/shop/checkout/${created.orderNo}?balance=failed`);
+    }
+    if (settlement.ok) {
+      after(() => notifyShopOrderPaid(created.id));
+      revalidatePath("/dashboard/shop");
+      redirect(`/shop/orders/${created.orderNo}`);
+    }
+    revalidatePath("/dashboard/shop");
+    redirect(
+      `/shop/checkout/${created.orderNo}?balance=${settlement.code.toLowerCase()}`,
+    );
   }
 
   if (provider === "alipay") {
@@ -211,6 +250,47 @@ export async function createShopCheckoutAction(
   after(() => notifyShopOrderCreated(created.id, contactEmail));
   revalidatePath("/dashboard/shop");
   redirect(`/shop/checkout/${created.orderNo}`);
+}
+
+/**
+ * Re-attempts a pending balance order from the checkout page. Safe to press
+ * repeatedly: the debit reference is derived from the order id, so an already
+ * applied debit is detected and never charged twice.
+ */
+export async function retryShopBalancePaymentAction(formData: FormData): Promise<void> {
+  const user = await requireUser();
+  const orderNo = String(formData.get("orderNo") || "").trim();
+  const order = await query<{ id: string; order_no: string }>(
+    `SELECT id, order_no FROM shop_orders
+      WHERE order_no = $1 AND user_id = $2 AND payment_provider = 'balance'
+      LIMIT 1`,
+    [orderNo, user.id],
+  );
+  const row = order.rows[0];
+  if (!row) redirect("/dashboard/shop");
+
+  const limit = await fixedWindowLimit(`shop:balance-retry:${user.id}`, 20, 600);
+  if (!limit.allowed) {
+    redirect(`/shop/checkout/${row.order_no}?balance=rate`);
+  }
+
+  let settlement: ShopBalanceSettlement;
+  try {
+    settlement = await settleShopBalanceOrder({ orderId: row.id, userId: user.id });
+  } catch (error) {
+    console.error(
+      "[shop] balance retry failed",
+      row.order_no,
+      error instanceof Error ? error.message : error,
+    );
+    redirect(`/shop/checkout/${row.order_no}?balance=failed`);
+  }
+  if (settlement.ok) {
+    after(() => notifyShopOrderPaid(row.id));
+    revalidatePath("/dashboard/shop");
+    redirect(`/shop/orders/${row.order_no}`);
+  }
+  redirect(`/shop/checkout/${row.order_no}?balance=${settlement.code.toLowerCase()}`);
 }
 
 async function cancelPendingShopOrder(orderId: string, userId: string): Promise<void> {

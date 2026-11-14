@@ -30,7 +30,8 @@
     "test:shop:manual": "tsx scripts/test-shop-manual-alipay.ts",
     "test:shop:categories": "tsx scripts/test-shop-categories.ts",
     "test:shop:preorder": "tsx scripts/test-shop-preorder.ts",
-    "test:shop:payments": "tsx scripts/test-shop-payments.ts"
+    "test:shop:payments": "tsx scripts/test-shop-payments.ts",
+    "test:shop:balance": "tsx scripts/test-shop-balance.ts"
   },
   "dependencies": {
     "@noble/hashes": "^2.4.0",

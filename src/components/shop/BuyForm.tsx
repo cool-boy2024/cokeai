@@ -6,6 +6,7 @@ import { useActionState, useCallback, useEffect, useRef, useState } from "react"
 import { LockSimple, ShieldCheck } from "@phosphor-icons/react";
 import { createShopCheckoutAction, type ShopCheckoutState } from "@/app/actions/shop";
 import type { PublicShopProduct } from "@/lib/shop/catalog";
+import { formatCny } from "@/lib/money";
 import { isPurchasable, productPriceLabel, SHOP_COPY } from "@/lib/shop/copy";
 
 const initial: ShopCheckoutState = {};
@@ -44,6 +45,7 @@ export function BuyForm({
     alipayManual: boolean;
     usdtNetworks: Array<{ provider: string; label: string; hint: string }>;
     manual: boolean;
+    balance: { amountMicros: number };
   };
   initialCaptcha?: Captcha | null;
 }) {
@@ -52,6 +54,7 @@ export function BuyForm({
   const [step, setStep] = useState<"idle" | "method">("idle");
   const [preorderOpen, setPreorderOpen] = useState(false);
   const [qty, setQty] = useState(1);
+  const [provider, setProvider] = useState("");
   const preorderConfirmRef = useRef<HTMLButtonElement>(null);
   // The first captcha is rendered with the page, so opening the payment step is
   // instant. Refreshes are only needed when it expires, the code is wrong, or
@@ -126,16 +129,52 @@ export function BuyForm({
     }
   }, [state.error, router]);
 
+  const balanceEnough = paymentOptions.balance.amountMicros >= totalMicros;
   const methods = [
+    {
+      key: "balance",
+      label: "账户余额",
+      hint: balanceEnough
+        ? `可用 ${formatCny(paymentOptions.balance.amountMicros)} · 立即扣款`
+        : `可用 ${formatCny(paymentOptions.balance.amountMicros)} · 余额不足`,
+      disabled: !balanceEnough,
+    },
     ...paymentOptions.usdtNetworks.map((network) => ({
       key: network.provider,
       label: network.label,
       hint: network.hint,
+      disabled: false,
     })),
-    paymentOptions.alipay ? { key: "alipay", label: "支付宝（易支付）", hint: "第三方网关 · 即时到账" } : null,
-    paymentOptions.alipayManual ? { key: "alipay_manual", label: "支付宝（人工核实）", hint: "扫码付款 · 商家核实后安排交付" } : null,
-    paymentOptions.manual ? { key: "manual", label: "人工到账", hint: "联系客服" } : null,
-  ].filter(Boolean) as Array<{ key: string; label: string; hint: string }>;
+    paymentOptions.alipay
+      ? { key: "alipay", label: "支付宝（易支付）", hint: "第三方网关 · 即时到账", disabled: false }
+      : null,
+    paymentOptions.alipayManual
+      ? {
+          key: "alipay_manual",
+          label: "支付宝（人工核实）",
+          hint: "扫码付款 · 商家核实后安排交付",
+          disabled: false,
+        }
+      : null,
+    paymentOptions.manual
+      ? { key: "manual", label: "人工到账", hint: "联系客服", disabled: false }
+      : null,
+  ].filter(Boolean) as Array<{
+    key: string;
+    label: string;
+    hint: string;
+    disabled: boolean;
+  }>;
+  const firstEnabledProvider = methods.find((method) => !method.disabled)?.key || "";
+  const selectedProvider = methods.some(
+    (method) => method.key === provider && !method.disabled,
+  )
+    ? provider
+    : firstEnabledProvider;
+
+  useEffect(() => {
+    if (selectedProvider !== provider) setProvider(selectedProvider);
+  }, [selectedProvider, provider]);
 
   if (!loggedIn) {
     return (
@@ -452,13 +491,18 @@ export function BuyForm({
       {methods.length > 0 ? (
         <fieldset className="shop-pay-methods">
           <legend>支付渠道</legend>
-          {methods.map((method, index) => (
-            <label key={method.key} className="shop-pay-option">
+          {methods.map((method) => (
+            <label
+              key={method.key}
+              className={`shop-pay-option${method.disabled ? " is-disabled" : ""}`}
+            >
               <input
                 type="radio"
                 name="provider"
                 value={method.key}
-                defaultChecked={index === 0}
+                checked={selectedProvider === method.key}
+                disabled={method.disabled}
+                onChange={() => setProvider(method.key)}
               />
               <span>
                 <strong>{method.label}</strong>
@@ -476,7 +520,13 @@ export function BuyForm({
       <button
         className="btn btn-primary btn-block"
         type="submit"
-        disabled={pending || !available || methods.length === 0 || !captcha}
+        disabled={
+          pending ||
+          !available ||
+          methods.length === 0 ||
+          !selectedProvider ||
+          !captcha
+        }
       >
         {!available
           ? SHOP_COPY.buy.outOfStock

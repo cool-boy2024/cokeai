@@ -21,6 +21,7 @@ import {
 } from "@/components/shop/ShopBadges";
 import { getCurrentUser } from "@/lib/auth";
 import { config } from "@/lib/config";
+import { getGatewayBalance } from "@/lib/gateway-credits";
 import { isEasyPayConfigured } from "@/lib/payments/easypay";
 import { USDT_NETWORKS } from "@/lib/payments/networks";
 import { getManualAlipaySettings } from "@/lib/payments/settings";
@@ -60,6 +61,11 @@ export default async function ShopProductPage({
   ]);
   if (!product) notFound();
 
+  const balance = user
+    ? await getGatewayBalance(user.id).catch(() => ({
+        balance: user.balance_micros / 1_000_000,
+      }))
+    : { balance: 0 };
   const helpArticles = await getVisibleHelpArticlesByIds(
     getProductHelpArticleIds(product),
   );
@@ -217,6 +223,9 @@ export default async function ShopProductPage({
                     hint: `${USDT_NETWORKS[id].chainLabel} · 链上确认`,
                   })),
                   manual: false,
+                  balance: {
+                    amountMicros: Math.max(0, Math.round(balance.balance * 1_000_000)),
+                  },
                 }}
               />
               <div className="shop-aside-note">

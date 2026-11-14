@@ -2901,6 +2901,17 @@ tbody tr:hover {
   accent-color: var(--green);
 }
 
+.shop-pay-option.is-disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  background: color-mix(in srgb, var(--line) 22%, transparent);
+}
+
+.shop-pay-option.is-disabled:has(input:checked) {
+  border-color: var(--line);
+  background: color-mix(in srgb, var(--line) 22%, transparent);
+}
+
 .shop-pay-option span {
   display: flex;
   flex: 1;

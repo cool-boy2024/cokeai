@@ -555,7 +555,7 @@ CREATE TABLE IF NOT EXISTS shop_orders (
   subtotal_micros BIGINT NOT NULL DEFAULT 0 CHECK (subtotal_micros >= 0),
   amount_micros BIGINT NOT NULL DEFAULT 0 CHECK (amount_micros >= 0),
   payment_provider TEXT NOT NULL DEFAULT 'manual'
-    CHECK (payment_provider IN ('alipay_easypay', 'alipay_manual', 'usdt_trc20', 'manual')),
+    CHECK (payment_provider IN ('alipay_easypay', 'alipay_manual', 'usdt_trc20', 'manual', 'balance')),
   provider_ref TEXT UNIQUE,
   pay_amount NUMERIC(20,8),
   pay_currency TEXT,
@@ -707,7 +707,7 @@ INSERT INTO schema_migrations (version) VALUES ('003_shop') ON CONFLICT (version
 -- Extend existing installations created before personal Alipay support.
 ALTER TABLE shop_orders DROP CONSTRAINT IF EXISTS shop_orders_payment_provider_check;
 ALTER TABLE shop_orders ADD CONSTRAINT shop_orders_payment_provider_check
-  CHECK (payment_provider IN ('alipay_easypay','alipay_manual','usdt_trc20','usdt_bsc','usdt_polygon','manual'));
+  CHECK (payment_provider IN ('alipay_easypay','alipay_manual','usdt_trc20','usdt_bsc','usdt_polygon','manual','balance'));
 
 -- Widens the payment settings channel list on installations created before
 -- BSC/Polygon support. The inline CHECK gets a generated name; drop both

@@ -105,9 +105,11 @@ export default async function AdminShopOrdersPage({
                           ? "支付宝（易支付）"
                           : order.payment_provider === "alipay_manual"
                             ? "支付宝（人工）"
-                            : order.payment_provider.startsWith("usdt_")
-                              ? "USDT"
-                              : "人工"}
+                            : order.payment_provider === "balance"
+                              ? "账户余额"
+                              : order.payment_provider.startsWith("usdt_")
+                                ? "USDT"
+                                : "人工"}
                       </td>
                       <td>
                         {order.status === "pending_payment" && order.reported_at ? (

@@ -11,6 +11,24 @@ import {
 } from "@/lib/sub2api/client";
 import { ensureGatewayIdentityReady } from "@/lib/sub2api/identity";
 
+export const SHOP_BALANCE_REF_PREFIX = "cokeai-shop-balance:";
+export const SHOP_BALANCE_REVERSED = "SHOP_BALANCE_REVERSED";
+export const SHOP_BALANCE_REVERSAL_FAILED = "SHOP_BALANCE_REVERSAL_FAILED";
+
+export function shopBalanceReference(orderId: string, attempt = 1): string {
+  return attempt <= 1
+    ? `${SHOP_BALANCE_REF_PREFIX}${orderId}`
+    : `${SHOP_BALANCE_REF_PREFIX}${orderId}:${attempt}`;
+}
+
+export function shopBalanceAttempt(reference: string): number {
+  const rest = reference.slice(SHOP_BALANCE_REF_PREFIX.length);
+  const separator = rest.lastIndexOf(":");
+  if (separator < 0) return 1;
+  const attempt = Number(rest.slice(separator + 1));
+  return Number.isInteger(attempt) && attempt > 1 ? attempt : 1;
+}
+
 export type CreditOp = {
   id: string;
   user_id: string;
@@ -148,6 +166,79 @@ async function getCreditOp(id: string): Promise<CreditOp | null> {
   return result.rows[0] || null;
 }
 
+export async function getCreditOpByReference(reference: string): Promise<CreditOp | null> {
+  const result = await query<CreditOp>(
+    `SELECT id, user_id, order_id, kind, amount_cny_micros, amount_credit,
+            reference, status, attempts, last_error, sub2api_user_id
+       FROM gateway_balance_ops WHERE reference = $1`,
+    [reference],
+  );
+  return result.rows[0] || null;
+}
+
+export async function getLatestShopBalanceOp(orderId: string): Promise<CreditOp | null> {
+  const base = shopBalanceReference(orderId);
+  const result = await query<CreditOp>(
+    `SELECT id, user_id, order_id, kind, amount_cny_micros, amount_credit,
+            reference, status, attempts, last_error, sub2api_user_id
+       FROM gateway_balance_ops
+      WHERE reference = $1 OR reference LIKE $1 || ':%'
+      ORDER BY created_at DESC
+      LIMIT 1`,
+    [base],
+  );
+  return result.rows[0] || null;
+}
+
+async function markFailed(claimedOp: CreditOp, message: string): Promise<CreditOp> {
+  const failed = await query<CreditOp>(
+    `UPDATE gateway_balance_ops
+        SET status = 'failed', last_error = $2, updated_at = now()
+      WHERE id = $1 AND status = 'applying'
+      RETURNING id, user_id, order_id, kind, amount_cny_micros, amount_credit,
+                reference, status, attempts, last_error, sub2api_user_id`,
+    [claimedOp.id, message.slice(0, 500)],
+  );
+  return failed.rows[0] || (await getCreditOp(claimedOp.id)) || claimedOp;
+}
+
+async function reverseShopBalance(
+  claimedOp: CreditOp,
+  sub2apiUserId: Sub2ApiId,
+  signed: number,
+): Promise<CreditOp> {
+  try {
+    const reference = `${claimedOp.reference}:reversal`;
+    const profile = await adminRequest<Sub2ApiProfile>(
+      `/api/v1/admin/users/${sub2ApiPathId(sub2apiUserId)}/balance`,
+      {
+        method: "POST",
+        idempotencyKey: reference,
+        body: {
+          balance: Math.abs(signed),
+          operation: "add",
+          notes: reference,
+        },
+      },
+    );
+    await updateLocalBalance(claimedOp.user_id, toNumber(profile.balance));
+    return markFailed(
+      claimedOp,
+      `${SHOP_BALANCE_REVERSED}：余额不足，扣款已自动冲正`,
+    );
+  } catch (error) {
+    console.error(
+      "[gateway-credits] shop balance reversal failed",
+      claimedOp.reference,
+      error instanceof Error ? error.message : error,
+    );
+    return markFailed(
+      claimedOp,
+      `${SHOP_BALANCE_REVERSAL_FAILED}：扣款后余额为负且冲正失败，需人工核对`,
+    );
+  }
+}
+
 async function markApplied(claimedOp: CreditOp, sub2apiUserId: Sub2ApiId): Promise<CreditOp> {
   const applied = await query<CreditOp>(
     `UPDATE gateway_balance_ops
@@ -162,16 +253,48 @@ async function markApplied(claimedOp: CreditOp, sub2apiUserId: Sub2ApiId): Promi
   return applied.rows[0] || (await getCreditOp(claimedOp.id)) || claimedOp;
 }
 
-async function applyCreditOp(op: CreditOp): Promise<CreditOp> {
+type ApplyCreditOpOptions = { requireNonNegative?: boolean };
+
+async function applyCreditOp(
+  op: CreditOp,
+  options: ApplyCreditOpOptions = {},
+): Promise<CreditOp> {
+  if (
+    options.requireNonNegative &&
+    (op.last_error === SHOP_BALANCE_REVERSED ||
+      op.last_error === SHOP_BALANCE_REVERSAL_FAILED ||
+      op.last_error?.startsWith(`${SHOP_BALANCE_REVERSED}：`) ||
+      op.last_error?.startsWith(`${SHOP_BALANCE_REVERSAL_FAILED}：`))
+  ) {
+    // Do not replay a debit that was already reversed (the original reference
+    // still appears in Sub2API balance history) or one whose reversal failed.
+    return op;
+  }
+
   const claimed = await query<CreditOp>(
     `UPDATE gateway_balance_ops
         SET status = 'applying', attempts = attempts + 1, updated_at = now()
       WHERE id = $1 AND status IN ('pending', 'failed')
+        AND (
+          NOT $2::boolean
+          OR last_error IS NULL
+          OR (
+            last_error NOT LIKE $3
+            AND last_error NOT LIKE $4
+          )
+        )
       RETURNING id, user_id, order_id, kind, amount_cny_micros, amount_credit,
                 reference, status, attempts, last_error, sub2api_user_id`,
-    [op.id],
+    [
+      op.id,
+      Boolean(options.requireNonNegative),
+      `${SHOP_BALANCE_REVERSED}%`,
+      `${SHOP_BALANCE_REVERSAL_FAILED}%`,
+    ],
   );
   const claimedOp = claimed.rows[0];
+  // A terminal reversal/refusal never gets claimed into 'applying': the row is
+  // left as failed so the original debit can never be replayed.
   if (!claimedOp) return (await getCreditOp(op.id)) || op;
 
   try {
@@ -182,17 +305,40 @@ async function applyCreditOp(op: CreditOp): Promise<CreditOp> {
 
     // Legacy/CI/rollback mode: no Sub2API configured. Keep the old local
     // balance authoritative and still mark the outbox row atomically so a
-    // retry cannot double-credit.
+    // retry cannot double-credit. A shop debit additionally requires the
+    // resulting local balance to stay non-negative.
     if (!isSub2ApiConfigured()) {
       await withTransaction(async (client) => {
-        await client.query(
-          `UPDATE users
-              SET balance_micros = GREATEST(0, balance_micros + $2),
-                  gateway_balance_synced_at = now(),
-                  updated_at = now()
-            WHERE id = $1`,
-          [claimedOp.user_id, creditToMicros(signed)],
-        );
+        const delta = creditToMicros(signed);
+        if (options.requireNonNegative && delta < 0) {
+          const updated = await client.query(
+            `UPDATE users
+                SET balance_micros = balance_micros + $2::bigint,
+                    gateway_balance_synced_at = now(),
+                    updated_at = now()
+              WHERE id = $1 AND balance_micros + $2::bigint >= 0`,
+            [claimedOp.user_id, delta],
+          );
+          if (!updated.rowCount) {
+            await client.query(
+              `UPDATE gateway_balance_ops
+                  SET status = 'failed', last_error = 'INSUFFICIENT_BALANCE',
+                      updated_at = now()
+                WHERE id = $1 AND status = 'applying'`,
+              [claimedOp.id],
+            );
+            return;
+          }
+        } else {
+          await client.query(
+            `UPDATE users
+                SET balance_micros = GREATEST(0, balance_micros + $2),
+                    gateway_balance_synced_at = now(),
+                    updated_at = now()
+              WHERE id = $1`,
+            [claimedOp.user_id, delta],
+          );
+        }
         await client.query(
           `UPDATE gateway_balance_ops
               SET status = 'applied', applied_at = coalesce(applied_at, now()),
@@ -215,6 +361,9 @@ async function applyCreditOp(op: CreditOp): Promise<CreditOp> {
       const profile = await adminRequest<Sub2ApiProfile>(
         `/api/v1/admin/users/${sub2ApiPathId(sub2apiUserId)}`,
       );
+      if (options.requireNonNegative && toNumber(profile.balance) < 0) {
+        return reverseShopBalance(claimedOp, sub2apiUserId, signed);
+      }
       await updateLocalBalance(claimedOp.user_id, toNumber(profile.balance));
       return markApplied(claimedOp, sub2apiUserId);
     }
@@ -232,27 +381,25 @@ async function applyCreditOp(op: CreditOp): Promise<CreditOp> {
       },
     );
 
+    if (options.requireNonNegative && toNumber(profile.balance) < 0) {
+      return reverseShopBalance(claimedOp, sub2apiUserId, signed);
+    }
     await updateLocalBalance(claimedOp.user_id, toNumber(profile.balance));
     return markApplied(claimedOp, sub2apiUserId);
   } catch (error) {
     const message = error instanceof Error ? error.message : "加额度失败";
-    const failed = await query<CreditOp>(
-      `UPDATE gateway_balance_ops
-          SET status = 'failed', last_error = $2, updated_at = now()
-        WHERE id = $1 AND status = 'applying'
-        RETURNING id, user_id, order_id, kind, amount_cny_micros, amount_credit,
-                  reference, status, attempts, last_error, sub2api_user_id`,
-      [claimedOp.id, message.slice(0, 500)],
-    );
-    return failed.rows[0] || (await getCreditOp(claimedOp.id)) || claimedOp;
+    return markFailed(claimedOp, message);
   }
 }
 
-export async function applyCreditOpById(id: string): Promise<CreditOp | null> {
+export async function applyCreditOpById(
+  id: string,
+  options: ApplyCreditOpOptions = {},
+): Promise<CreditOp | null> {
   const op = await getCreditOp(id);
   if (!op) return null;
   if (op.status === "applied") return op;
-  return applyCreditOp(op);
+  return applyCreditOp(op, options);
 }
 
 /**
@@ -284,6 +431,10 @@ export async function retryPendingCreditOps(limit = 20): Promise<{
        FROM gateway_balance_ops
       WHERE status IN ('pending', 'failed')
         AND attempts < 10
+        -- Shop debits are driven by the checkout request, never by the
+        -- background retry worker: a retry must not charge a buyer after the
+        -- order was cancelled or left pending.
+        AND reference NOT LIKE 'cokeai-shop-balance:%'
       ORDER BY created_at
       LIMIT $1`,
     [limit],

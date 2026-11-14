@@ -49,8 +49,10 @@ export default async function AlertSettingsPage({
       user: config.smtp.user,
       from: config.smtp.from,
       to: config.smtp.to,
+      replyTo: config.smtp.replyTo,
       passwordConfigured: Boolean(config.smtp.pass),
     },
+    emailCopy: config.emailCopy,
   };
 
   return (
@@ -118,8 +120,8 @@ export default async function AlertSettingsPage({
             {" · "}
             {alertConfigTarget(config)}
             {configured
-              ? "。攻击告警、应急防护通知和管理员手动摘要都会走这个通道。"
-              : "。填写下面的信息并发送测试后生效。"}
+              ? "。小店下单、付款和异常提醒始终发邮件给伙伴；攻击告警、应急防护通知和管理员摘要走当前通道，勾选邮件副本后也会发邮件。"
+              : "。填写下面的信息并发送测试后生效。小店通知必须配置邮箱。"}
           </div>
         </div>
       </section>

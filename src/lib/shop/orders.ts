@@ -178,7 +178,8 @@ export async function createShopOrder(input: {
     | "usdt_trc20"
     | "usdt_bsc"
     | "usdt_polygon"
-    | "manual";
+    | "manual"
+    | "balance";
 }): Promise<{ id: string; orderNo: string; amountMicros: number }> {
   return withTransaction(async (client) => {
     const productResult = await client.query<{
@@ -415,7 +416,8 @@ export async function markShopOrderPaid(input: {
     | "usdt_trc20"
     | "usdt_bsc"
     | "usdt_polygon"
-    | "manual";
+    | "manual"
+    | "balance";
   providerRef: string;
   paidAmountMicros?: number;
   payTxid?: string;
@@ -831,6 +833,28 @@ export async function expireShopOrders(): Promise<number> {
         AND NOT EXISTS (
           SELECT 1 FROM shop_usdt_deposits d
            WHERE d.order_id = o.id AND d.received_usdt > 0
+        )
+        -- A balance debit may already have succeeded even though the local
+        -- order update failed. Keep the order open so the checkout page can
+        -- reconcile it instead of expiring a paid order. Only a definitively
+        -- non-charging failure (guard rejected the debit, or the debit was
+        -- reversed) may expire.
+        AND NOT (
+          o.payment_provider = 'balance'
+          AND EXISTS (
+            SELECT 1 FROM gateway_balance_ops g
+             WHERE (
+                     g.reference = 'cokeai-shop-balance:' || o.id::text
+                     OR g.reference LIKE 'cokeai-shop-balance:' || o.id::text || ':%'
+                   )
+               AND NOT (
+                 g.status = 'failed'
+                 AND (
+                   g.last_error = 'INSUFFICIENT_BALANCE'
+                   OR g.last_error LIKE 'SHOP_BALANCE_REVERSED%'
+                 )
+               )
+          )
         )
         -- The buyer says they paid: wait for the operator instead of expiring
         -- an order whose money may already be in the merchant account.
