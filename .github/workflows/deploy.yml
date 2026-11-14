@@ -94,7 +94,9 @@ jobs:
 
           health=""
           for _ in $(seq 1 30); do
-            if $COMPOSE exec -T app wget -qO- http://127.0.0.1:3000/api/health >/dev/null 2>&1; then
+            # </dev/null matters: this script itself arrives on stdin, and
+            # `compose exec` would otherwise swallow the remaining lines.
+            if $COMPOSE exec -T app wget -qO- http://127.0.0.1:3000/api/health </dev/null >/dev/null 2>&1; then
               health="ok"
               break
             fi
@@ -114,9 +116,15 @@ jobs:
           # 40 GB disk for no benefit. Sort on the full CreatedAt (a plain
           # `sort -k2` only compares the date, not the time) and pass images
           # to rmi one at a time: one batch call aborts silently partway.
-          docker images --format '{{.Repository}}:{{.Tag}}|{{.CreatedAt}}' cokeai-app \
-            | grep '^cokeai-app:pre-' | sort -t'|' -k2,2 | head -n -2 | cut -d'|' -f1 \
-            | xargs -r -n 1 docker rmi >/dev/null 2>&1 || true
+          STALE=$(docker images --format '{{.Repository}}:{{.Tag}}|{{.CreatedAt}}' cokeai-app \
+            | grep '^cokeai-app:pre-' | sort -t'|' -k2,2 | head -n -2 | cut -d'|' -f1 || true)
+          if [ -n "$STALE" ]; then
+            echo "Pruning old snapshots:"
+            echo "$STALE" | while IFS= read -r image; do
+              [ -n "$image" ] || continue
+              docker rmi "$image" || echo "could not remove $image"
+            done
+          fi
 
           $COMPOSE ps
           REMOTE
