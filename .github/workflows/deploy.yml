@@ -111,10 +111,12 @@ jobs:
           fi
 
           # Keep the two newest pre-deploy snapshots; older ones fill the
-          # 40 GB disk for no benefit.
-          docker images --format '{{.Repository}}:{{.Tag}} {{.CreatedAt}}' cokeai-app \
-            | grep '^cokeai-app:pre-' | sort -k2 | head -n -2 | awk '{print $1}' \
-            | xargs -r docker rmi >/dev/null 2>&1 || true
+          # 40 GB disk for no benefit. Sort on the full CreatedAt (a plain
+          # `sort -k2` only compares the date, not the time) and pass images
+          # to rmi one at a time: one batch call aborts silently partway.
+          docker images --format '{{.Repository}}:{{.Tag}}|{{.CreatedAt}}' cokeai-app \
+            | grep '^cokeai-app:pre-' | sort -t'|' -k2,2 | head -n -2 | cut -d'|' -f1 \
+            | xargs -r -n 1 docker rmi >/dev/null 2>&1 || true
 
           $COMPOSE ps
           REMOTE
