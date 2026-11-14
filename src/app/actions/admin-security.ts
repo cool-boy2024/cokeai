@@ -1,7 +1,8 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { requireAdmin } from "@/lib/auth";
+import { revalidatePath } from "next/cache";
+import { requireAdmin, revokeSession } from "@/lib/auth";
 import {
   activateEmergencyDefense,
   deactivateEmergencyDefense,
@@ -30,6 +31,18 @@ export async function toggleStrictModeAction(formData: FormData): Promise<void> 
   redirect(
     `/admin/security?mode=${ok ? (enabled ? "strict" : "normal") : "failed"}`,
   );
+}
+
+/**
+ * Revokes one session by its token hash. Used by the admin session list so an
+ * operator can kick a device without redeploying or resetting the password.
+ */
+export async function adminRevokeSessionAction(formData: FormData): Promise<void> {
+  await requireAdmin();
+  const tokenHash = String(formData.get("tokenHash") || "").trim();
+  if (tokenHash) await revokeSession(tokenHash);
+  revalidatePath("/admin/security/sessions");
+  redirect("/admin/security/sessions?revoked=1");
 }
 
 /**

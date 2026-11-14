@@ -9,6 +9,7 @@ import {
   Radar,
   ShieldCheck,
   Siren,
+  Users,
 } from "lucide-react";
 import {
   sendSecuritySummaryAlertAction,
@@ -129,6 +130,9 @@ export default async function AdminSecurityPage({
         <div className="page-head-actions">
           <Link className="btn btn-light btn-sm" href="/admin/security/alerts">
             <Bell size={14} /> 告警设置
+          </Link>
+          <Link className="btn btn-light btn-sm" href="/admin/security/sessions">
+            <Users size={14} /> 在线会话
           </Link>
           <form action={sendSecuritySummaryAlertAction}>
             <button className="btn btn-light btn-sm" type="submit">

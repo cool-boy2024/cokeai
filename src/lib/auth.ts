@@ -74,10 +74,35 @@ export async function createSession(userId: string): Promise<void> {
   const maxAge = config.sessionDays * 24 * 60 * 60;
   const expiresAt = new Date(Date.now() + maxAge * 1000);
 
+  const headerStore = await headers();
+  const ip = await getClientIp();
+  const userAgent = (headerStore.get("user-agent") || "").slice(0, 500);
+
   await query("DELETE FROM sessions WHERE expires_at <= now()");
+
+  // Admins are limited to a few concurrent sessions; evict the oldest beyond
+  // the cap before inserting the new one. Regular users are unaffected.
+  const roleResult = await query<{ role: string }>(
+    "SELECT role FROM users WHERE id = $1 LIMIT 1",
+    [userId],
+  );
+  if (roleResult.rows[0]?.role === "admin" && config.adminMaxSessions > 0) {
+    await query(
+      `DELETE FROM sessions
+        WHERE user_id = $1
+          AND token_hash IN (
+            SELECT token_hash FROM sessions
+             WHERE user_id = $1 AND expires_at > now()
+             ORDER BY created_at DESC
+             OFFSET $2
+          )`,
+      [userId, config.adminMaxSessions - 1],
+    );
+  }
+
   await query(
-    "INSERT INTO sessions (token_hash, user_id, expires_at) VALUES ($1, $2, $3)",
-    [tokenHash, userId, expiresAt],
+    "INSERT INTO sessions (token_hash, user_id, expires_at, ip, user_agent) VALUES ($1, $2, $3, $4, $5)",
+    [tokenHash, userId, expiresAt, ip, userAgent],
   );
 
   const cookieStore = await cookies();
@@ -97,6 +122,62 @@ export async function destroySession(): Promise<void> {
     await query("DELETE FROM sessions WHERE token_hash = $1", [sha256(token)]);
   }
   cookieStore.delete(SESSION_COOKIE);
+}
+
+export type ActiveSession = {
+  tokenHash: string;
+  userId: string;
+  email: string;
+  name: string;
+  role: "user" | "admin";
+  ip: string | null;
+  userAgent: string | null;
+  createdAt: string;
+  expiresAt: string;
+};
+
+export async function listActiveSessions(limit = 200): Promise<ActiveSession[]> {
+  const result = await query<{
+    token_hash: string;
+    user_id: string;
+    email: string;
+    name: string;
+    role: string;
+    ip: string | null;
+    user_agent: string | null;
+    created_at: string;
+    expires_at: string;
+  }>(
+    `SELECT s.token_hash, s.user_id, u.email, u.name, u.role,
+            s.ip, s.user_agent, s.created_at, s.expires_at
+       FROM sessions s
+       JOIN users u ON u.id = s.user_id
+      WHERE s.expires_at > now()
+      ORDER BY (u.role = 'admin') DESC, s.created_at DESC
+      LIMIT $1`,
+    [limit],
+  );
+  return result.rows.map((row) => ({
+    tokenHash: row.token_hash,
+    userId: row.user_id,
+    email: row.email,
+    name: row.name,
+    role: row.role as "user" | "admin",
+    ip: row.ip,
+    userAgent: row.user_agent,
+    createdAt: row.created_at,
+    expiresAt: row.expires_at,
+  }));
+}
+
+export async function revokeSession(tokenHash: string): Promise<void> {
+  await query("DELETE FROM sessions WHERE token_hash = $1", [tokenHash]);
+}
+
+export async function currentSessionTokenHash(): Promise<string | null> {
+  const cookieStore = await cookies();
+  const token = cookieStore.get(SESSION_COOKIE)?.value;
+  return token ? sha256(token) : null;
 }
 
 export const getCurrentUser = cache(async (): Promise<SessionUser | null> => {

@@ -34,6 +34,9 @@ export const config = {
   defaultMaxOutputTokens: intEnv("DEFAULT_MAX_OUTPUT_TOKENS", 2048),
   hardMaxOutputTokens: intEnv("HARD_MAX_OUTPUT_TOKENS", 16_384),
   sessionDays: intEnv("SESSION_DAYS", 14),
+  // Cap on concurrent sessions for admin accounts. When an admin logs in past
+  // this limit, the oldest session is evicted. Regular users are unaffected.
+  adminMaxSessions: intEnv("ADMIN_MAX_SESSIONS", 2),
   stripeEnabled: Boolean(process.env.STRIPE_SECRET_KEY),
   manualPaymentsEnabled:
     (process.env.MANUAL_PAYMENTS_ENABLED || "true").toLowerCase() !== "false",
