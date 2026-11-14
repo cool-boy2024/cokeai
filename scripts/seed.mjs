@@ -124,6 +124,36 @@ const models = [
   },
 ];
 
+// Standing store notice shown once per visitor as a modal and kept in the
+// public announcement bar. Seeded only when the table is empty so operators
+// remain free to rewrite or delete it from /admin/announcements.
+const welcomeAnnouncement = {
+  title: "欢迎来到 CokeAI 小店",
+  body: [
+    "欢迎来到 CokeAI 小店！这里出售 AI 成品号、接码与数字商品，同时提供 OpenAI 兼容的 API 中转。",
+    "",
+    "建议注册并登录后购买：订单进度、交付内容和售后记录都在「我的订单」里。",
+    "长期网址：cokeai.cc.cd，建议收藏，方便下次购买。",
+    "",
+    "📦 商品交付与使用",
+    "✅ 下单前请确认商品适用平台、使用期限和账号要求，以商品页说明为准。",
+    "✅ 付款确认后，卡密、账号或人工说明会显示在订单页，请及时保存并按说明兑换。",
+    "✅ 部分商品需要人工采购发货，请以订单页进度为准，不要重复下单。",
+    "✅ 账号及订阅类商品，请遵守商品说明中的使用规则，避免违规操作导致账号异常。",
+    "⚠️ 如遇兑换失败、充值异常或订单未到账，请先联系客服，不要重复购买。",
+    "",
+    "💳 支付说明",
+    "目前支持 USDT 链上转账与支付宝人工核实。支付宝订单需要按页面提示转账并在订单页上报，运营核对到账后才会开始处理，不是即时到账。",
+    "",
+    "💬 售后服务",
+    "需要售后或人工发货，请点击网站右下角的「客服」留言：",
+    "【了解商品】商品名称 + 具体不懂的问题（建议先看商品介绍）",
+    "【申请售后】商品名称 + 订单号 + 清晰的问题描述 + 问题截图",
+    "复杂问题也可以发邮件到页面底部列出的邮箱。",
+  ].join("\n"),
+  level: "info",
+};
+
 try {
   const client = await pool.connect();
   try {
@@ -149,6 +179,13 @@ try {
         ],
       );
     }
+
+    await client.query(
+      `INSERT INTO announcements (title, body, level, pinned)
+       SELECT $1, $2, $3, TRUE
+        WHERE NOT EXISTS (SELECT 1 FROM announcements)`,
+      [welcomeAnnouncement.title, welcomeAnnouncement.body, welcomeAnnouncement.level],
+    );
 
     for (const upstream of upstreams) {
       await client.query(

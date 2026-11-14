@@ -4556,6 +4556,142 @@ body {
   outline-offset: 2px;
 }
 
+/* First-visit notice. The bar stays as the permanent reminder; this dialog
+   only interrupts once per announcement version. */
+.announcement-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 320;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(16, 18, 17, 0.52);
+  backdrop-filter: blur(3px);
+  animation: announcement-modal-fade var(--dur-color) var(--ease-out-quint);
+}
+
+.announcement-modal {
+  display: flex;
+  flex-direction: column;
+  width: min(720px, 100%);
+  max-height: min(86dvh, 780px);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--paper);
+  box-shadow: 0 32px 80px rgba(16, 18, 17, 0.24);
+  animation: announcement-modal-rise var(--dur-move) var(--ease-out-quint);
+}
+
+.announcement-modal-head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 24px 0;
+}
+
+.announcement-modal-eyebrow {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.announcement-modal-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  transition:
+    background var(--dur-color) var(--ease-out-quint),
+    border-color var(--dur-color) var(--ease-out-quint);
+}
+
+.announcement-modal-close:hover {
+  border-color: var(--ink);
+  background: var(--surface);
+}
+
+.announcement-modal-close:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
+
+.announcement-modal-scroll {
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 12px 24px 24px;
+}
+
+.announcement-modal-scroll h2 {
+  margin: 0 0 16px;
+  font-size: clamp(22px, 3vw, 28px);
+  line-height: 1.2;
+  letter-spacing: -0.03em;
+}
+
+.announcement-modal-body {
+  max-width: 62ch;
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 15px;
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.announcement-modal-link {
+  display: inline-block;
+  margin-top: 16px;
+  color: var(--green);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.announcement-modal-link:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 3px;
+}
+
+.announcement-modal-foot {
+  display: flex;
+  flex: none;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 16px 24px;
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.announcement-modal-foot .btn {
+  min-width: 120px;
+}
+
+@keyframes announcement-modal-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes announcement-modal-rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+}
+
 .announcements-page .announcement-page-head {
   padding-bottom: 24px;
 }
@@ -4684,11 +4820,48 @@ body {
   .announcement-card {
     padding: 20px;
   }
+
+  .announcement-modal-overlay {
+    align-items: end;
+    padding: 12px;
+  }
+
+  .announcement-modal {
+    width: 100%;
+    max-height: 92dvh;
+  }
+
+  .announcement-modal-head {
+    padding: 14px 18px 0;
+  }
+
+  .announcement-modal-scroll {
+    padding: 10px 18px 20px;
+  }
+
+  .announcement-modal-body {
+    font-size: 14.5px;
+    line-height: 1.7;
+  }
+
+  .announcement-modal-foot {
+    padding: 12px 18px;
+  }
+
+  .announcement-modal-foot .btn {
+    flex: 1;
+    min-width: 0;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .announcement-close {
     transition: none;
+  }
+
+  .announcement-modal-overlay,
+  .announcement-modal {
+    animation: none;
   }
 }
 
