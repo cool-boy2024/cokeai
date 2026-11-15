@@ -356,7 +356,7 @@ export function BuyForm({
                   </li>
                   <li>
                     <strong>发货可能延迟</strong>
-                    <span>到货时间受供货方影响，不承诺固定发货日期；进度可在订单页查看。</span>
+                    <span>到货时间受库存与排单进度影响，不承诺固定发货日期；进度可在订单页查看。</span>
                   </li>
                   <li>
                     <strong>取消与余额</strong>

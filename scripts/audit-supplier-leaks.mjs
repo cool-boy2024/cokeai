@@ -39,13 +39,20 @@ const PATTERNS = [
   { name: "supplier domain aibijia", re: /aibijia/i },
   { name: "supplier domain wzyp", re: /wzyp\./i },
   { name: "supplier domain gshh.top", re: /gshh\.top/i },
+  { name: "supplier domain aibuji.com", re: /aibuji\.com/i },
+  { name: "supplier domain lovecodex", re: /lovecodex/i },
   { name: "supplier_cost column", re: /supplier_cost/i },
+  { name: "supplier field sourceUrl", re: /source_?url/i },
   { name: "source_title column", re: /source_title/i },
   { name: "source_store column", re: /source_store/i },
   { name: "shop_offers table", re: /shop_offers/i },
   { name: "sourcing vocabulary 货源", re: /货源/ },
   { name: "sourcing vocabulary 供货商", re: /供货商/ },
-  { name: "sourcing vocabulary 上游供应商", re: /上游供应商/ },
+  { name: "sourcing vocabulary 供货方", re: /供货方/ },
+  { name: "sourcing vocabulary 供应商", re: /供应商/ },
+  { name: "sourcing vocabulary 拿货/进价", re: /拿货|进价|成本价|代理价/ },
+  { name: "settlement split 80/20", re: /80\s*%\s*结算|20\s*%\s*为卡台|卡台手续费/ },
+  { name: "refund coaching", re: /退款话术|代申请服务/ },
 ];
 
 const SKIP_SHOP_PATHS = new Set([

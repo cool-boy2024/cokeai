@@ -61,6 +61,8 @@ const SUPPLIER_BRAND_NAMES = [
   "zyanai",
   "wzyp",
   "aibuji",
+  "aibijia",
+  "lovecodex",
   "ldxp",
   "kapay",
   "beibei",
@@ -144,6 +146,32 @@ export function sanitizeFulfillmentCopy(input: string): string {
  * Removes supplier identity from a block of text. Safe to call on already
  * clean copy: the shop's own name and URL are left untouched.
  */
+/**
+ * Supplier settlement arithmetic is not product information: 80/20 refund
+ * splits, card-platform fees and refund coaching tell the buyer how much the
+ * upstream shop keeps. Rich HTML removes whole blocks containing these
+ * markers, but the same sentences also arrive as plain description and refund
+ * copy, so drop the matching sentence from every public text field.
+ */
+const SETTLEMENT_MARKER =
+  /(?:卡台手续费|退款话术|代申请服务|80\s*%\s*结算|20\s*%\s*为卡台|按.{0,12}官方退款.{0,16}结算)/;
+
+function stripSettlementCopy(input: string): string {
+  if (!input || !SETTLEMENT_MARKER.test(input)) return input;
+  return input
+    .split("\n")
+    .map((line) => {
+      if (!SETTLEMENT_MARKER.test(line)) return line;
+      return line
+        .split(/(?<=[。！？!?；;])/)
+        .filter((sentence) => !SETTLEMENT_MARKER.test(sentence))
+        .join("")
+        .trim();
+    })
+    .filter((line, index, lines) => line || lines[index - 1])
+    .join("\n");
+}
+
 export function sanitizeSupplierCopy(
   input: string,
   identity: SupplierIdentity = {},
@@ -183,7 +211,7 @@ export function sanitizeSupplierCopy(
     },
   );
   text = text.replace(
-    /(?<![\w.@])(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|cn|net|org|io|cc|top|xyz|vip|shop|me|co)(?:\/[^\s，。；、）)】\]"'<>]*)?/gi,
+    /(?<![\w.@])(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|cn|net|org|cloud|club|online|store|site|info|link|live|shop|app|dev|pro|biz|top|xyz|vip|fun|io|cc|co|ai|me|tv|us|uk|hk|tw|jp|kr|sg)(?:\/[^\s，。；、）)】\]"'<>]*)?/gi,
     (value) => {
       const urlHost = hostFromValue(value);
       return urlHost && isAllowedHost(urlHost) ? value : SUPPLIER_PLACEHOLDER;
@@ -224,9 +252,17 @@ export function sanitizeSupplierCopy(
     .replace(/按货源说明/g, "按商品说明")
     .replace(/货源教程/g, "商品页教程")
     .replace(/货源原文/g, "商品说明")
-    .replace(/货源店铺|货源方|供货商|上游供应商/g, "本店")
+    .replace(/货源店铺|货源方|供货商|供货方|上游供应商|供应商/g, "本店")
     .replace(/货源/g, "本店")
+    .replace(
+      /\b(?:supplier|vendor|wholesaler|upstream\s+(?:shop|supplier)|wholesale\s+price|agent\s+price|cost\s+price)\b/gi,
+      "本店",
+    )
     .replace(/本店本店/g, "本店");
+
+  // Settlement arithmetic must not reach buyers, in plain copy or mirrored
+  // help articles. Rich HTML removes whole blocks; this covers everything else.
+  text = stripSettlementCopy(text);
 
   // Keep the placeholder useful in prose and avoid leftovers.
   text = text

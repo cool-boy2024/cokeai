@@ -18,6 +18,7 @@ import { recordSecurityEventOnce } from "@/lib/security";
 import { verifyShopCaptcha } from "@/lib/shop/captcha";
 import { createShopEasyPayCheckout } from "@/lib/shop/payments";
 import { createShopOrder, revealShopDelivery } from "@/lib/shop/orders";
+import { sanitizeSupplierCopy } from "@/lib/shop/sanitize";
 import {
   settleShopBalanceOrder,
   type ShopBalanceSettlement,
@@ -126,9 +127,13 @@ export async function createShopCheckoutAction(
   if (variantId && !product.rows[0].variant_label) {
     return { error: "商品规格已下架，请刷新后重新选择。" };
   }
-  const orderProductName = product.rows[0].variant_label
-    ? `${product.rows[0].name} · ${product.rows[0].variant_label}`
-    : product.rows[0].name;
+  // This name is shown on the order page and sent to the payment provider.
+  // Scrub it here as well so a raw supplier title can never reach either.
+  const orderProductName = sanitizeSupplierCopy(
+    product.rows[0].variant_label
+      ? `${product.rows[0].name} · ${product.rows[0].variant_label}`
+      : product.rows[0].name,
+  );
 
   const customerInput: Record<string, string> = {};
   for (const field of Array.isArray(product.rows[0].input_fields)
