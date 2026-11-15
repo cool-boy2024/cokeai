@@ -3,6 +3,7 @@ import { parseInputFields, parseStringList, type ShopInputField } from "./copy";
 import { preorderSql } from "./preorder";
 import { sanitizeStoredRichHtml } from "./rich-description";
 import {
+  sanitizeSupplierAlt,
   sanitizeSupplierCopy,
   sanitizeSupplierLines,
   type SupplierIdentity,
@@ -311,16 +312,16 @@ function sanitizeMediaEntry(
   identities: SupplierIdentity[],
 ): ProductMedia {
   if (!entry) return { image_url: null, description_images: [] };
-  const clean = (text: string): string => {
-    let out = sanitizeSupplierCopy(text);
-    for (const identity of identities) out = sanitizeSupplierCopy(out, identity);
+  const cleanAlt = (text: string): string => {
+    let out = sanitizeSupplierAlt(text);
+    for (const identity of identities) out = sanitizeSupplierAlt(out, identity);
     return out;
   };
   return {
     image_url: entry.image_url,
     description_images: entry.description_images.map((image) => ({
       ...image,
-      alt: clean(image.alt),
+      alt: cleanAlt(image.alt),
     })),
   };
 }
