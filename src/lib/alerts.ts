@@ -318,6 +318,18 @@ async function postJson(url: string, body: unknown): Promise<AlertResult> {
   }
 }
 
+/**
+ * Recipients should see the shop's name instead of the mailbox account (for
+ * example a QQ number). The address itself must stay the authenticated sender.
+ */
+function senderHeader(from: string): { name: string; address: string } {
+  const match = /^\s*(.*?)\s*<([^>]+)>\s*$/.exec(from);
+  if (match) {
+    return { name: match[1] || "CokeAI", address: match[2].trim() };
+  }
+  return { name: "CokeAI", address: from.trim() };
+}
+
 async function sendEmailTo(
   smtp: SmtpSettings,
   to: string,
@@ -337,7 +349,7 @@ async function sendEmailTo(
     });
     const replyTo = smtp.replyTo.trim() || smtp.from;
     await transport.sendMail({
-      from: smtp.from,
+      from: senderHeader(smtp.from),
       to,
       replyTo: replyTo || undefined,
       subject,
