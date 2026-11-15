@@ -13,6 +13,7 @@ import {
 } from "@/app/actions/admin-shop";
 import { DeliveryFields } from "@/components/admin-shop/DeliveryFields";
 import { ProcurementCopy } from "@/components/admin-shop/ProcurementCopy";
+import { customerMailReady } from "@/lib/alerts";
 import { requireAdmin } from "@/lib/auth";
 import { query } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
@@ -89,6 +90,7 @@ export default async function AdminShopOrderDetailPage({
         )
       ).rows[0] ?? null;
   const customerInput = decryptCustomerInput(order.customer_input_encrypted);
+  const customerMail = await customerMailReady();
   const manualClaim =
     order.payment_provider === "alipay_manual"
       ? (
@@ -453,6 +455,16 @@ export default async function AdminShopOrderDetailPage({
                     标记已交付
                   </button>
                 </form>
+                <p className="shop-muted">
+                  {customerMail
+                    ? "整单交付后会自动发邮件通知客户（优先下单时填写的联系邮箱，否则用账号邮箱）。邮件只提示到订单页领取，不包含账号或卡密。"
+                    : "SMTP 未配置：交付后不会发送客户邮件。可在后台「安全告警」里配置邮箱 SMTP。"}
+                </p>
+                {customerMail ? null : (
+                  <Link className="text-link" href="/admin/security/alerts">
+                    去配置邮件通道
+                  </Link>
+                )}
               </div>
             </section>
           ) : null}
