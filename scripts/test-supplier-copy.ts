@@ -111,6 +111,24 @@ assertMatch(
   "official muse.ai kept",
 );
 
+// A masked link must not leave a dangling placeholder after words that already
+// name the destination ("打开兑换网站 本站商品页").
+assertEqual(
+  sanitizeSupplierCopy("打开兑换网站 https://lovecodex.cn/。"),
+  "打开兑换网站（地址见订单详情页）。",
+  "masked redemption link reads as prose",
+);
+assertEqual(
+  sanitizeSupplierCopy("充值卡密与兑换网站 https://lovecodex.cn/"),
+  "充值卡密与兑换网站（地址见订单详情页）",
+  "masked link inside includes list reads as prose",
+);
+const redemptionHtml = buildRichDescriptionHtml(
+  "<p>2.打开兑换网站 https://lovecodex.cn/ 后按页面提示登录需要充值的账号。</p>",
+);
+assertNotMatch(redemptionHtml, /本站商品页/, "no dangling placeholder in rich HTML");
+assertMatch(redemptionHtml, /地址见订单详情页/, "rich HTML points to the order page");
+
 // --- rich description links ------------------------------------------------
 
 const relativeLinks = buildRichDescriptionHtml(

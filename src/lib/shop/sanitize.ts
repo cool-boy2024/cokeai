@@ -296,15 +296,30 @@ export function sanitizeSupplierCopy(
     .map((line) => {
       const trimmed = line.trim();
       if (!trimmed) return "";
-      // A masked link is not useful on its own; point to the tutorial that is
-      // embedded lower on the same product page.
+      // A masked link is not useful on its own. When the surrounding words
+      // already name the destination ("打开兑换网站 ..."), appending the
+      // placeholder reads as broken copy, so point to where the address is
+      // actually delivered instead.
       if (trimmed.includes(SUPPLIER_PLACEHOLDER)) {
-        if (trimmed.includes("视频教程")) {
-          return trimmed.replaceAll(SUPPLIER_PLACEHOLDER, "本页下方视频教程");
+        let line = trimmed.replace(
+          /((?:打开|访问|进入|前往)\s*)?(兑换网站|兑换页面|兑换网址|充值网站|充值页面|网站|网址|地址|链接)\s*本站商品页/g,
+          (_match, verb: string | undefined, noun: string) =>
+            noun === "地址" || noun === "链接"
+              ? `${verb ?? ""}${noun}（见订单详情页）`
+              : `${verb ?? ""}${noun}（地址见订单详情页）`,
+        );
+        line = line.replace(
+          /(?:打开|访问|进入|前往)\s*本站商品页/g,
+          "打开订单详情页中的兑换地址",
+        );
+        if (!line.includes(SUPPLIER_PLACEHOLDER)) return line;
+        if (line.includes("视频教程")) {
+          return line.replaceAll(SUPPLIER_PLACEHOLDER, "本页下方视频教程");
         }
-        if (trimmed.includes("教程")) {
-          return trimmed.replaceAll(SUPPLIER_PLACEHOLDER, "本页教程");
+        if (line.includes("教程")) {
+          return line.replaceAll(SUPPLIER_PLACEHOLDER, "本页教程");
         }
+        return line;
       }
       return trimmed;
     })
