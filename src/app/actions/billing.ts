@@ -212,28 +212,63 @@ export async function cancelOrderAction(formData: FormData): Promise<void> {
   const user = await requireUser();
   const orderId = String(formData.get("orderId") || "");
   if (!orderId) return;
-  await query(
-    `UPDATE orders
+  const returnPath =
+    String(formData.get("returnTo") || "") === "/dashboard/membership"
+      ? "/dashboard/membership"
+      : "/dashboard/billing";
+
+  const result = await query(
+    `UPDATE orders o
         SET status = 'cancelled', updated_at = now()
-      WHERE id = $1
-        AND user_id = $2
-        AND status = 'pending'
-        AND payment_provider IN ('manual', 'usdt_trc20', 'usdt_bsc', 'usdt_polygon')
-        AND pay_txid IS NULL
+      WHERE o.id = $1
+        AND o.user_id = $2
+        AND o.status = 'pending'
+        -- Alipay (personal QR and EasyPay) orders are cancellable too; both
+        -- flows can leave a pending order the buyer never pays.
+        AND o.payment_provider IN (
+          'manual', 'alipay_manual', 'alipay_easypay',
+          'usdt_trc20', 'usdt_bsc', 'usdt_polygon'
+        )
+        AND o.pay_txid IS NULL
         AND (
-          payment_provider NOT IN ('usdt_trc20', 'usdt_bsc', 'usdt_polygon')
+          o.payment_provider NOT IN ('usdt_trc20', 'usdt_bsc', 'usdt_polygon')
           OR NOT EXISTS (
             SELECT 1
               FROM usdt_deposits d
-             WHERE d.order_id = orders.id
+             WHERE d.order_id = o.id
                AND (
                  d.received_usdt > 0
                  OR d.status IN ('confirming', 'confirmed', 'overpaid', 'manual')
                )
+          )
+        )
+        -- Once the buyer reports an Alipay transfer, the operator's account may
+        -- already hold the money; the console reconciles it instead of letting
+        -- the buyer cancel out from under a pending claim.
+        AND (
+          o.payment_provider <> 'alipay_manual'
+          OR NOT EXISTS (
+            SELECT 1
+              FROM manual_alipay_payments m
+             WHERE m.order_id = o.id
+               AND m.order_kind = 'credits'
+               AND m.reported_at IS NOT NULL
           )
         )`,
     [orderId, user.id],
   );
   revalidatePath("/dashboard/billing");
   revalidatePath("/dashboard/membership");
+
+  if (!result.rowCount) {
+    // A still-pending order is blocked by funds already seen or a reported
+    // transfer. Say so instead of leaving the button silently dead.
+    const pending = await query<{ id: string }>(
+      `SELECT id FROM orders
+        WHERE id = $1 AND user_id = $2 AND status = 'pending'
+        LIMIT 1`,
+      [orderId, user.id],
+    );
+    if (pending.rows[0]) redirect(`${returnPath}?cancel=blocked`);
+  }
 }

@@ -1,6 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { CheckCircle2, Clock, CreditCard, Sparkles, Wallet } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Clock,
+  CreditCard,
+  Sparkles,
+  Wallet,
+} from "lucide-react";
 import { cancelOrderAction } from "@/app/actions/billing";
 import { CustomRechargeForm } from "@/components/CustomRechargeForm";
 import { requireUser } from "@/lib/auth";
@@ -41,6 +48,7 @@ export default async function BillingPage({
 }) {
   const user = await requireUser();
   const params = await searchParams;
+  const cancelBlocked = params.cancel === "blocked";
 
   const [ordersResult, balanceResult, checkout] = await Promise.all([
     query<OrderRow>(
@@ -88,6 +96,19 @@ export default async function BillingPage({
         </div>
       </div>
 
+      {cancelBlocked ? (
+        <div className="notice notice-red">
+          <AlertTriangle size={16} />
+          <div>
+            这笔订单已有付款记录，暂时不能自助取消。请先
+            <Link className="text-link" href="/dashboard/support">
+              联系客服
+            </Link>
+            核对，避免重复付款。
+          </div>
+        </div>
+      ) : null}
+
       {params.welcome === "1" ? (
         <div className="notice notice-green">
           <CheckCircle2 size={16} />
@@ -107,6 +128,7 @@ export default async function BillingPage({
             获取收款信息，并备注完整订单号。
             <form action={cancelOrderAction} style={{ marginTop: 8 }}>
               <input type="hidden" name="orderId" value={manualOrder.id} />
+              <input type="hidden" name="returnTo" value="/dashboard/billing" />
               <button className="btn btn-ghost btn-sm" type="submit">
                 取消订单
               </button>
