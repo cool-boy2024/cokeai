@@ -1,4 +1,5 @@
 import { query } from "@/lib/db";
+import { sanitizeSupplierCopy } from "@/lib/shop/sanitize";
 import type { AnnouncementLevel } from "@/lib/announcement-types";
 
 export type { AnnouncementLevel } from "@/lib/announcement-types";
@@ -38,7 +39,16 @@ export async function listActiveAnnouncements(limit = 20): Promise<Announcement[
       LIMIT $1`,
     [limit],
   );
-  return result.rows.map(hydrate);
+  // Announcements are written by operators and rendered on every page, so a
+  // supplier name typed into one would leak site-wide. Admin reads stay raw.
+  return result.rows.map((row) => {
+    const clean = hydrate(row);
+    return {
+      ...clean,
+      title: sanitizeSupplierCopy(clean.title),
+      body: sanitizeSupplierCopy(clean.body),
+    };
+  });
 }
 
 export async function listAllAnnouncements(): Promise<AdminAnnouncement[]> {

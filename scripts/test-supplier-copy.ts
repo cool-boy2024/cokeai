@@ -57,6 +57,11 @@ assertNotMatch(
   /supplier|wholesale\s+price/i,
   "English sourcing words removed",
 );
+assertEqual(
+  sanitizeSupplierCopy("付款后按预约顺序向供货商采购，可能延迟。"),
+  "付款后安排采购，可能延迟。",
+  "procurement sentence reads as our own action",
+);
 
 // --- domains and brands ----------------------------------------------------
 

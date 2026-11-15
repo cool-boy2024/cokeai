@@ -252,6 +252,10 @@ export function sanitizeSupplierCopy(
     .replace(/按货源说明/g, "按商品说明")
     .replace(/货源教程/g, "商品页教程")
     .replace(/货源原文/g, "商品说明")
+    // A shop cannot sensibly tell its buyer that it buys "from this shop", so
+    // purchasing flows read as our own procurement instead.
+    .replace(/(?:按预约顺序|按预定顺序)?向供货商(?:采购|下单)/g, "安排采购")
+    .replace(/向供货商/g, "安排")
     .replace(/货源店铺|货源方|供货商|供货方|上游供应商|供应商/g, "本店")
     .replace(/货源/g, "本店")
     .replace(
