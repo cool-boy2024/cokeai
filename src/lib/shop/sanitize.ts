@@ -102,6 +102,41 @@ function storeNames(store: string | null | undefined): string[] {
 }
 
 /**
+ * This shop fulfils every order by hand, including offers imported from
+ * suppliers that advertise 自动发货. Those promises cannot be kept, so buyer
+ * copy is rewritten to describe the flow the buyer will actually see.
+ *
+ * Longest phrases first: a blanket 自动发货 -> 人工发货 substitution first
+ * would leave a 24-hour delivery promise in place and turn the supplier's
+ * delivery-method legend into nonsense.
+ */
+export function sanitizeFulfillmentCopy(input: string): string {
+  if (!input) return "";
+  return input
+    .replace(
+      /标注\s*[“"「]?\s*自动发货\s*[”"」]?\s*的会系统秒发\s*[，,；;]\s*标注\s*[“"「]?\s*在线发货\s*[”"」]?\s*的会人工处理发货\s*[；;。]?/g,
+      "本站商品均为人工发货，付款后由客服按顺序处理；",
+    )
+    .replace(
+      /(?:标注\s*[“"「]?\s*自动发货\s*[”"」]?\s*的会系统秒发|标注\s*[“"「]?\s*在线发货\s*[”"」]?\s*的会人工处理发货)\s*[；;。]?/g,
+      "本站商品均为人工发货；",
+    )
+    .replace(/下单自动发\s*CDK\s*[，,]\s*不用等待人工发货/g, "下单后人工发货，卡密会显示在订单详情页")
+    .replace(/下单自动发/g, "下单后人工发")
+    .replace(
+      /下单付款后\s*[，,]?\s*系统会自动显示充值卡密\s*。?/g,
+      "付款后由本店人工完成采购，卡密会显示在你的订单详情页。",
+    )
+    .replace(/系统会自动显示充值卡密/g, "卡密会显示在你的订单详情页")
+    .replace(/本商品为\s*CDK\s*自动发货\s*。?/g, "本商品为 CDK 卡密商品。")
+    .replace(/(?:购买后|付款后|下单后|下单)\s*自动发货/g, "下单后人工发货")
+    .replace(/\d{1,2}\s*(?:小时|h|H)\s*内?\s*自动发货/g, "下单后人工发货")
+    .replace(/自动发货查收说明/g, "发货与查收说明")
+    .replace(/自动发货/g, "人工发货")
+    .replace(/自动发卡/g, "人工发卡");
+}
+
+/**
  * Removes supplier identity from a block of text. Safe to call on already
  * clean copy: the shop's own name and URL are left untouched.
  */
@@ -174,6 +209,10 @@ export function sanitizeSupplierCopy(
     /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g,
     "本店客服",
   );
+
+  // Every order is fulfilled by hand; supplier auto-delivery wording is
+  // replaced with the flow buyers actually get.
+  text = sanitizeFulfillmentCopy(text);
 
   // Sourcing vocabulary. Longest phrases first so we do not produce
   // "本店本店".

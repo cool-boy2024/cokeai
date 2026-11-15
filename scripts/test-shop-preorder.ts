@@ -210,6 +210,10 @@ assert(availabilityLabel("low_stock") === "库存紧张", "normal availability c
 assert(deliveryLabel("manual", true) === "人工处理", "preorder delivery copy");
 assert(deliveryLabel("manual") === "人工发货", "normal delivery copy");
 assert(
+  deliveryLabel("auto") === "人工发货",
+  "supplier auto-delivery offers are still fulfilled by hand",
+);
+assert(
   etaLabel(15, 60, true) === "按预定顺序发货",
   "preorder must not promise a delivery window",
 );

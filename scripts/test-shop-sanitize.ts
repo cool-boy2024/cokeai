@@ -76,6 +76,38 @@ assert(
   "mailbox is masked",
 );
 
+// --- Fulfillment wording ---------------------------------------------------
+// Every order is placed with the supplier by hand; supplier auto-delivery
+// claims must never reach the buyer.
+
+const cdk = clean("本商品为 CDK 自动发货。下单付款后，系统会自动显示充值卡密。");
+assert(!cdk.includes("自动发"), `auto-delivery claim is gone: ${cdk}`);
+assert(cdk.includes("本商品为 CDK 卡密商品。"), "CDK claim becomes an item description");
+assert(cdk.includes("卡密会显示在你的订单详情页"), "buyer is pointed at the order page");
+
+const hours = clean("① 24小时自动发货，付款后不要关闭网站等待跳转，账号密码会直接显示。");
+assert(!hours.includes("自动发"), `24h auto-delivery claim is gone: ${hours}`);
+assert(!hours.includes("24小时"), "supplier delivery-time promise is dropped");
+assert(hours.includes("下单后人工发货"), "24h claim becomes manual delivery");
+
+const legend = clean("- 标注“自动发货”的会系统秒发，标注“在线发货”的会人工处理发货；");
+assert(
+  legend === "- 本站商品均为人工发货，付款后由客服按顺序处理；",
+  `delivery-method legend is rewritten: ${legend}`,
+);
+
+const noWait = clean("• 下单自动发 CDK，不用等待人工发货");
+assert(
+  noWait === "• 下单后人工发货，卡密会显示在订单详情页",
+  `no-wait claim is rewritten: ${noWait}`,
+);
+
+const title = clean("【自动发货】GPT PLUS 充值卡密");
+assert(title === "【人工发货】GPT PLUS 充值卡密", `product title is rewritten: ${title}`);
+
+assert(clean(cdk) === cdk, "fulfillment scrub is idempotent");
+assert(clean(hours) === hours, "fulfillment scrub is idempotent on 24h copy");
+
 // --- Ordinary copy is untouched -------------------------------------------
 
 const ordinary = "本商品为 CDK 卡密商品，发货后请及时修改密码。";
