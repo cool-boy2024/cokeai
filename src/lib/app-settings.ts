@@ -27,7 +27,7 @@ export async function getAppSetting<T>(key: string): Promise<T | null> {
 export async function saveAppSetting(
   key: string,
   value: unknown,
-  adminId: string,
+  adminId: string | null,
 ): Promise<void> {
   await query(
     `INSERT INTO app_settings (key, value_encrypted, updated_by)

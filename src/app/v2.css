@@ -4333,6 +4333,21 @@ a.shop-kpi:hover {
   accent-color: var(--green);
 }
 
+.shop-source-clear {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink-soft);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.shop-source-clear input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--green);
+}
+
 .shop-import-batch .btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;

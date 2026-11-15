@@ -12,11 +12,11 @@ import {
 import { ImportJobWatcher } from "@/components/admin-shop/ImportJobWatcher";
 import { SubmitButton } from "@/components/SubmitButton";
 import { requireAdmin } from "@/lib/auth";
-import { config } from "@/lib/config";
 import { query } from "@/lib/db";
 import { autoRetailPrice } from "@/lib/shop/auto-pricing";
+import { redactSourceText } from "@/lib/shop/redact";
 import {
-  getShopSourceSettings,
+  getShopSourceStatus,
   getShopTargetMarginBps,
 } from "@/lib/shop/settings";
 import { formatDateTime } from "@/lib/format";
@@ -31,23 +31,6 @@ import { offerAvailabilityLabel } from "@/lib/shop/copy";
 
 export const metadata: Metadata = { title: "小店货源" };
 export const dynamic = "force-dynamic";
-
-/**
- * Sync failures quote the feed address in their message. Operators see the
- * error, so strip the supplier host and any raw URL before it reaches the page.
- */
-function redactSource(text: string): string {
-  const host = (() => {
-    try {
-      return new URL(config.shopFeedUrl).host;
-    } catch {
-      return "";
-    }
-  })();
-  let out = host ? text.split(host).join("数据源") : text;
-  out = out.split(config.shopFeedUrl).join("数据源");
-  return out.replace(/https?:\/\/[^\s"'<>]+/gi, "数据源");
-}
 
 const OFFER_BADGE_CLASS: Record<string, string> = {
   in_stock: "badge-green",
@@ -84,8 +67,10 @@ export default async function AdminShopSourcesPage({
   await requireAdmin();
   const params = await searchParams;
 
-  const [sourceSettings, targetMarginBps] = await Promise.all([
-    getShopSourceSettings(),
+  // Status flags only: the feed URLs are encrypted at rest and never
+  // serialized into this page's HTML or flight data.
+  const [sourceStatus, targetMarginBps] = await Promise.all([
+    getShopSourceStatus(),
     getShopTargetMarginBps(),
   ]);
 
@@ -93,13 +78,12 @@ export default async function AdminShopSourcesPage({
     query<{
       id: string;
       name: string;
-      feed_url: string;
       last_sync_at: string | null;
       last_success_at: string | null;
       last_error: string | null;
       feed_etag: string | null;
     }>(
-      `SELECT id, name, feed_url, last_sync_at, last_success_at, last_error, feed_etag
+      `SELECT id, name, last_sync_at, last_success_at, last_error, feed_etag
          FROM shop_suppliers WHERE kind = 'aibijia' LIMIT 1`,
     ),
     query<{
@@ -394,7 +378,10 @@ export default async function AdminShopSourcesPage({
           <dl className="shop-sync-facts">
             <div>
               <dt>数据源</dt>
-              <dd>{supplier?.feed_url ? "已配置" : "未配置"}</dd>
+              <dd>
+                {sourceStatus.feedUrlConfigured ? "已配置（加密保存）" : "未配置"}
+                {sourceStatus.feedMetaUrlConfigured ? " · Meta 已配置" : ""}
+              </dd>
             </div>
             <div>
               <dt>上次同步</dt>
@@ -412,7 +399,7 @@ export default async function AdminShopSourcesPage({
             </div>
           </dl>
           {supplier?.last_error ? (
-            <p className="shop-form-error mt-16">{redactSource(supplier.last_error)}</p>
+            <p className="shop-form-error mt-16">{redactSourceText(supplier.last_error)}</p>
           ) : null}
         </div>
       </section>
@@ -421,7 +408,7 @@ export default async function AdminShopSourcesPage({
         <div className="panel-head">
           <div>
             <h2>货源设置</h2>
-            <p>数据源地址与目标毛利率；URL 留空表示回退到 .env 默认值。</p>
+            <p>数据源地址加密保存，页面不回显；URL 留空表示保持当前值（未配置时走 .env 默认）。</p>
           </div>
         </div>
         <div className="panel-body">
@@ -432,13 +419,16 @@ export default async function AdminShopSourcesPage({
                 id="shop-feed-url"
                 className="input mono"
                 name="feedUrl"
-                type="url"
-                defaultValue={sourceSettings.feedUrl}
-                placeholder={config.shopFeedUrl}
-                autoComplete="off"
+                type="password"
+                placeholder={
+                  sourceStatus.feedUrlConfigured ? "已配置，留空表示不修改" : "未配置，填写后加密保存"
+                }
+                autoComplete="new-password"
                 spellCheck={false}
               />
-              <small className="hint">Aibijia 格式的 products.json 地址。</small>
+              <small className="hint">
+                Aibijia 格式的 products.json 地址。仅管理员可修改，保存后加密存储，页面和接口都不会返回明文。
+              </small>
             </div>
             <div className="field">
               <label htmlFor="shop-feed-meta-url">数据源 Meta URL</label>
@@ -446,10 +436,13 @@ export default async function AdminShopSourcesPage({
                 id="shop-feed-meta-url"
                 className="input mono"
                 name="feedMetaUrl"
-                type="url"
-                defaultValue={sourceSettings.feedMetaUrl}
-                placeholder={config.shopFeedMetaUrl}
-                autoComplete="off"
+                type="password"
+                placeholder={
+                  sourceStatus.feedMetaUrlConfigured
+                    ? "已配置，留空表示不修改"
+                    : "未配置，填写后加密保存"
+                }
+                autoComplete="new-password"
                 spellCheck={false}
               />
               <small className="hint">meta.json 地址，用于完整性校验。</small>
@@ -470,6 +463,10 @@ export default async function AdminShopSourcesPage({
                 上架定价使用：售价 ≈ 成本 ÷ (1 − 毛利率)，即毛利率按售价计算。默认 30%。
               </small>
             </div>
+            <label className="shop-source-clear">
+              <input type="checkbox" name="clearSourceUrls" />
+              清空已保存的数据源地址（回到 .env 默认值）
+            </label>
             <div className="form-actions">
               <SubmitButton className="btn btn-dark btn-sm" pendingText="保存中…">
                 保存货源设置
