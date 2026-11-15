@@ -129,6 +129,36 @@ const redemptionHtml = buildRichDescriptionHtml(
 assertNotMatch(redemptionHtml, /本站商品页/, "no dangling placeholder in rich HTML");
 assertMatch(redemptionHtml, /地址见订单详情页/, "rich HTML points to the order page");
 
+// Invitation copy names the buyer's own inbox.
+assertEqual(
+  sanitizeSupplierCopy("你可以在你自己的 https://gmail.com 查看到邮件提醒。"),
+  "你可以在你自己的邮箱查看到邮件提醒。",
+  "masked inbox reads as the buyer's mailbox",
+);
+
+// A downgraded link keeps its destination label but points at the order page.
+const destinationHtml = buildRichDescriptionHtml(
+  "<p>兑换中心：<span>https://lovecodex.cn/</span></p><p>商品说明文字足够长，用于通过长度检查。</p>",
+);
+assertNotMatch(destinationHtml, /本站商品页/, "no dangling placeholder after destination label");
+assertMatch(
+  destinationHtml,
+  /兑换中心：<span>地址见订单详情页<\/span>/,
+  "destination label points to the order page",
+);
+
+// Supplier file names are not useful alt text once the host is masked.
+const altHtml = buildRichDescriptionHtml(
+  '<p>商品说明文字足够长，用于通过长度检查，请仔细阅读。</p><img src="https://foo.cn/x.png" alt="本站商品页g">',
+  {
+    imageMap: new Map([
+      ["https://foo.cn/x.png", `/api/shop/images/${"a".repeat(64)}.png`],
+    ]),
+  },
+);
+assertNotMatch(altHtml, /本站商品页/, "placeholder removed from image alt");
+assertMatch(altHtml, /alt="商品说明图片"/, "image alt falls back to a plain label");
+
 // --- rich description links ------------------------------------------------
 
 const relativeLinks = buildRichDescriptionHtml(
