@@ -250,20 +250,30 @@ export default async function AdminSecurityPage({
         <div className="notice notice-red">
           <AlertTriangle size={16} />
           <div>
-            近 {snapshot.windowMinutes} 分钟已拦截 {snapshot.windowCount} 次，超过阈值{" "}
-            {snapshot.threshold}。n8n 每 5 分钟检查一次；同一波攻击最多每{" "}
+            触发攻击判定：{snapshot.attackReasons.join("；")}。近{" "}
+            {snapshot.windowMinutes} 分钟拦截 {snapshot.windowCount} 次、来源{" "}
+            {snapshot.uniqueIps15m} 个 IP。n8n 每 5 分钟检查一次；同一波攻击最多每{" "}
             {securityPolicy.alertCooldownMinutes} 分钟告警一次。
             {snapshot.alertCooldownSeconds > 0
               ? ` 当前告警冷却剩余约 ${Math.ceil(snapshot.alertCooldownSeconds / 60)} 分钟。`
               : " 尚未发送告警。"}
           </div>
         </div>
+      ) : snapshot.status === "scan" ? (
+        <div className="notice">
+          <Radar size={16} />
+          <div>
+            近 {snapshot.windowMinutes} 分钟拦截 {snapshot.windowCount} 次，来源{" "}
+            {snapshot.uniqueIps15m} 个 IP，均为对敏感路径的扫描探测，已全部拦截。
+            单一来源的小流量扫描属于互联网背景噪声，不会触发告警；只有分布式来源、敏感入口异常或探测洪流才会告警。
+          </div>
+        </div>
       ) : (
         <div className="notice notice-green">
           <CheckCircle2 size={16} />
           <div>
-            近 {snapshot.windowMinutes} 分钟拦截 {snapshot.windowCount} 次，低于阈值{" "}
-            {snapshot.threshold}。持续扫描会自动进入告警状态。
+            近 {snapshot.windowMinutes} 分钟拦截 {snapshot.windowCount} 次，未达到攻击判定。
+            只有分布式来源、敏感入口异常或探测洪流才会触发告警。
           </div>
         </div>
       )}

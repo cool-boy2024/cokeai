@@ -99,11 +99,14 @@ Caddy 边缘限流只有在流量经过 `edge:8080` 时才生效。现在 Cloudf
 状态判定规则（`src/lib/security.ts`）：
 
 - **应急防护**：管理员已启动应急开关，优先级最高。
-- **攻击中**：近 5 分钟 ≥ `SECURITY_ATTACK_THRESHOLD / 2` 次，或近 15 分钟 ≥ `SECURITY_ATTACK_THRESHOLD` 次，或近 1 小时 ≥ `SECURITY_ATTACK_THRESHOLD × 2` 次。默认阈值 60 时，分别是 30 / 60 / 120 次。
-- **观察**：未达攻击条件，但近 5 分钟 ≥ 5 次或近 1 小时 ≥ 10 次。
+- **攻击中（会告警）**：满足任一条即可——扫描探测 5 分钟 ≥ 300 次或 15 分钟 ≥ 600 次；≥ 5 个来源 IP 在 5 分钟内被拦 ≥ 60 次（或 ≥ 10 个 IP / 15 分钟 ≥ 120 次）；登录/下单/客服/后台动作任一类型 15 分钟 ≥ 10 次；限流触发 15 分钟 ≥ 600 次。
+- **扫描探测（不告警）**：单一来源只打被拦截路径，15 分钟 ≥ 30 次。公网 `.env` / `.git` 扫描属于背景噪声，页面显示中性状态，不发告警、不需要处置。
+- **观察**：未达以上条件，但近 5 分钟 ≥ 5 次或近 1 小时 ≥ 10 次。
 - **正常**：以上都不满足。
 
-计数写入 Redis：`sec:stats:YYYY-MM-DD`（hash，`total` + 类型字段 + `h00`..`h23`，TTL 9 天）、`sec:stats:m:<分钟>`（逐分钟计数，TTL 2 小时）、`sec:stats:last`（最近拦截时间）和 `sec:stats:attack:last`（最近一次达到攻击阈值的时间）。这些计数器在每次拦截时累加，不依赖 `sec:events` 的 60 秒去重；`sec:ips:YYYY-MM-DD` 与 `sec:ipcount:YYYY-MM-DD` 也改为按每次拦截累计，Top IP 次数与总拦截数一致。
+这样单一 IP 几十次配置探测不会再被当成攻击；只有分布式来源、业务接口滥用或真正的洪流才会叫醒人。
+
+计数写入 Redis：`sec:stats:YYYY-MM-DD`（hash，`total` + 类型字段 + `h00`..`h23`，TTL 9 天）、`sec:stats:m:<分钟>`（逐分钟总数）、`sec:stats:t:<分钟>`（逐分钟按类型计数）、`sec:stats:i:<分钟>`（逐分钟来源 IP 的 HyperLogLog，用于统计不同来源数），后三者 TTL 2 小时；另有 `sec:stats:last`（最近拦截时间）和 `sec:stats:attack:last`（最近一次满足攻击判定的时间）。这些计数器在每次拦截时累加，不依赖 `sec:events` 的 60 秒去重；`sec:ips:YYYY-MM-DD` 与 `sec:ipcount:YYYY-MM-DD` 也按每次拦截累计，Top IP 次数与总拦截数一致。
 
 ### 第三步：判断类型
 
@@ -159,7 +162,7 @@ Caddy 边缘限流只有在流量经过 `edge:8080` 时才生效。现在 Cloudf
 - 保存后点“保存并发送测试”，群里或邮箱收到测试消息即生效。
 - 旧的 `ALERT_WEBHOOK_URL` 只作为后台未配置时的兜底，可保留或删除。
 - n8n 工作流 `n8n/workflows/08-security-alert.json` 每 5 分钟调用内部摘要接口 `/api/internal/security/summary?mark=1`。`mark=1` 会占用告警冷却；**实际发送由应用在接口内完成**，n8n 不接触机器人地址或 SMTP 密码。
-- 阈值：近 15 分钟拦截次数 ≥ `SECURITY_ATTACK_THRESHOLD`（默认 60）判定为疑似攻击。
+- 触发条件：只有满足上方“攻击中”判定才告警——扫描洪流（5 分钟 ≥ 300 / 15 分钟 ≥ 600 次）、分布式来源（5 分钟内 ≥ 5 个 IP 共 60 次，或 15 分钟内 ≥ 10 个 IP 共 120 次）、业务接口滥用（登录/下单/客服/后台动作任一类型 15 分钟 ≥ 10 次）、限流洪流（15 分钟 ≥ 600 次）。单一来源几十次 `.env` / `.git` 探测只会显示“扫描探测”，不发告警。
 - 冷却：同一波攻击最多每 `SECURITY_ALERT_COOLDOWN_MINUTES`（默认 30 分钟）告警一次，Redis key 为 `sec:alert:cooldown`。
 - 管理员页有两个手动入口：
   - “测试告警”：发一条明确标注测试的消息，30 秒内只能点一次。

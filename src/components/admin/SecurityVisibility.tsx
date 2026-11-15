@@ -45,6 +45,13 @@ function statusMeta(status: SecurityStatus): {
         "近期拦截高于日常水平，但还没达到攻击阈值。保持观察，确认告警通道可用。",
     };
   }
+  if (status === "scan") {
+    return {
+      Icon: Radar,
+      description:
+        "外部扫描器在枚举 .env、.git 等常见敏感路径，已全部拦截。单一来源的小流量扫描属于互联网背景噪声，保持防护即可，不会发送告警。",
+    };
+  }
   return {
     Icon: ShieldCheck,
     description:
@@ -107,9 +114,18 @@ export function SecurityVisibility({ snapshot }: { snapshot: SecuritySnapshot })
           <ul>
             <li>应急防护：应急开关已启动（优先级最高）</li>
             <li>
-              攻击中：近 5 分钟 ≥ {securityStatusRules.attack5m} 次，或近 15 分钟 ≥{" "}
-              {securityStatusRules.attack15m} 次，或近 1 小时 ≥{" "}
-              {securityStatusRules.attack1h} 次
+              攻击中（会告警）：扫描探测 5 分钟 ≥ {securityStatusRules.attackProbe5m}{" "}
+              次或 15 分钟 ≥ {securityStatusRules.attackProbe15m} 次；或{" "}
+              {securityStatusRules.distributed5mIps} 个以上 IP 在 5 分钟内拦截 ≥{" "}
+              {securityStatusRules.distributed5mBlocks} 次；或{" "}
+              {securityStatusRules.distributed15mIps} 个以上 IP 在 15 分钟内拦截 ≥{" "}
+              {securityStatusRules.distributed15mBlocks} 次；或登录/下单/客服/后台动作
+              15 分钟 ≥ {securityStatusRules.attackAbuse15m} 次；或限流触发 15 分钟 ≥{" "}
+              {securityStatusRules.attackFlood15m} 次
+            </li>
+            <li>
+              扫描探测（不告警）：单一来源只打被拦截路径，15 分钟 ≥{" "}
+              {securityStatusRules.scanProbe15m} 次
             </li>
             <li>
               观察：未达攻击条件，但近 5 分钟 ≥ {securityStatusRules.watch5m} 次或近 1 小时 ≥{" "}

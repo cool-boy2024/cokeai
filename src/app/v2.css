@@ -4660,6 +4660,10 @@ a.shop-kpi:hover {
   border-left: 3px solid var(--green);
 }
 
+.security-status-scan {
+  border-left-color: var(--line);
+}
+
 .security-status-watch {
   border-left-color: var(--yellow);
 }
@@ -4693,6 +4697,11 @@ a.shop-kpi:hover {
   border-radius: 12px;
   background: var(--green-soft);
   color: var(--green);
+}
+
+.security-status-scan .security-status-icon {
+  background: var(--paper-deep);
+  color: var(--muted);
 }
 
 .security-status-watch .security-status-icon {
