@@ -1,5 +1,6 @@
 import {
   isSearchCrawler,
+  legacyShopSlugRedirect,
   shopCrawlLimit,
   shopDetailSlug,
 } from "../src/lib/shop-crawl-guard";
@@ -21,17 +22,47 @@ function assertEqual<T>(actual: T, expected: T, message: string): void {
 
 // --- product slug detection -------------------------------------------------
 
-assertEqual(shopDetailSlug("/shop/zy-46-claude-claude-pro"), "zy-46-claude-claude-pro", "plain slug");
-assertEqual(shopDetailSlug("/shop/zy-46-claude-claude-pro/"), "zy-46-claude-claude-pro", "trailing slash");
-assertEqual(shopDetailSlug("/shop/ZY-46-Claude"), "zy-46-claude", "case normalised");
+assertEqual(shopDetailSlug("/shop/p-46-claude-claude-pro"), "p-46-claude-claude-pro", "plain slug");
+assertEqual(shopDetailSlug("/shop/p-46-claude-claude-pro/"), "p-46-claude-claude-pro", "trailing slash");
+assertEqual(shopDetailSlug("/shop/P-46-Claude"), "p-46-claude", "case normalised");
 assertEqual(shopDetailSlug("/shop"), null, "catalogue is not a product page");
 assertEqual(shopDetailSlug("/shop/"), null, "catalogue slash is not a product page");
 assertEqual(shopDetailSlug("/shop/terms"), null, "terms is not a product page");
 assertEqual(shopDetailSlug("/shop/privacy"), null, "privacy is not a product page");
 assertEqual(shopDetailSlug("/shop/refund"), null, "refund is not a product page");
 assertEqual(shopDetailSlug("/shop/faq"), null, "faq is not a product page");
-assertEqual(shopDetailSlug("/dashboard/shop/zy-46"), null, "dashboard is not public");
-assertEqual(shopDetailSlug("/shop/zy-46/extra"), null, "nested paths are not product pages");
+assertEqual(shopDetailSlug("/dashboard/shop/p-46"), null, "dashboard is not public");
+assertEqual(shopDetailSlug("/shop/p-46/extra"), null, "nested paths are not product pages");
+
+// --- legacy supplier-prefixed slugs ----------------------------------------
+
+assertEqual(
+  legacyShopSlugRedirect("/shop/zy-46-claude-claude-pro"),
+  "/shop/p-46-claude-claude-pro",
+  "old supplier-prefixed slug redirects",
+);
+assertEqual(
+  legacyShopSlugRedirect("/shop/ZY-46-Claude/"),
+  "/shop/p-46-claude",
+  "old slug redirect is case-insensitive and drops the trailing slash",
+);
+assertEqual(
+  legacyShopSlugRedirect("/shop/auto-zyanai-84-abc123"),
+  "/shop/auto-84-abc123",
+  "auto slug drops the supplier key",
+);
+assertEqual(
+  legacyShopSlugRedirect("/shop/auto-aibijia-12-deadbe"),
+  "/shop/auto-12-deadbe",
+  "every known supplier key is dropped",
+);
+assertEqual(legacyShopSlugRedirect("/shop/p-46"), null, "neutral slug is not redirected");
+assertEqual(legacyShopSlugRedirect("/shop"), null, "catalogue is not redirected");
+assertEqual(
+  legacyShopSlugRedirect("/shop/auto-84-abc123"),
+  null,
+  "already-neutral auto slug is not redirected",
+);
 
 // --- search crawler exemption ----------------------------------------------
 

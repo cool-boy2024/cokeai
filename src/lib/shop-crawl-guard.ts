@@ -26,6 +26,26 @@ export function shopDetailSlug(pathname: string): string | null {
   return NON_PRODUCT_SLUGS.has(slug) ? null : slug;
 }
 
+/**
+ * Product slugs are public URLs, so they must never carry a supplier prefix.
+ * Rows written before 2026-11-15 used `zy-<id>` (and the AI importer produced
+ * `auto-<supplier>-...`). The schema migration renames those rows; this map
+ * keeps old links and search-engine results working with a permanent redirect
+ * to the neutral slug.
+ */
+const LEGACY_AUTO_SUPPLIER =
+  "(?:zyanai|aibijia|aibuji|wzyp|lovecodex|ldxp|kapay|beibei|aisou|talkai|gshh)";
+
+export function legacyShopSlugRedirect(pathname: string): string | null {
+  const zy = pathname.match(/^\/shop\/zy-(\d[^/]*?)\/?$/i);
+  if (zy) return `/shop/p-${zy[1].toLowerCase()}`;
+  const auto = pathname.match(
+    new RegExp(`^\\/shop\\/auto-${LEGACY_AUTO_SUPPLIER}-(.+?)\\/?$`, "i"),
+  );
+  if (auto) return `/shop/auto-${auto[1].toLowerCase()}`;
+  return null;
+}
+
 export function isSearchCrawler(userAgent: string | undefined): boolean {
   return Boolean(userAgent && SEARCH_CRAWLER_UA.test(userAgent));
 }

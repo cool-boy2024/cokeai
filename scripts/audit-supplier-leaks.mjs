@@ -216,6 +216,16 @@ async function main() {
     for (const match of sitemap.text.matchAll(/<loc>([^<]+)<\/loc>/gi)) {
       const path = toPath(match[1].trim());
       if (!path) continue;
+      if (
+        /^\/shop\/zy-/i.test(path) ||
+        /^\/shop\/auto-(?:zyanai|aibijia|aibuji|wzyp|lovecodex|ldxp|kapay|beibei|aisou|talkai|gshh)-/i.test(path)
+      ) {
+        leaks.push({
+          path: "/sitemap.xml",
+          pattern: "supplier-prefixed product URL",
+          snippet: path,
+        });
+      }
       if (/^\/(?:admin|api|dashboard)(?:\/|$)/.test(path)) {
         leaks.push({
           path: "/sitemap.xml",
