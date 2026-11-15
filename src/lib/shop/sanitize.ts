@@ -6,7 +6,7 @@
  */
 export const SHOP_COPY_NAME = "CokeAI 小店";
 const SHOP_COPY_URL = "https://cokeai.cc.cd/shop";
-const SUPPLIER_PLACEHOLDER = "本站商品页";
+export const SUPPLIER_PLACEHOLDER = "本站商品页";
 
 // Official product sites are part of the usage instructions, not supplier
 // identity. Everything else is treated as an external shop and masked.
@@ -301,7 +301,13 @@ export function sanitizeSupplierCopy(
       // placeholder reads as broken copy, so point to where the address is
       // actually delivered instead.
       if (trimmed.includes(SUPPLIER_PLACEHOLDER)) {
+        // Invitation copy points at the buyer's own mailbox ("你自己的
+        // gmail.com 查看到邮件提醒"); after masking the host, name the inbox.
         let line = trimmed.replace(
+          /((?:你(?:自己)?的|您的))\s*本站商品页\s*(?=查看)/g,
+          "$1邮箱",
+        );
+        line = line.replace(
           /((?:打开|访问|进入|前往)\s*)?(兑换网站|兑换页面|兑换网址|充值网站|充值页面|网站|网址|地址|链接)\s*本站商品页/g,
           (_match, verb: string | undefined, noun: string) =>
             noun === "地址" || noun === "链接"

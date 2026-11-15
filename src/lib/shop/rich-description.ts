@@ -1,5 +1,10 @@
 import sanitizeHtml from "sanitize-html";
-import { isAllowedHost, sanitizeSupplierCopy, type SupplierIdentity } from "./sanitize";
+import {
+  isAllowedHost,
+  sanitizeSupplierCopy,
+  SUPPLIER_PLACEHOLDER,
+  type SupplierIdentity,
+} from "./sanitize";
 
 /**
  * Renders a supplier description as formatted article copy.
@@ -113,6 +118,14 @@ function stripBlocksContaining(html: string, tag: "div" | "p"): string {
 
 const IMG_TAG_PATTERN = /<img\b[^>]*>/gi;
 const IMG_SRC_PATTERN = /\bsrc\s*=\s*["']([^"']+)["']/i;
+/**
+ * A link that was downgraded to <span> leaves the bare placeholder after a
+ * destination label ("兑换中心：本站商品页"). Point buyers to the order page.
+ */
+const MASKED_DESTINATION = new RegExp(
+  String.raw`(兑换中心|兑换网站|兑换地址|充值中心|充值网站|充值地址)(\s*[：:]\s*)<span\b[^>]*>\s*${SUPPLIER_PLACEHOLDER}\s*</span>`,
+  "g",
+);
 const HREF_ZYNANAI_HELP_PATTERN =
   /href\s*=\s*["'](?:https?:\/\/(?:[a-z0-9-]+\.)*zyanai\.cc)?\/user\/help\/(article\.\d+)[^"']*["']/gi;
 
@@ -163,6 +176,16 @@ function scrubAttribute(value: string, identities: SupplierIdentity[]): string {
 }
 
 /**
+ * Image alts are often the supplier's file name. Once the host is masked the
+ * remains ("本站商品页g") are not a usable description, so fall back to a plain
+ * label instead of shipping the placeholder to screen readers.
+ */
+function scrubAlt(value: string, identities: SupplierIdentity[]): string {
+  const alt = scrubAttribute(value, identities);
+  return alt.includes(SUPPLIER_PLACEHOLDER) ? "商品说明图片" : alt;
+}
+
+/**
  * Rewrites every <img> to a mirrored path when one exists. Images whose URL is
  * not in the map are dropped: the public page must never load supplier assets.
  */
@@ -178,14 +201,14 @@ function rewriteImages(
     const raw = match[1] ?? "";
     if (isMirroredImagePath(raw)) {
       const alt = tag.match(/\balt\s*=\s*["']([^"']*)["']/i)?.[1];
-      const safeAlt = alt ? scrubAttribute(unescapeAttribute(alt), identities) : "";
+      const safeAlt = alt ? scrubAlt(unescapeAttribute(alt), identities) : "";
       return `<img src="${raw}" alt="${safeAlt.replace(/"/g, "&quot;")}" loading="lazy" decoding="async">`;
     }
     const resolved = absoluteUrl(raw, base);
     const mirrored = resolved ? imageMap.get(resolved) : null;
     if (!mirrored) return "";
     const alt = tag.match(/\balt\s*=\s*["']([^"']*)["']/i)?.[1];
-    const safeAlt = scrubAttribute(
+    const safeAlt = scrubAlt(
       alt ? unescapeAttribute(alt) : "商品说明图片",
       identities,
     );
@@ -273,7 +296,7 @@ export function buildRichDescriptionHtml(
           tagName,
           attribs: {
             src,
-            alt: scrubAttribute(attribs.alt || "", identities),
+            alt: scrubAlt(attribs.alt || "", identities),
             loading: "lazy",
             decoding: "async",
           },
@@ -293,6 +316,7 @@ export function buildRichDescriptionHtml(
     .replace(/\s(?:style|class)=""/g, "")
     .replace(/<p>\s*<\/p>/g, "")
     .replace(/<div>\s*<\/div>/g, "")
+    .replace(MASKED_DESTINATION, "$1$2<span>地址见订单详情页</span>")
     .trim();
 
   // A description must still contain words; an image-only shell is not useful.
