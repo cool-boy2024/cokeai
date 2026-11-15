@@ -1,5 +1,5 @@
 import { query, withTransaction } from "@/lib/db";
-import { suggestRetailPrice } from "@/lib/shop/catalog";
+import { autoRetailPrice } from "@/lib/shop/auto-pricing";
 import { normalizeDisplayCategory } from "@/lib/shop/categories";
 import { getShopTargetMarginBps } from "@/lib/shop/settings";
 import { replaceProductImages } from "@/lib/shop/images";
@@ -523,7 +523,7 @@ export async function syncZyanaiProducts(options?: {
 }
 
 async function persistProduct(supplierId: string, product: ZyanaiProduct): Promise<void> {
-  const retail = suggestRetailPrice(product.costMicros, await getShopTargetMarginBps());
+  const retail = autoRetailPrice(product.costMicros, await getShopTargetMarginBps());
   const productId = await withTransaction(async (client) => {
     const offer = await client.query<{ id: string; price_micros: string }>(
       `INSERT INTO shop_offers

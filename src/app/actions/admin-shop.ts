@@ -6,7 +6,7 @@ import { after } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { config } from "@/lib/config";
 import { query, withTransaction } from "@/lib/db";
-import { suggestRetailPrice } from "@/lib/shop/catalog";
+import { autoRetailPrice } from "@/lib/shop/auto-pricing";
 import { SHOP_PRODUCT_CATEGORIES } from "@/lib/shop/categories";
 import { createImportJob, drainQueuedJobs, runImportJob } from "@/lib/shop/import";
 import {
@@ -658,7 +658,7 @@ export async function adminResetShopPriceAction(formData: FormData): Promise<voi
     );
   }
 
-  const retail = suggestRetailPrice(cost, await getShopTargetMarginBps());
+  const retail = autoRetailPrice(cost, await getShopTargetMarginBps());
   await query(
     `UPDATE shop_products
         SET price_micros = $2, price_locked = FALSE, price_locked_at = NULL,

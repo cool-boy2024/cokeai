@@ -3,7 +3,7 @@ import { isIP } from "node:net";
 import { z } from "zod";
 import { config } from "@/lib/config";
 import { query, withTransaction } from "@/lib/db";
-import { suggestRetailPrice } from "@/lib/shop/catalog";
+import { autoRetailPrice } from "@/lib/shop/auto-pricing";
 import { getShopTargetMarginBps } from "@/lib/shop/settings";
 import { classifyOffer } from "@/lib/shop/offer-classify";
 import { sanitizeSupplierCopy, sanitizeSupplierLines } from "@/lib/shop/sanitize";
@@ -406,7 +406,7 @@ function slugFor(offer: OfferRow): string {
 function priceFor(offer: OfferRow, targetMarginBps: number): number {
   const cost = Number(offer.price_micros || 0);
   if (cost <= 0) return 0;
-  return suggestRetailPrice(cost, targetMarginBps);
+  return autoRetailPrice(cost, targetMarginBps);
 }
 
 /**

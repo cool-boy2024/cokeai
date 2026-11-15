@@ -122,6 +122,10 @@ export const config = {
     process.env.SHOP_FEED_META_URL || "https://aibijia.org/live-data/meta.json",
   shopSyncIntervalMinutes: intEnv("SHOP_SYNC_INTERVAL_MINUTES", 60),
   shopMinMarginBps: intEnv("SHOP_MIN_MARGIN_BPS", 1_500),
+  // Added on top of every cost-derived (auto) retail price. Supplier syncs
+  // recompute the base but keep this markup, so a global price increase
+  // survives the next sync without locking products.
+  shopAutoPriceMarkupMicros: intEnv("SHOP_AUTO_PRICE_MARKUP_MICROS", 3_000_000),
   shopMaxCostIncreaseBps: intEnv("SHOP_MAX_COST_INCREASE_BPS", 2_500),
   shopMissingRunsLimit: intEnv("SHOP_MISSING_RUNS_LIMIT", 3),
   shopOrderExpireMinutes: intEnv("SHOP_ORDER_EXPIRE_MINUTES", 30),

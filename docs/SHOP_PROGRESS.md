@@ -66,6 +66,12 @@
   不再显示现货和 15–60 分钟时效；恢复现货后同步自动清除该标记，不覆盖其他
   熔断原因。规则集中在 `src/lib/shop/preorder.ts`，公开类型只暴露布尔
   `preorder`，不需要迁移。测试：`npm run test:shop:preorder`。
+- 自动定价加价：成本换算出的建议售价统一加运营加价（默认 ¥3，
+  `SHOP_AUTO_PRICE_MARKUP_MICROS`，见 `src/lib/shop/auto-pricing.ts`）。
+  zyanai 同步、后台「恢复自动定价」、货源导入草稿和建议售价都走同一函数；
+  同步重算成本基础价时加价会自动保留，不需要把全部商品锁成手动售价。
+  调整全场加价改这个配置；没有货源、纯手工定价的商品仍用
+  `npm run shop:price` 直接调价。
 - 人工到账金额：`manual`、`alipay_manual` 改为按「分」比较（四舍五入到分），
   解决显示 ¥107.14、订单实际为 107142858 micros 时确认报 `AMOUNT_MISMATCH`；
   USDT 等自动渠道仍严格按 micros 比较。自动定价结果同步取整到分，旧数据在

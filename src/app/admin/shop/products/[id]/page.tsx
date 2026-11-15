@@ -11,11 +11,8 @@ import { requireAdmin } from "@/lib/auth";
 import { query } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { formatCny } from "@/lib/money";
-import {
-  getAdminProduct,
-  loadProductVariants,
-  suggestRetailPrice,
-} from "@/lib/shop/catalog";
+import { autoRetailPrice } from "@/lib/shop/auto-pricing";
+import { getAdminProduct, loadProductVariants } from "@/lib/shop/catalog";
 import { VariantEditor } from "@/components/shop/admin/VariantEditor";
 import {
   normalizeDisplayCategory,
@@ -72,8 +69,7 @@ export default async function AdminShopProductEditPage({
       ? ((product.price_micros - cost) / product.price_micros) * 100
       : null;
   const targetMarginBps = await getShopTargetMarginBps();
-  const suggestedPrice =
-    cost > 0 ? suggestRetailPrice(cost, targetMarginBps) : 0;
+  const suggestedPrice = cost > 0 ? autoRetailPrice(cost, targetMarginBps) : 0;
 
   return (
     <>
