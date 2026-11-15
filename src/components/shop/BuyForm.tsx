@@ -233,6 +233,9 @@ export function BuyForm({
             );
           })}
         </div>
+        {selectedVariant?.warranty_note ? (
+          <p className="shop-variant-note">{selectedVariant.warranty_note}</p>
+        ) : null}
       </div>
     ) : null;
 
@@ -418,6 +421,9 @@ export function BuyForm({
         <p className="shop-variant-chosen">
           宝贝类型：{selectedVariant.label} · {productPriceLabel(unitMicros)}
         </p>
+      ) : null}
+      {selectedVariant?.warranty_note ? (
+        <p className="shop-variant-note">{selectedVariant.warranty_note}</p>
       ) : null}
 
       <div className="shop-pay-step-head">

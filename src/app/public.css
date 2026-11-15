@@ -6312,6 +6312,15 @@ body {
   color: var(--ink);
 }
 
+.public-main .shop-variant-note {
+  margin: 0;
+  padding: 9px 12px;
+  border-left: 2px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
 /* Admin variant editor */
 
 .shop-variant-panel {
