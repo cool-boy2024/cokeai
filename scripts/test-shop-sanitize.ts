@@ -102,6 +102,12 @@ assert(
   `no-wait claim is rewritten: ${noWait}`,
 );
 
+const cdkComma = clean("本商品为 CDK 自动发货，卡密本身不会过期。");
+assert(
+  cdkComma === "本商品为 CDK 卡密商品，卡密本身不会过期。",
+  `CDK comma keeps the sentence readable: ${cdkComma}`,
+);
+
 const title = clean("【自动发货】GPT PLUS 充值卡密");
 assert(title === "【人工发货】GPT PLUS 充值卡密", `product title is rewritten: ${title}`);
 

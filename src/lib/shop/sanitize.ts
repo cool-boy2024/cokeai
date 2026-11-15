@@ -128,7 +128,11 @@ export function sanitizeFulfillmentCopy(input: string): string {
       "付款后由本店人工完成采购，卡密会显示在你的订单详情页。",
     )
     .replace(/系统会自动显示充值卡密/g, "卡密会显示在你的订单详情页")
-    .replace(/本商品为\s*CDK\s*自动发货\s*。?/g, "本商品为 CDK 卡密商品。")
+    .replace(
+      /本商品为\s*CDK\s*自动发货\s*([。，,])?/g,
+      (_match, punct: string | undefined) =>
+        `本商品为 CDK 卡密商品${punct && punct !== "。" ? punct : "。"}`,
+    )
     .replace(/(?:购买后|付款后|下单后|下单)\s*自动发货/g, "下单后人工发货")
     .replace(/\d{1,2}\s*(?:小时|h|H)\s*内?\s*自动发货/g, "下单后人工发货")
     .replace(/自动发货查收说明/g, "发货与查收说明")
