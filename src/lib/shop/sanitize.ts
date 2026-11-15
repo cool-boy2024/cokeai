@@ -335,6 +335,15 @@ export function sanitizeSupplierCopy(
     .trim();
 }
 
+/** Alt text that still names a masked source is not a useful description. */
+export function sanitizeSupplierAlt(
+  input: string,
+  identity: SupplierIdentity = {},
+): string {
+  const alt = sanitizeSupplierCopy(input, identity);
+  return alt.includes(SUPPLIER_PLACEHOLDER) ? "商品说明图片" : alt;
+}
+
 export function sanitizeSupplierLines(
   lines: string[],
   identity: SupplierIdentity = {},

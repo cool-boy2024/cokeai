@@ -1,4 +1,7 @@
-import { sanitizeSupplierCopy } from "../src/lib/shop/sanitize";
+import {
+  sanitizeSupplierAlt,
+  sanitizeSupplierCopy,
+} from "../src/lib/shop/sanitize";
 import { buildRichDescriptionHtml } from "../src/lib/shop/rich-description";
 
 /**
@@ -158,6 +161,16 @@ const altHtml = buildRichDescriptionHtml(
 );
 assertNotMatch(altHtml, /本站商品页/, "placeholder removed from image alt");
 assertMatch(altHtml, /alt="商品说明图片"/, "image alt falls back to a plain label");
+assertEqual(
+  sanitizeSupplierAlt("本站商品页g"),
+  "商品说明图片",
+  "mirrored-image alt falls back to a plain label",
+);
+assertEqual(
+  sanitizeSupplierAlt("ChatGPT Plus 封面"),
+  "ChatGPT Plus 封面",
+  "ordinary alt text kept",
+);
 
 // --- rich description links ------------------------------------------------
 
