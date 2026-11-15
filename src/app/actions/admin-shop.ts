@@ -42,16 +42,19 @@ export async function adminSyncShopAction(): Promise<void> {
 
 /**
  * Saves the supplier feed URL (and meta URL) plus the shop target margin from
- * the sources page. URLs may be left empty to fall back to the .env default.
+ * the sources page. Admin only; the URLs are encrypted at rest and never sent
+ * back to the browser. Empty fields keep the current value so the margin can
+ * be changed without re-entering a secret.
  */
 export async function adminSaveShopSourceSettingsAction(formData: FormData): Promise<void> {
   const admin = await requireAdmin();
   const feedUrl = text(formData, "feedUrl");
   const feedMetaUrl = text(formData, "feedMetaUrl");
+  const clear = formData.get("clearSourceUrls") === "on";
   const marginPercent = Number(formData.get("targetMarginPercent") || "");
 
-  const validateHttpUrl = (raw: string, label: string): string | null => {
-    if (!raw) return null;
+  const validateHttpUrl = (raw: string, label: string): string => {
+    if (!raw) return "";
     try {
       const url = new URL(raw);
       if (url.protocol !== "https:" && url.protocol !== "http:") throw new Error();
@@ -67,7 +70,10 @@ export async function adminSaveShopSourceSettingsAction(formData: FormData): Pro
     if (!Number.isFinite(marginPercent) || marginPercent < 0 || marginPercent > 90) {
       throw new Error("目标毛利率需在 0–90% 之间");
     }
-    await saveShopSourceSettings({ feedUrl: feed || "", feedMetaUrl: meta || "" });
+    await saveShopSourceSettings(
+      { feedUrl: feed, feedMetaUrl: meta, clear },
+      admin.id,
+    );
     await saveShopTargetMarginBps(Math.round(marginPercent * 100), admin.id);
   } catch (error) {
     redirect(

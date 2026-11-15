@@ -46,8 +46,29 @@ export default async function AdminShopOrderDetailPage({
   const order = await getAdminShopOrder(id);
   if (!order) notFound();
 
-  const offer = order.supplier_offer_id
-    ? (
+  // Until the order is actually bought from a supplier, the procurement block
+  // follows the product's *current* source. Binding a product to a new offer
+  // must be visible on orders that are still waiting, not just on new orders.
+  const procurementClosed = ["bought", "delivered", "refunded"].includes(
+    order.procurement_status,
+  );
+  const offer = procurementClosed
+    ? order.supplier_offer_id
+      ? (
+          await query<{
+            url: string;
+            source_title: string;
+            source_store: string;
+            price_micros: string;
+            availability: string;
+          }>(
+            `SELECT url, source_title, source_store, price_micros, availability
+               FROM shop_offers WHERE id = $1 LIMIT 1`,
+            [order.supplier_offer_id],
+          )
+        ).rows[0]
+      : null
+    : (
         await query<{
           url: string;
           source_title: string;
@@ -55,12 +76,18 @@ export default async function AdminShopOrderDetailPage({
           price_micros: string;
           availability: string;
         }>(
-          `SELECT url, source_title, source_store, price_micros, availability
-             FROM shop_offers WHERE id = $1 LIMIT 1`,
-          [order.supplier_offer_id],
+          `SELECT o.url, o.source_title, o.source_store, o.price_micros, o.availability
+             FROM shop_product_sources s
+             JOIN shop_offers o ON o.id = s.offer_id
+            WHERE s.product_id = $1 AND s.active = TRUE
+              AND (s.variant_id = $2::uuid OR s.variant_id IS NULL)
+            ORDER BY CASE WHEN s.variant_id IS NOT NULL THEN 0 ELSE 1 END,
+                     CASE s.role WHEN 'primary' THEN 0 ELSE 1 END,
+                     s.created_at
+            LIMIT 1`,
+          [order.product_id, order.variant_id],
         )
-      ).rows[0]
-    : null;
+      ).rows[0] ?? null;
   const customerInput = decryptCustomerInput(order.customer_input_encrypted);
   const manualClaim =
     order.payment_provider === "alipay_manual"
@@ -114,8 +141,12 @@ export default async function AdminShopOrderDetailPage({
 
   const paymentProviderLabel =
     PAYMENT_PROVIDER_LABELS[order.payment_provider] || order.payment_provider;
-  const supplierCost = order.supplier_offer_id
-    ? formatCny(order.supplier_cost_micros)
+  const supplierCost = offer
+    ? formatCny(
+        procurementClosed
+          ? order.supplier_cost_micros
+          : Number(offer.price_micros),
+      )
     : "未绑定货源";
   const deliveryDefaultKind: "code" | "account" | "manual_note" = ["code", "account", "manual_note"].includes(
     String(order.delivery_kind),

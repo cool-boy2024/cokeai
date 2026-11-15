@@ -7,6 +7,7 @@ import { query, toNumber } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { formatCny } from "@/lib/money";
 import { syncStatusLabel } from "@/lib/shop/copy";
+import { redactSourceText } from "@/lib/shop/redact";
 
 export const metadata: Metadata = { title: "小店" };
 export const dynamic = "force-dynamic";
@@ -328,7 +329,9 @@ export default async function AdminShopPage() {
                     </div>
                   </dl>
                   {sync.error || sync.last_error ? (
-                    <p className="shop-form-error">{sync.error || sync.last_error}</p>
+                    <p className="shop-form-error">
+                      {redactSourceText(sync.error || sync.last_error || "")}
+                    </p>
                   ) : null}
                 </>
               ) : (

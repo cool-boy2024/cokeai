@@ -35,9 +35,11 @@ export type ShopOrderSummary = {
   created_at: string;
   paid_at: string | null;
   delivered_at: string | null;
+  product_id: string;
   product_slug: string;
   product_name: string;
   brand: string;
+  variant_id: string | null;
   unit_price_micros: number;
   qty: number;
   procurement_status: string;
@@ -77,7 +79,8 @@ const ORDER_SELECT = `
          o.payment_provider, o.provider_ref, o.pay_amount, o.pay_currency, o.pay_address,
          o.pay_txid, o.pay_expires_at, o.expires_at, o.created_at, o.paid_at,
          o.delivered_at, o.user_id, o.customer_note, o.admin_note,
-         i.product_slug, i.product_name, i.brand, i.unit_price_micros, i.qty,
+         i.product_id, i.product_slug, i.product_name, i.brand, i.variant_id,
+         i.unit_price_micros, i.qty,
          i.procurement_status, i.delivery_kind, i.delivered_at AS delivered_at_item,
          i.customer_input_encrypted, i.customer_input_purged_at,
          i.supplier_title_snapshot, i.supplier_cost_micros, i.supplier_offer_id,
@@ -114,11 +117,13 @@ function mapOrder(row: Record<string, unknown>): ShopOrderDetail {
     created_at: String(row.created_at),
     paid_at: row.paid_at ? String(row.paid_at) : null,
     delivered_at: row.delivered_at ? String(row.delivered_at) : null,
+    product_id: String(row.product_id),
     product_slug: String(row.product_slug),
     // Snapshots are written at checkout, but rows created before the public
     // copy scrubber existed still carry supplier wording. Clean on read too.
     product_name: sanitizeSupplierCopy(String(row.product_name)),
     brand: String(row.brand),
+    variant_id: row.variant_id ? String(row.variant_id) : null,
     unit_price_micros: toNumber(row.unit_price_micros as string | number),
     qty: Number(row.qty),
     procurement_status: String(row.procurement_status),

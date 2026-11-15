@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import type { PoolClient } from "pg";
 import { config } from "@/lib/config";
 import { query, toNumber, withTransaction } from "@/lib/db";
+import { redactSourceText } from "@/lib/shop/redact";
+import { getShopSourceSettings } from "@/lib/shop/settings";
 
 /**
  * Syncs the public Aibijia catalogue into `shop_offers`.
@@ -239,8 +241,11 @@ export async function syncShopFeed(options?: {
   const supplier = supplierResult.rows[0];
   if (!supplier) throw new Error("未配置供货商数据源");
 
-  const feedUrl = supplier.feed_url || config.shopFeedUrl;
-  const metaUrl = supplier.meta_url || config.shopFeedMetaUrl;
+  // Admin-set URLs live encrypted in app_settings; the supplier row and
+  // .env are only fallbacks for deployments configured before that move.
+  const storedUrls = await getShopSourceSettings();
+  const feedUrl = storedUrls.feedUrl || supplier.feed_url || config.shopFeedUrl;
+  const metaUrl = storedUrls.feedMetaUrl || supplier.meta_url || config.shopFeedMetaUrl;
 
   const runResult = await query<{ id: string }>(
     `INSERT INTO shop_sync_runs (supplier_id, status)
@@ -457,7 +462,9 @@ export async function syncShopFeed(options?: {
 
     return result;
   } catch (error) {
-    const message = error instanceof Error ? error.message : "同步失败";
+    const message = redactSourceText(
+      error instanceof Error ? error.message : "同步失败",
+    );
     await query(
       `UPDATE shop_sync_runs
           SET status = 'failed', finished_at = now(), error = $2
