@@ -14,7 +14,7 @@ import { SubmitButton } from "@/components/SubmitButton";
 import { requireAdmin } from "@/lib/auth";
 import { config } from "@/lib/config";
 import { query } from "@/lib/db";
-import { suggestRetailPrice } from "@/lib/shop/catalog";
+import { autoRetailPrice } from "@/lib/shop/auto-pricing";
 import {
   getShopSourceSettings,
   getShopTargetMarginBps,
@@ -211,7 +211,7 @@ export default async function AdminShopSourcesPage({
     const cost = Number(offer.price_micros);
     const listed = offer.retail_micros ? Number(offer.retail_micros) : 0;
     const retail =
-      listed > 0 ? listed : suggestRetailPrice(cost, targetMarginBps);
+      listed > 0 ? listed : autoRetailPrice(cost, targetMarginBps);
     const margin = retail > 0 ? ((retail - cost) / retail) * 100 : null;
     return { cost, listed, retail, margin, profit: retail > 0 ? retail - cost : 0 };
   };
