@@ -1,6 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { CheckCircle2, Clock, CreditCard, Crown, Sparkles } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Clock,
+  CreditCard,
+  Crown,
+  Sparkles,
+} from "lucide-react";
 import { cancelOrderAction } from "@/app/actions/billing";
 import { CheckoutButton } from "@/components/CheckoutButton";
 import { requireUser } from "@/lib/auth";
@@ -39,8 +46,15 @@ type OrderRow = {
   paid_at: string | null;
 };
 
-export default async function MembershipPage() {
+export default async function MembershipPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const user = await requireUser();
+  const flags = await searchParams;
+  const cancelBlocked =
+    (Array.isArray(flags.cancel) ? flags.cancel[0] : flags.cancel) === "blocked";
   const [plansResult, ordersResult, checkout] = await Promise.all([
     query<MembershipPlanRow>(
       `SELECT id, name, tagline, price_micros, duration_days, shop_discount_bps
@@ -63,6 +77,18 @@ export default async function MembershipPage() {
   const membership = getMembershipInfo(user);
   const remaining = daysLeft(membership.expiresAt);
   const pendingOrder = ordersResult.rows.find((order) => order.status === "pending");
+  // Mirrors cancelOrderAction: providers outside this list cannot be cancelled
+  // by the buyer, so do not render a button that cannot work.
+  const cancellable = pendingOrder
+    ? [
+        "manual",
+        "alipay_manual",
+        "alipay_easypay",
+        "usdt_trc20",
+        "usdt_bsc",
+        "usdt_polygon",
+      ].includes(pendingOrder.payment_provider)
+    : false;
   const supportEmail = process.env.SUPPORT_EMAIL || "support@cokeai.cc.cd";
   const { methods, labels } = checkout;
 
@@ -79,6 +105,19 @@ export default async function MembershipPage() {
           </span>
         </div>
       </div>
+
+      {cancelBlocked ? (
+        <div className="notice notice-red">
+          <AlertTriangle size={16} />
+          <div>
+            这笔订单已有付款记录，暂时不能自助取消。请先
+            <Link className="text-link" href="/dashboard/support">
+              联系客服
+            </Link>
+            核对，避免重复付款。
+          </div>
+        </div>
+      ) : null}
 
       {pendingOrder ? (
         <div className="notice">
@@ -116,12 +155,19 @@ export default async function MembershipPage() {
                 获取收款信息，并备注完整订单号。
               </>
             ) : null}
-            <form action={cancelOrderAction} style={{ marginTop: 8 }}>
-              <input type="hidden" name="orderId" value={pendingOrder.id} />
-              <button className="btn btn-ghost btn-sm" type="submit">
-                取消订单
-              </button>
-            </form>
+            {cancellable ? (
+              <form action={cancelOrderAction} style={{ marginTop: 8 }}>
+                <input type="hidden" name="orderId" value={pendingOrder.id} />
+                <input
+                  type="hidden"
+                  name="returnTo"
+                  value="/dashboard/membership"
+                />
+                <button className="btn btn-ghost btn-sm" type="submit">
+                  取消订单
+                </button>
+              </form>
+            ) : null}
           </div>
         </div>
       ) : null}
