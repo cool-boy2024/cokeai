@@ -283,6 +283,24 @@ export default async function AdminShopProductEditPage({
             <label className="shop-compliance">
               <input
                 type="checkbox"
+                name="lockPrice"
+                value="1"
+                defaultChecked={product.price_locked}
+              />
+              <input
+                type="hidden"
+                name="priceLockInitial"
+                value={product.price_locked ? "1" : "0"}
+              />
+              <span>
+                锁定售价：勾选后货源同步只更新成本和文案，不会改动售价；
+                取消勾选并保存后，下一次同步会按最新货源成本重新自动定价。
+              </span>
+            </label>
+
+            <label className="shop-compliance">
+              <input
+                type="checkbox"
                 name="featured"
                 value="1"
                 defaultChecked={product.featured}
@@ -309,7 +327,8 @@ export default async function AdminShopProductEditPage({
             <p className="shop-muted">
               {product.price_locked
                 ? "当前售价已锁定，货源同步只更新成本，不会覆盖售价。"
-                : "改动售价并保存后会自动锁定，之后不再随货源价格同步。"}
+                : "当前为自动定价：货源同步会按最新成本重算售价。"}
+              手动改动售价并保存会视为你的确认，自动锁定。
             </p>
 
             <label className="shop-field">

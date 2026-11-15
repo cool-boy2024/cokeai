@@ -318,10 +318,12 @@ async function postJson(url: string, body: unknown): Promise<AlertResult> {
   }
 }
 
-async function sendEmail(
+async function sendEmailTo(
   smtp: SmtpSettings,
+  to: string,
   text: string,
   subject: string,
+  replyNote: string,
 ): Promise<AlertResult> {
   try {
     const transport = nodemailer.createTransport({
@@ -336,12 +338,10 @@ async function sendEmail(
     const replyTo = smtp.replyTo.trim() || smtp.from;
     await transport.sendMail({
       from: smtp.from,
-      to: smtp.to,
+      to,
       replyTo: replyTo || undefined,
       subject,
-      text: replyTo
-        ? `${text}\n\n---\n直接回复本邮件即可联系 CokeAI 运营负责人。`
-        : text,
+      text: replyTo ? `${text}\n\n---\n${replyNote}` : text,
     });
     transport.close();
     return { ok: true };
@@ -352,6 +352,52 @@ async function sendEmail(
     );
     return { ok: false, error: "邮件发送失败，请检查 SMTP 配置" };
   }
+}
+
+function sendEmail(
+  smtp: SmtpSettings,
+  text: string,
+  subject: string,
+): Promise<AlertResult> {
+  return sendEmailTo(
+    smtp,
+    smtp.to,
+    text,
+    subject,
+    "直接回复本邮件即可联系 CokeAI 运营负责人。",
+  );
+}
+
+/**
+ * Sends a one-off message to a customer (e.g. a shop delivery notice) through
+ * the operator's SMTP relay. Customer mail is not an alert: it never goes to
+ * the partner recipient or webhook, and without SMTP there is nothing to send
+ * with. Callers must treat a failure as non-fatal.
+ */
+export async function sendCustomerEmail(input: {
+  to: string;
+  subject: string;
+  text: string;
+}): Promise<AlertResult> {
+  const config = await getAlertConfig();
+  const to = input.to.trim();
+  if (!smtpReady(config.smtp)) {
+    return { ok: false, error: "SMTP 未配置，客户邮件未发送" };
+  }
+  if (!isEmail(to)) return { ok: false, error: "客户邮箱无效" };
+  return sendEmailTo(
+    config.smtp,
+    to,
+    input.text,
+    input.subject,
+    "直接回复本邮件即可联系 CokeAI 客服。",
+  );
+}
+
+/** Whether customer mail can actually leave the shop right now. */
+export async function customerMailReady(): Promise<boolean> {
+  const config = await getAlertConfig();
+  return smtpReady(config.smtp);
 }
 
 export async function sendAlert(

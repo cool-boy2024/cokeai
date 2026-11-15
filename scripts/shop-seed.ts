@@ -540,7 +540,11 @@ async function main() {
          subtitle = EXCLUDED.subtitle,
          description = EXCLUDED.description,
          cover_variant = EXCLUDED.cover_variant,
-         price_micros = EXCLUDED.price_micros,
+         -- Re-seeding copy must not undo an operator's manual price.
+         price_micros = CASE
+           WHEN shop_products.price_locked THEN shop_products.price_micros
+           ELSE EXCLUDED.price_micros
+         END,
          eta_min_minutes = EXCLUDED.eta_min_minutes,
          eta_max_minutes = EXCLUDED.eta_max_minutes,
          warranty_type = EXCLUDED.warranty_type,

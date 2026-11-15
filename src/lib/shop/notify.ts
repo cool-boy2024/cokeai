@@ -1,5 +1,6 @@
 import { config } from "@/lib/config";
-import { sendAlert } from "@/lib/alerts";
+import { sendAlert, sendCustomerEmail } from "@/lib/alerts";
+import { decryptSecret } from "@/lib/crypto";
 import { query, toNumber } from "@/lib/db";
 import { formatCny } from "@/lib/money";
 import { USDT_NETWORKS, type UsdtNetwork } from "@/lib/payments/networks";
@@ -210,6 +211,116 @@ export async function notifyShopManualPaymentReported(orderId: string): Promise<
 
 function formatUsdt(value: number): string {
   return value.toFixed(6).replace(/\.?0+$/, "");
+}
+
+/** The buyer's preferred address: the contact email captured at checkout. */
+function contactEmailFrom(encrypted: string | null): string {
+  if (!encrypted) return "";
+  try {
+    const parsed = JSON.parse(decryptSecret(encrypted)) as { contactEmail?: unknown };
+    return typeof parsed.contactEmail === "string"
+      ? parsed.contactEmail.trim().toLowerCase()
+      : "";
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * The buyer-facing delivery notice. Kept separate from sending so it can be
+ * asserted without an SMTP server; no supplier names or delivery payloads go
+ * into the mail.
+ */
+export function buildDeliveryNotice(input: {
+  orderId: string;
+  orderNo: string;
+  amountMicros: number;
+  deliveredAt: string | Date | null;
+  productName: string;
+  qty: number;
+}): { subject: string; text: string } {
+  const orderUrl = `${config.appUrl}/shop/orders/${input.orderNo}`;
+  const supportUrl = `${config.appUrl}/dashboard/support?orderId=${input.orderId}`;
+  const text = [
+    "【CokeAI 小店】你的订单已交付",
+    `订单号：${input.orderNo}`,
+    `商品：${input.productName} × ${Number(input.qty)}`,
+    `实付：${formatCny(input.amountMicros)}`,
+    input.deliveredAt
+      ? `交付时间：${new Date(input.deliveredAt).toLocaleString("zh-CN")}`
+      : null,
+    "",
+    "请登录 CokeAI 打开订单页领取交付内容：",
+    orderUrl,
+    "",
+    "交付内容只保存在订单页，请及时保存到安全位置。如果登录、使用或售后遇到问题，可在订单页提交站内工单：",
+    supportUrl,
+  ]
+    .filter((line) => line !== null)
+    .join("\n");
+  return { subject: `【CokeAI】订单 ${input.orderNo} 已交付`, text };
+}
+
+/**
+ * Tells the buyer their order is ready. Delivery payloads stay behind the
+ * login-protected order page; the mail only announces that the order arrived
+ * and links there, so a forwarded mailbox never exposes credentials.
+ *
+ * The caller should not await this: delivery has already been recorded and a
+ * mail failure must not roll it back or block the admin's redirect.
+ */
+export async function notifyShopOrderDelivered(orderId: string): Promise<void> {
+  try {
+    const result = await query<{
+      order_no: string;
+      amount_micros: string | number;
+      delivered_at: string | Date | null;
+      product_name: string;
+      qty: number;
+      email: string;
+      customer_input_encrypted: string | null;
+    }>(
+      `SELECT o.order_no, o.amount_micros, o.delivered_at,
+              i.product_name, i.qty, u.email, i.customer_input_encrypted
+         FROM shop_orders o
+         JOIN shop_order_items i ON i.order_id = o.id
+         JOIN users u ON u.id = o.user_id
+        WHERE o.id = $1
+        LIMIT 1`,
+      [orderId],
+    );
+    const row = result.rows[0];
+    if (!row) return;
+
+    const recipient = contactEmailFrom(row.customer_input_encrypted) || row.email;
+    if (!recipient) {
+      console.warn("[shop] delivery notice skipped: no customer email", orderId);
+      return;
+    }
+
+    const notice = buildDeliveryNotice({
+      orderId,
+      orderNo: row.order_no,
+      amountMicros: toNumber(row.amount_micros),
+      deliveredAt: row.delivered_at,
+      productName: row.product_name,
+      qty: Number(row.qty),
+    });
+
+    const sent = await sendCustomerEmail({
+      to: recipient,
+      subject: notice.subject,
+      text: notice.text,
+    });
+    if (!sent.ok) {
+      console.warn("[shop] delivery notice not delivered:", sent.error);
+    }
+  } catch (error) {
+    console.warn(
+      "[shop] delivery notice failed",
+      error instanceof Error ? error.message : error,
+    );
+  }
 }
 
 /**

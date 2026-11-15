@@ -18,6 +18,7 @@ type ProductRow = {
   availability: string;
   preorder: boolean;
   price_micros: string;
+  price_locked: boolean;
   copy_ready: boolean;
   pricing_review_required: boolean;
   cost_micros: string | null;
@@ -30,9 +31,10 @@ export default async function AdminShopProductsPage() {
   const result = await query<ProductRow>(
     `SELECT p.id, p.slug, p.name, p.brand, p.status, p.availability,
             ${preorderSql("p.")} AS preorder,
-            p.price_micros, p.copy_ready, p.pricing_review_required,
+            p.price_micros, p.price_locked, p.copy_ready, p.pricing_review_required,
             p.updated_at,
-            MIN(s.supplier_cost_micros)::text AS cost_micros,
+            -- Worst active cost, matching the margin breaker and the edit page.
+            MAX(s.supplier_cost_micros)::text AS cost_micros,
             COUNT(s.id)::text AS sources
        FROM shop_products p
        LEFT JOIN shop_product_sources s ON s.product_id = p.id AND s.active = TRUE
@@ -91,6 +93,11 @@ export default async function AdminShopProductsPage() {
                       <td>{product.brand}</td>
                       <td className="nowrap">
                         {formatCny(price)}
+                        {product.price_locked ? (
+                          <span className="badge badge-yellow" title="手动售价，货源同步不会覆盖">
+                            手动
+                          </span>
+                        ) : null}
                         {cost > 0 ? (
                           <span className="muted"> / {formatCny(cost)}</span>
                         ) : null}

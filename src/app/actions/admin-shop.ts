@@ -9,6 +9,7 @@ import { query, withTransaction } from "@/lib/db";
 import { autoRetailPrice } from "@/lib/shop/auto-pricing";
 import { SHOP_PRODUCT_CATEGORIES } from "@/lib/shop/categories";
 import { createImportJob, drainQueuedJobs, runImportJob } from "@/lib/shop/import";
+import { notifyShopOrderDelivered } from "@/lib/shop/notify";
 import {
   deliverShopItem,
   markShopItemOutOfStock,
@@ -187,13 +188,19 @@ export async function adminDeliverShopAction(formData: FormData): Promise<void> 
   }
 
   try {
-    await deliverShopItem({
+    const delivered = await deliverShopItem({
       orderId,
       adminId: admin.id,
       kind,
       payload,
       note: text(formData, "note"),
     });
+    // The buyer hears about the delivery by email, but only once the whole
+    // order is delivered. The mail is best-effort: it runs after the admin is
+    // redirected and can never roll back the recorded delivery.
+    if (delivered.orderDelivered) {
+      after(() => notifyShopOrderDelivered(orderId));
+    }
   } catch (error) {
     redirect(
       `/admin/shop/orders/${orderId}?error=${encodeURIComponent(
@@ -555,6 +562,13 @@ export async function adminSaveShopProductAction(formData: FormData): Promise<vo
   // the catalog; sort order breaks ties within the same placement.
   const featured = formData.get("featured") === "1";
   const sortOrder = Math.trunc(Number(formData.get("sortOrder") || 0)) || 0;
+  // The lock checkbox is authoritative only when the operator actually toggles
+  // it. Leaving it untouched keeps the old rule: an explicit price change is a
+  // decision and locks the price against the next supply sync.
+  const lockPrice = formData.get("lockPrice") === "1";
+  const lockInitial = formData.get("priceLockInitial") === "1";
+  const lockMode =
+    lockPrice === lockInitial ? "keep" : lockPrice ? "lock" : "unlock";
 
   const copyReady =
     Boolean(name && subtitle && description) &&
@@ -574,13 +588,19 @@ export async function adminSaveShopProductAction(formData: FormData): Promise<vo
             customer_notice = $7, refund_policy = $8,
             price_micros = CASE WHEN $9 > 0 THEN $9 ELSE price_micros END,
             -- An explicit price change is a deliberate decision: keep it
-            -- through future supply syncs until the operator resets it.
+            -- through future supply syncs until the operator resets it. The
+            -- lock checkbox overrides that rule in either direction.
             price_locked = CASE
+              WHEN $23 = 'lock' THEN TRUE
+              WHEN $23 = 'unlock' THEN FALSE
               WHEN $9 > 0 AND $9 <> price_micros THEN TRUE
               ELSE price_locked
             END,
             price_locked_at = CASE
-              WHEN $9 > 0 AND $9 <> price_micros THEN now()
+              WHEN $23 = 'lock' AND NOT price_locked THEN now()
+              WHEN $23 = 'unlock' THEN NULL
+              WHEN $23 = 'keep' AND $9 > 0 AND $9 <> price_micros AND NOT price_locked
+                THEN now()
               ELSE price_locked_at
             END,
             eta_min_minutes = $10, eta_max_minutes = $11,
@@ -628,6 +648,7 @@ export async function adminSaveShopProductAction(formData: FormData): Promise<vo
       preorderManual,
       featured,
       sortOrder,
+      lockMode,
     ],
   );
   revalidatePath("/admin/shop/products");
