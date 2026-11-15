@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import { z } from "zod";
@@ -394,13 +395,17 @@ async function aiCopy(offer: OfferRow, sourceText: string): Promise<DraftCopy> {
   return { ...parsed, ...lifted, engine: "ai", note };
 }
 
+/**
+ * Draft slugs are public once published, so the supplier key must not appear.
+ * A short digest of the external key keeps the slug deterministic without
+ * carrying the store's name or product URL.
+ */
 function slugFor(offer: OfferRow): string {
-  const key = offer.external_key
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 24);
-  return `auto-${key || offer.id.slice(0, 8)}-${offer.id.slice(0, 6)}`;
+  const digest = createHash("sha256")
+    .update(offer.external_key)
+    .digest("hex")
+    .slice(0, 8);
+  return `auto-${digest}-${offer.id.slice(0, 6)}`;
 }
 
 function priceFor(offer: OfferRow, targetMarginBps: number): number {

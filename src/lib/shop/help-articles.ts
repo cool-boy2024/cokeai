@@ -10,12 +10,12 @@ const ACCOUNT_HELP_IDS = ["article.6", "article.7", "article.8"];
 const GEMINI_HELP_IDS = ["article.5"];
 
 const EXACT_HELP_IDS: Record<string, string[]> = {
-  "zy-84-chatgpt-gpt-plus": CHATGPT_HELP_IDS,
-  "zy-213-chatgpt-gpt": CHATGPT_HELP_IDS,
-  "zy-155": ACCOUNT_HELP_IDS,
-  "zy-546": ACCOUNT_HELP_IDS,
-  "zy-27-gemini-gemini-ulrta20x-gemini-4": GEMINI_HELP_IDS,
-  "zy-508-gemini-ulrta20x-5": GEMINI_HELP_IDS,
+  "p-84-chatgpt-gpt-plus": CHATGPT_HELP_IDS,
+  "p-213-chatgpt-gpt": CHATGPT_HELP_IDS,
+  "p-155": ACCOUNT_HELP_IDS,
+  "p-546": ACCOUNT_HELP_IDS,
+  "p-27-gemini-gemini-ulrta20x-gemini-4": GEMINI_HELP_IDS,
+  "p-508-gemini-ulrta20x-5": GEMINI_HELP_IDS,
 };
 
 const ARTICLE_ID_PATTERN = /^article\.\d+$/;

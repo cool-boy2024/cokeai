@@ -1,4 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { config as appConfig } from "@/lib/config";
+import { baseUrlFromHeaders } from "@/lib/public-url";
 import { fixedWindowLimit, rollingDistinctCount } from "@/lib/rate-limit";
 import {
   clientIpFromHeaders,
@@ -9,6 +11,7 @@ import {
 } from "@/lib/security";
 import {
   isSearchCrawler,
+  legacyShopSlugRedirect,
   shopCrawlLimit,
   shopDetailSlug,
   SHOP_CRAWL_WINDOW_SECONDS,
@@ -114,9 +117,21 @@ function limitedResponse(request: NextRequest, resetSeconds: number): NextRespon
 }
 
 export async function proxy(request: NextRequest): Promise<NextResponse> {
+  const { pathname } = request.nextUrl;
+
+  // Slugs written before the neutral rename still start with a supplier
+  // prefix. Redirect them even when the guard is off: the URL is public data.
+  const legacySlug = legacyShopSlugRedirect(pathname);
+  if (legacySlug && (request.method === "GET" || request.method === "HEAD")) {
+    const base = baseUrlFromHeaders(request.headers, appConfig.appUrl);
+    return NextResponse.redirect(
+      `${base}${legacySlug}${request.nextUrl.search}`,
+      301,
+    );
+  }
+
   if (!securityPolicy.guardEnabled) return NextResponse.next();
 
-  const { pathname } = request.nextUrl;
   const ip = clientIpFromHeaders(request.headers);
   const userAgent = request.headers.get("user-agent") || undefined;
 

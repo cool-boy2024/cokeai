@@ -331,6 +331,7 @@ done | sort | uniq -c
 | 帮助中心 | 教程从供应商镜像而来，标题、摘要和正文在公开读取时再次清洗：外部 `href/src/poster` 被删除，域名和货源措辞被替换。后台仍显示原文 | `src/lib/help/store.ts`、`src/lib/help/sync.ts` |
 | 后台与 API | `/admin/**` 页面由 `requireAdmin()` 保护（未登录 307 到登录页，普通用户 307 到 `/dashboard`）；admin API 也要独立校验，非管理员返回 404。Server Action 自己在第一行调用 `requireAdmin()`，不能只依赖布局 | `src/app/admin/layout.tsx`、`src/app/api/admin/**`、`src/app/actions/admin*.ts` |
 | 内部任务 | `/api/internal/**` 只认 `x-internal-secret`（长度至少 24）；同步/导入/定价/帮助任务只能由 n8n 或管理员 Server Action 触发。失败响应只返回固定错误码，细节只写服务器日志 | `src/lib/internal.ts`、`src/app/api/internal/**`、`src/app/actions/*` |
+| 公开 URL | 商品 slug 只用中性前缀（`p-<编号>` 与 `auto-<摘要>-<编号>`），不得出现供应商名或上游商品 id。2026-11-15 之前的 `zy-*` / `auto-<供应商>-*` 由 schema 迁移改写，旧链接经 301 跳到新 slug | `db/schema.sql`、`src/lib/shop/zyanai.ts`、`src/lib/shop/import.ts`、`src/lib/shop-crawl-guard.ts` |
 | 抓取 | `/shop` 与商品页 120 次/分钟/IP，`/api/shop/*` 120 次/分钟/IP；超出 429 | `src/proxy.ts` |
 | 索引 | `robots.txt` Disallow `/admin`、`/api`、`/dashboard`；`next.config.ts` 给这三类路径加 `X-Robots-Tag: noindex, nofollow, noarchive` 和 `Cache-Control: no-store`；sitemap 只列公开页面 | `src/app/robots.ts`、`src/app/sitemap.ts`、`next.config.ts` |
 

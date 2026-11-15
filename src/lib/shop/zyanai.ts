@@ -339,6 +339,10 @@ function detectWarranty(text: string): Pick<ZyanaiProduct, "warrantyType" | "war
   return { warrantyType: "none", warrantyDays: 0, warrantyNote: "质保以商品介绍为准，下单前请阅读商品说明。" };
 }
 
+/**
+ * Public slugs must never identify the supplier. `p-` is a neutral product
+ * number; the supplier item id stays in shop_offers.
+ */
 function slugFor(id: number, brand: string, title: string): string {
   const ascii = title
     .toLowerCase()
@@ -346,7 +350,7 @@ function slugFor(id: number, brand: string, title: string): string {
     .replace(/^-+|-+$/g, "")
     .slice(0, 40)
     .replace(/-+$/g, "");
-  return `zy-${id}${brand !== "other" ? `-${brand}` : ""}${ascii ? `-${ascii}` : ""}`.slice(0, 80);
+  return `p-${id}${brand !== "other" ? `-${brand}` : ""}${ascii ? `-${ascii}` : ""}`.slice(0, 80);
 }
 
 function imageAlt(url: string): string {

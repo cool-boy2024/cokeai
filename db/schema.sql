@@ -920,3 +920,29 @@ ALTER TABLE shop_order_items
   ADD COLUMN IF NOT EXISTS variant_id UUID REFERENCES shop_product_variants(id) ON DELETE SET NULL;
 ALTER TABLE shop_order_items
   ADD COLUMN IF NOT EXISTS variant_label TEXT NOT NULL DEFAULT '';
+
+-- 2026-11-15: public product slugs must not carry supplier identity. Older
+-- rows used `zy-<id>` (supplier prefix) and the AI importer wrote
+-- `auto-<supplier>-...`. The app now generates neutral slugs and 301s the old
+-- URLs. Guarded updates keep a pre-existing target slug from aborting startup.
+UPDATE shop_products AS p
+   SET slug = 'p-' || substr(p.slug, 4)
+ WHERE p.slug LIKE 'zy-%'
+   AND NOT EXISTS (
+     SELECT 1 FROM shop_products AS q WHERE q.slug = 'p-' || substr(p.slug, 4)
+   );
+UPDATE shop_products AS p
+   SET slug = regexp_replace(
+         p.slug,
+         '^auto-(zyanai|aibijia|aibuji|wzyp|lovecodex|ldxp|kapay|beibei|aisou|talkai|gshh)-',
+         'auto-'
+       )
+ WHERE p.slug ~ '^auto-(zyanai|aibijia|aibuji|wzyp|lovecodex|ldxp|kapay|beibei|aisou|talkai|gshh)-'
+   AND NOT EXISTS (
+     SELECT 1 FROM shop_products AS q
+      WHERE q.slug = regexp_replace(
+              p.slug,
+              '^auto-(zyanai|aibijia|aibuji|wzyp|lovecodex|ldxp|kapay|beibei|aisou|talkai|gshh)-',
+              'auto-'
+            )
+   );
