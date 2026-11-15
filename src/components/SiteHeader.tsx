@@ -1,6 +1,7 @@
 import { getCurrentUser } from "@/lib/auth";
 import { AnnouncementBar } from "./AnnouncementBar";
 import { Logo } from "./Logo";
+import { SecurityNoticeBanner } from "./SecurityNoticeBanner";
 import { SiteNav } from "./SiteNav";
 
 export async function SiteHeader() {
@@ -8,6 +9,7 @@ export async function SiteHeader() {
 
   return (
     <>
+      <SecurityNoticeBanner />
       <AnnouncementBar />
       <header className="site-header public-header">
         <a className="skip-link" href="#main-content">

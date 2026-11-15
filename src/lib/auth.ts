@@ -5,6 +5,7 @@ import bcrypt from "bcryptjs";
 import { config, isPlanActive } from "./config";
 import { query, toNumber } from "./db";
 import { randomToken, sha256 } from "./crypto";
+import { rememberAdminIp } from "./security";
 
 export const SESSION_COOKIE = "cokeai_session";
 
@@ -224,6 +225,9 @@ export async function requireAdmin(): Promise<SessionUser> {
   const user = await getCurrentUser();
   if (!user) redirect("/login?next=/admin");
   if (user.role !== "admin") redirect("/dashboard");
+  // Keep the operator's current IP exempt from proxy rate limits even when the
+  // session predates this feature. Throttled inside rememberAdminIp.
+  await rememberAdminIp(await getClientIp());
   return user;
 }
 
