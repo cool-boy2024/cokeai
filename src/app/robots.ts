@@ -1,7 +1,10 @@
 import type { MetadataRoute } from "next";
+import { headers } from "next/headers";
 import { config } from "@/lib/config";
+import { baseUrlFromHeaders } from "@/lib/public-url";
 
-export default function robots(): MetadataRoute.Robots {
+export default async function robots(): Promise<MetadataRoute.Robots> {
+  const baseUrl = baseUrlFromHeaders(await headers(), config.appUrl);
   return {
     rules: [
       {
@@ -10,7 +13,7 @@ export default function robots(): MetadataRoute.Robots {
         disallow: ["/dashboard", "/admin", "/api", "/login", "/register"],
       },
     ],
-    sitemap: `${config.appUrl}/sitemap.xml`,
-    host: config.appUrl,
+    sitemap: `${baseUrl}/sitemap.xml`,
+    host: baseUrl,
   };
 }
