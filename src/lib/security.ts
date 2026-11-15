@@ -31,7 +31,7 @@ export type SecurityIpCount = { ip: string; count: number };
 
 export type DefenseMode = "normal" | "emergency";
 
-export type SecurityStatus = "normal" | "watch" | "attack" | "emergency";
+export type SecurityStatus = "normal" | "scan" | "watch" | "attack" | "emergency";
 
 export type SecurityHourBucket = {
   at: number;
@@ -48,9 +48,16 @@ export type SecuritySnapshot = {
   threshold: number;
   attack: boolean;
   status: SecurityStatus;
+  /** Human-readable reasons the attack rule matched; empty when it did not. */
+  attackReasons: string[];
   count5m: number;
   count15m: number;
   count1h: number;
+  /** Non-deduped blocks per event type inside the recent windows. */
+  count5mByType: Record<string, number>;
+  count15mByType: Record<string, number>;
+  uniqueIps5m: number;
+  uniqueIps15m: number;
   todayTotal: number;
   todayUniqueIps: number;
   last24hTotal: number;
@@ -85,9 +92,11 @@ const STATS_TTL_SECONDS = 9 * 24 * 60 * 60;
 const MINUTE_COUNTER_TTL_SECONDS = 2 * 60 * 60;
 const LAST_EVENT_KEY = `${STATS_PREFIX}:last`;
 const ATTACK_MARK_KEY = `${STATS_PREFIX}:attack:last`;
-const WINDOW_5M_KEY = `${STATS_PREFIX}:w:5m`;
-const WINDOW_15M_KEY = `${STATS_PREFIX}:w:15m`;
-const WINDOW_1H_KEY = `${STATS_PREFIX}:w:1h`;
+// Per-type and per-source minute buckets. The old whole-minute counter only
+// knew the total, which made a single scanner hitting /.env look identical to
+// a credential-stuffing wave. These two let the status rule separate them.
+const TYPE_MINUTE_PREFIX = `${STATS_PREFIX}:t`;
+const IP_MINUTE_PREFIX = `${STATS_PREFIX}:i`;
 const PUBLIC_STATUS_CACHE_MS = 60_000;
 
 function positiveInt(name: string, fallback: number): number {
@@ -99,22 +108,106 @@ function positiveInt(name: string, fallback: number): number {
 
 export const securityPolicy = {
   guardEnabled: (process.env.SECURITY_GUARD_ENABLED || "true").toLowerCase() !== "false",
-  attackThreshold: positiveInt("SECURITY_ATTACK_THRESHOLD", 60),
   alertCooldownMinutes: positiveInt("SECURITY_ALERT_COOLDOWN_MINUTES", 30),
   eventRetentionDays: positiveInt("SECURITY_EVENT_RETENTION_DAYS", 7),
 } as const;
 
+export type SecurityWindowCounts = {
+  count5m: number;
+  count15m: number;
+  count1h: number;
+  count5mByType?: Record<string, number>;
+  count15mByType?: Record<string, number>;
+  uniqueIps5m?: number;
+  uniqueIps15m?: number;
+};
+
 /**
- * Visible status thresholds. They are derived from the existing 15-minute
- * alert threshold; the proxy policies themselves are unchanged.
+ * Visible status thresholds.
+ *
+ * Internet-wide scanners probe /.env, /.git and wp-login all day. Those hits
+ * are blocked, but a lone scanner working through a list is not an attack on
+ * this shop, so it gets the neutral "扫描探测" state and never pages anyone.
+ * "攻击中" requires a pattern that implies intent or scale: many sources at
+ * once, abuse of the login/order/support/action endpoints, or a sustained
+ * flood. The proxy policies themselves are unchanged.
  */
 export const securityStatusRules = {
   watch5m: 5,
   watch1h: 10,
-  attack5m: Math.max(10, Math.ceil(securityPolicy.attackThreshold / 2)),
-  attack15m: securityPolicy.attackThreshold,
-  attack1h: securityPolicy.attackThreshold * 2,
+  scanProbe15m: 30,
+  attackProbe5m: 300,
+  attackProbe15m: 600,
+  distributed5mIps: 5,
+  distributed5mBlocks: 60,
+  distributed15mIps: 10,
+  distributed15mBlocks: 120,
+  attackAbuse15m: 10,
+  attackFlood15m: 600,
 } as const;
+
+const ABUSE_EVENT_TYPES: SecurityEventType[] = [
+  "auth",
+  "shop",
+  "support",
+  "server_action",
+];
+
+function typeTotal(
+  counts: Record<string, number> | undefined,
+  type: SecurityEventType,
+): number {
+  return counts?.[type] ?? 0;
+}
+
+/** Empty array means the activity is below the attack rule. */
+export function attackReasons(counts: SecurityWindowCounts): string[] {
+  const byType5m = counts.count5mByType;
+  const byType15m = counts.count15mByType;
+  const uniqueIps5m = counts.uniqueIps5m ?? 0;
+  const uniqueIps15m = counts.uniqueIps15m ?? 0;
+  const reasons: string[] = [];
+
+  const probe5m = typeTotal(byType5m, "probe");
+  const probe15m = typeTotal(byType15m, "probe");
+  if (probe5m >= securityStatusRules.attackProbe5m) {
+    reasons.push(`扫描探测 5 分钟 ${probe5m} 次`);
+  } else if (probe15m >= securityStatusRules.attackProbe15m) {
+    reasons.push(`扫描探测 15 分钟 ${probe15m} 次`);
+  }
+
+  if (
+    uniqueIps5m >= securityStatusRules.distributed5mIps &&
+    counts.count5m >= securityStatusRules.distributed5mBlocks
+  ) {
+    reasons.push(`分布式来源：5 分钟内 ${uniqueIps5m} 个 IP、${counts.count5m} 次拦截`);
+  } else if (
+    uniqueIps15m >= securityStatusRules.distributed15mIps &&
+    counts.count15m >= securityStatusRules.distributed15mBlocks
+  ) {
+    reasons.push(
+      `分布式来源：15 分钟内 ${uniqueIps15m} 个 IP、${counts.count15m} 次拦截`,
+    );
+  }
+
+  const abuse = ABUSE_EVENT_TYPES.map(
+    (type) => [type, typeTotal(byType15m, type)] as const,
+  ).filter(([, count]) => count >= securityStatusRules.attackAbuse15m);
+  if (abuse.length > 0) {
+    reasons.push(
+      `敏感入口异常（15 分钟）：${abuse
+        .map(([type, count]) => `${SECURITY_EVENT_LABELS[type]} ${count}`)
+        .join("、")}`,
+    );
+  }
+
+  const rateLimited = typeTotal(byType15m, "rate_limit");
+  if (rateLimited >= securityStatusRules.attackFlood15m) {
+    reasons.push(`限流触发 15 分钟 ${rateLimited} 次`);
+  }
+
+  return reasons;
+}
 
 export const SECURITY_EVENT_LABELS: Record<SecurityEventType, string> = {
   probe: "扫描探测",
@@ -128,6 +221,7 @@ export const SECURITY_EVENT_LABELS: Record<SecurityEventType, string> = {
 
 export const SECURITY_STATUS_LABELS: Record<SecurityStatus, string> = {
   normal: "正常",
+  scan: "扫描探测",
   watch: "观察",
   attack: "攻击中",
   emergency: "应急防护",
@@ -135,21 +229,25 @@ export const SECURITY_STATUS_LABELS: Record<SecurityStatus, string> = {
 
 /**
  * Status is derived from real, non-deduped block counters. Emergency mode wins;
- * otherwise any of the three attack windows triggers "攻击中" and lower recent
- * activity triggers "观察".
+ * then the attack rule; a lone scanner that only hits blocked paths is labelled
+ * "扫描探测" (neutral, no alert); lower recent activity is "观察".
  */
 export function getSecurityStatus(
   defenseMode: DefenseMode,
-  counts: { count5m: number; count15m: number; count1h: number },
+  counts: SecurityWindowCounts,
 ): SecurityStatus {
   if (defenseMode === "emergency") return "emergency";
+  if (attackReasons(counts).length > 0) return "attack";
+
+  const probe15m = typeTotal(counts.count15mByType, "probe");
+  const nonProbe15m = counts.count15m - probe15m;
   if (
-    counts.count5m >= securityStatusRules.attack5m ||
-    counts.count15m >= securityStatusRules.attack15m ||
-    counts.count1h >= securityStatusRules.attack1h
+    probe15m >= securityStatusRules.scanProbe15m &&
+    nonProbe15m < securityStatusRules.attackAbuse15m
   ) {
-    return "attack";
+    return "scan";
   }
+
   if (
     counts.count5m >= securityStatusRules.watch5m ||
     counts.count1h >= securityStatusRules.watch1h
@@ -326,6 +424,22 @@ function minuteCounterKeys(now: number, count: number): string[] {
   );
 }
 
+function typeMinuteKeys(now: number, count: number): string[] {
+  const currentMinute = Math.floor(now / 60_000);
+  return Array.from(
+    { length: count },
+    (_, index) => `${TYPE_MINUTE_PREFIX}:${currentMinute - index}`,
+  );
+}
+
+function ipMinuteKeys(now: number, count: number): string[] {
+  const currentMinute = Math.floor(now / 60_000);
+  return Array.from(
+    { length: count },
+    (_, index) => `${IP_MINUTE_PREFIX}:${currentMinute - index}`,
+  );
+}
+
 function timelineShortLabel(at: number): string {
   const hour = hourKey(at);
   if (hour === "00") return timelineShortFormatter.format(new Date(at));
@@ -389,8 +503,10 @@ function normalizeEvent(
  * Keys:
  * - sec:stats:YYYY-MM-DD     hash: total, one field per type, h00..h23
  * - sec:stats:m:<epochMin>   per-minute total for 5m / 15m / 1h windows
+ * - sec:stats:t:<epochMin>   per-minute hash, one field per event type
+ * - sec:stats:i:<epochMin>   per-minute HyperLogLog of source IPs
  * - sec:stats:last           last block timestamp
- * - sec:stats:attack:last    last time an attack threshold was crossed
+ * - sec:stats:attack:last    last time the attack rule matched
  * - sec:ips / sec:ipcount    unique IPs and per-IP counts for the day
  *
  * Every key has a TTL of at least two hours; daily keys live nine days so the
@@ -406,10 +522,13 @@ export async function bumpSecurityCounters(
 
   const day = dayKey(at);
   const statsKey = `${STATS_PREFIX}:${day}`;
-  const minuteKey = minuteCounterKey(at);
+  const minute = Math.floor(at / 60_000);
+  const minuteKey = `${STATS_PREFIX}:m:${minute}`;
+  const typeMinuteKey = `${TYPE_MINUTE_PREFIX}:${minute}`;
+  const ipMinuteKey = `${IP_MINUTE_PREFIX}:${minute}`;
   try {
     await ensureConnected(client);
-    const results = await client
+    await client
       .multi()
       .hincrby(statsKey, "total", 1)
       .hincrby(statsKey, type, 1)
@@ -417,13 +536,11 @@ export async function bumpSecurityCounters(
       .expire(statsKey, STATS_TTL_SECONDS)
       .incr(minuteKey)
       .expire(minuteKey, MINUTE_COUNTER_TTL_SECONDS)
+      .hincrby(typeMinuteKey, type, 1)
+      .expire(typeMinuteKey, MINUTE_COUNTER_TTL_SECONDS)
+      .pfadd(ipMinuteKey, ip)
+      .expire(ipMinuteKey, MINUTE_COUNTER_TTL_SECONDS)
       .set(LAST_EVENT_KEY, String(at), "EX", STATS_TTL_SECONDS)
-      .incr(WINDOW_5M_KEY)
-      .expire(WINDOW_5M_KEY, 300, "NX")
-      .incr(WINDOW_15M_KEY)
-      .expire(WINDOW_15M_KEY, 900, "NX")
-      .incr(WINDOW_1H_KEY)
-      .expire(WINDOW_1H_KEY, 3_600, "NX")
       // Per-source counts are also non-deduped, so the admin top-IP table
       // matches the total instead of showing one event per 60s window.
       .pfadd(`sec:ips:${day}`, ip)
@@ -432,17 +549,6 @@ export async function bumpSecurityCounters(
       .zremrangebyrank(`sec:ipcount:${day}`, 0, -5_001)
       .expire(`sec:ipcount:${day}`, COUNTER_TTL_SECONDS)
       .exec();
-
-    const window5m = Number(commandResult(results, 7) || 0);
-    const window15m = Number(commandResult(results, 9) || 0);
-    const window1h = Number(commandResult(results, 11) || 0);
-    if (
-      window5m >= securityStatusRules.attack5m ||
-      window15m >= securityStatusRules.attack15m ||
-      window1h >= securityStatusRules.attack1h
-    ) {
-      await client.set(ATTACK_MARK_KEY, String(at), "EX", STATS_TTL_SECONDS);
-    }
   } catch (error) {
     console.warn(
       "[security] counters not recorded",
@@ -550,12 +656,17 @@ export async function getSecuritySnapshot(
     generatedAt: now,
     windowMinutes: WINDOW_MINUTES,
     windowCount: 0,
-    threshold: securityPolicy.attackThreshold,
+    threshold: securityStatusRules.attackProbe15m,
     attack: false,
     status: "normal",
+    attackReasons: [],
     count5m: 0,
     count15m: 0,
     count1h: 0,
+    count5mByType: {},
+    count15mByType: {},
+    uniqueIps5m: 0,
+    uniqueIps15m: 0,
     todayTotal: 0,
     todayUniqueIps: 0,
     last24hTotal: 0,
@@ -583,6 +694,8 @@ export async function getSecuritySnapshot(
     await ensureConnected(client);
     const dayKeys = recentDayKeys(now, 7);
     const minuteKeys = minuteCounterKeys(now, 60);
+    const recentTypeKeys = typeMinuteKeys(now, 15);
+    const recentIpKeys = ipMinuteKeys(now, 15);
     const commands = client.multi();
     commands.mget(...minuteKeys);
     for (const key of dayKeys) commands.hgetall(`${STATS_PREFIX}:${key}`);
@@ -602,6 +715,11 @@ export async function getSecuritySnapshot(
     commands.ttl(DEFENSE_KEY);
     commands.get(ATTACK_MARK_KEY);
     commands.get(LAST_EVENT_KEY);
+    // Indexes 17..31: per-type counts for the last 15 minutes, newest first.
+    for (const key of recentTypeKeys) commands.hgetall(key);
+    // Index 32/33: distinct sources in the last 5 / 15 minutes.
+    commands.pfcount(...recentIpKeys.slice(0, 5));
+    commands.pfcount(...recentIpKeys);
     const results = await commands.exec();
 
     // Index 0: last 60 per-minute counters (current minute first).
@@ -612,6 +730,20 @@ export async function getSecuritySnapshot(
     const count5m = sumNumbers(minuteCounts.slice(0, 5));
     const count15m = sumNumbers(minuteCounts.slice(0, 15));
     const count1h = sumNumbers(minuteCounts.slice(0, 60));
+
+    // Indexes 17..31: per-type counts, current minute first.
+    const count5mByType: Record<string, number> = {};
+    const count15mByType: Record<string, number> = {};
+    for (let index = 0; index < recentTypeKeys.length; index += 1) {
+      const raw = commandResult(results, 17 + index);
+      const hash =
+        raw && typeof raw === "object" ? (raw as Record<string, string>) : null;
+      const counts = typeCountsFromHash(hash);
+      addTypeCounts(count15mByType, counts);
+      if (index < 5) addTypeCounts(count5mByType, counts);
+    }
+    const uniqueIps5m = Number(commandResult(results, 32) || 0);
+    const uniqueIps15m = Number(commandResult(results, 33) || 0);
 
     // Indexes 1..7: today plus the previous six days.
     const dayHashes = dayKeys.map((_, index) => {
@@ -688,21 +820,41 @@ export async function getSecuritySnapshot(
       if (ip && Number.isFinite(count)) topIps.push({ ip, count });
     }
 
-    const status = getSecurityStatus(defenseMode, {
+    const windowCounts = {
       count5m,
       count15m,
       count1h,
-    });
+      count5mByType,
+      count15mByType,
+      uniqueIps5m,
+      uniqueIps15m,
+    } satisfies SecurityWindowCounts;
+    const status = getSecurityStatus(defenseMode, windowCounts);
+    const reasons = attackReasons(windowCounts);
+    const attack = reasons.length > 0;
+
+    // Remember the last time the attack rule (not just any block) matched, so
+    // the admin page can show it without treating scanner noise as an attack.
+    if (attack && now - (numericValue(lastAttackRaw) ?? 0) > 60_000) {
+      await client
+        .set(ATTACK_MARK_KEY, String(now), "EX", STATS_TTL_SECONDS)
+        .catch(() => undefined);
+    }
 
     return {
       ...base,
       available: true,
       windowCount: count15m,
-      attack: count15m >= securityPolicy.attackThreshold,
+      attack,
       status,
+      attackReasons: reasons,
       count5m,
       count15m,
       count1h,
+      count5mByType,
+      count15mByType,
+      uniqueIps5m,
+      uniqueIps15m,
       todayTotal,
       todayUniqueIps,
       last24hTotal,
@@ -830,8 +982,15 @@ export function securityRecommendations(snapshot: SecuritySnapshot): string[] {
   const top = Object.entries(snapshot.byType).sort((a, b) => b[1] - a[1])[0]?.[0] || "";
 
   if (!snapshot.attack) {
+    if (snapshot.status === "scan") {
+      return [
+        `当前是 ${snapshot.uniqueIps15m} 个来源的扫描探测（15 分钟 ${snapshot.count15m} 次），全部已拦截，属于互联网背景噪声，不会告警，也无需操作。`,
+        "保持告警通道可用（/admin/security/alerts），每周看一次最近事件即可。",
+        "重防护（边缘限流、CrowdSec、Anubis）默认关闭，不要提前开在正常业务上。",
+      ];
+    }
     return [
-      "当前未达到攻击阈值。保持告警通道可用（/admin/security/alerts），每周看一次最近事件即可。",
+      "当前未达到攻击判定。保持告警通道可用（/admin/security/alerts），每周看一次最近事件即可。",
       "收到告警后先在 /admin/security 判断类型和来源 IP，再按 docs/SECURITY.md 处置。",
       "重防护（边缘限流、CrowdSec、Anubis）默认关闭，不要提前开在正常业务上。",
     ];
@@ -898,8 +1057,11 @@ export function formatSecurityAlert(snapshot: SecuritySnapshot): string {
   return [
     snapshot.attack
       ? "CokeAI 安全告警：疑似正在被攻击"
-      : "CokeAI 安全摘要：当前未达到攻击阈值",
-    `近 ${snapshot.windowMinutes} 分钟拦截：${snapshot.windowCount} 次（阈值 ${snapshot.threshold}）`,
+      : `CokeAI 安全摘要：当前状态「${SECURITY_STATUS_LABELS[snapshot.status]}」`,
+    snapshot.attack
+      ? `判定依据：${snapshot.attackReasons.join("；")}`
+      : `近 ${snapshot.windowMinutes} 分钟拦截 ${snapshot.windowCount} 次，未触发攻击判定`,
+    `近 ${snapshot.windowMinutes} 分钟拦截：${snapshot.windowCount} 次，来源 ${snapshot.uniqueIps15m} 个 IP`,
     `今日拦截：${snapshot.todayTotal} 次，独立 IP：${snapshot.todayUniqueIps}`,
     `类型：${types || "—"}`,
     `Top IP：${ips || "—"}`,
