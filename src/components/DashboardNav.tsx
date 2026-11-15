@@ -16,6 +16,7 @@ import {
   ShieldCheck,
   ShoppingBag,
   Store,
+  UserPlus,
   UserRound,
   Users,
   Wallet,
@@ -50,6 +51,7 @@ const adminItems = [
   { href: "/admin/shop/deposits", label: "USDT 到账", icon: Wallet },
   { href: "/admin/shop/sources", label: "货源", icon: PackageSearch },
   { href: "/admin/users", label: "用户", icon: Users },
+  { href: "/admin/visitors", label: "访客", icon: UserPlus },
   { href: "/admin/announcements", label: "公告", icon: Megaphone },
   { href: "/admin/help", label: "帮助中心", icon: BookOpen },
 ];

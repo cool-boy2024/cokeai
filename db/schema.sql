@@ -946,3 +946,31 @@ UPDATE shop_products AS p
               'auto-'
             )
    );
+
+-- ============================================================================
+-- 007_site_visits：访客首次到访记录（仅运营后台可见）
+--
+-- 只记录匿名访客的第一次到访：访客 ID 由浏览器生成并存 30 天 cookie，
+-- 注册/登录时用该 ID 回填 user_id，把访客与账号关联。IP 完整入库，界面
+-- 一律脱敏展示；30 天前的记录由打点接口和后台页自动清理。
+-- 纯加法迁移：新表，不改动既有表。
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS site_visits (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  visitor_id TEXT NOT NULL,
+  ip TEXT NOT NULL DEFAULT '',
+  user_agent TEXT NOT NULL DEFAULT '',
+  referrer TEXT NOT NULL DEFAULT '',
+  landing_path TEXT NOT NULL DEFAULT '',
+  user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS site_visits_visitor_idx
+  ON site_visits(visitor_id);
+CREATE INDEX IF NOT EXISTS site_visits_created_idx
+  ON site_visits(created_at DESC);
+CREATE INDEX IF NOT EXISTS site_visits_user_idx
+  ON site_visits(user_id)
+  WHERE user_id IS NOT NULL;
+
+INSERT INTO schema_migrations (version) VALUES ('007_site_visits') ON CONFLICT (version) DO NOTHING;

@@ -76,6 +76,16 @@
 
 > 判断标准：先看 `/admin/security` 的拦截类型和 Top IP，再决定是加边缘规则还是只封单个 IP。不要因为背景扫描就开 Under Attack Mode。
 
+### 2.4 访客记录与隐私（2026-11-15）
+
+- `/admin/visitors` 只对管理员开放（`requireAdmin()`），不进入公开导航、sitemap 或索引。
+- `site_visits` 只记录匿名访客的首次到访；登录用户以及 `/admin`、`/dashboard` 的浏览不记录。打点接口 `/api/track/visit` 有同源校验、按 IP 每天 30 次限流和 bot UA 过滤。
+- 完整 IP 只写数据库；后台一律用 `maskIp()` 显示（IPv4 保留前三段），不导出、不打印访客明细。
+- 记录保留 30 天，打点接口和后台页都会清理过期行；`cokeai_vid` cookie 有效期同样是 30 天。
+- 来源只存 host + path，去掉 query；`/shop/orders/<订单号>`、`/shop/checkout/<订单号>` 在入库前归一为 `:id`。
+- 隐私政策已同步披露访客记录、用途、保留期和 `cokeai_vid` cookie。
+
+
 ## 3. 能不能上：逐项评估
 
 ### 3.1 为什么不装 SafeLine / BunkerWeb
@@ -321,6 +331,7 @@ done | sort | uniq -c
 - 不把 Anubis PoW 默认开在 `/shop`、`/v1`；只在持续攻击时临时启用并尽快撤掉。
 - 不在攻击处置中清空 Redis、重启数据库或临时改 Tunnel；这些动作要么走预案，要么由所有者批准。
 - 不把安全事件、IP 列表、日志原文贴到公开页面、公开仓库或公开聊天。
+- 不导出、不打印访客明细；完整 IP 只在数据库，后台和聊天中只出现脱敏值。
 - 不把告警机器人 webhook URL（飞书/企业微信等）写进仓库、PR、文档或聊天。
 
 ## 10. 货源信息保护

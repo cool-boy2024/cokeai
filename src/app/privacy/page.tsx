@@ -16,7 +16,7 @@ export default function PrivacyPage() {
       <main id="main-content" className="public-main legal">
         <div className="container-narrow">
           <h1>隐私政策</h1>
-          <div className="legal-meta">最后更新：2026-10-26</div>
+          <div className="legal-meta">最后更新：2026-11-15</div>
 
           <p>
             本政策说明 CokeAI 在提供 AI API 接入服务时如何处理个人信息。
@@ -29,6 +29,11 @@ export default function PrivacyPage() {
             <li>计费信息：充值包、订单、支付渠道返回的交易编号、余额与调整记录。</li>
             <li>API 元数据：模型 ID、输入/输出 Token 数、费用、延迟、状态与 Request ID。</li>
             <li>安全日志：IP 地址、User-Agent、登录时间与速率限制记录。</li>
+            <li>
+              访客记录：首次访问时生成随机访客标识，记录 IP 地址、User-Agent、
+              来源页面与首次访问路径；注册或登录后与账户关联。
+              完整 IP 仅用于运营排查，后台只显示脱敏值。
+            </li>
             <li>客服记录：你主动提交的问题、邮件与授权范围内的诊断信息。</li>
           </ul>
           <p>
@@ -40,6 +45,7 @@ export default function PrivacyPage() {
           <ul>
             <li>创建与维护账户、交付充值额度。</li>
             <li>执行额度限制、限流与防欺诈。</li>
+            <li>统计新访客与注册转化、判断流量来源与排查异常访问。</li>
             <li>排查故障与提供支持。</li>
             <li>履行法律义务、响应主管机关合法要求。</li>
           </ul>
@@ -58,6 +64,7 @@ export default function PrivacyPage() {
             <li>账户与订单数据在账户存续期间及法律要求的期限内保留。</li>
             <li>用量与计费记录在账单核对、风控及法律要求的必要期限内保留。</li>
             <li>安全日志保留较短周期。</li>
+            <li>访客记录保留 30 天，到期自动删除。</li>
             <li>会话在到期、退出登录或撤销后失效。</li>
           </ul>
 
@@ -69,6 +76,11 @@ export default function PrivacyPage() {
 
           <h2>6. Cookies</h2>
           <p>平台使用必要的会话 Cookie 维持登录状态。禁用必要 Cookie 将导致无法登录控制台。</p>
+          <p>
+            首次访问时还会设置访客标识 Cookie（<code>cokeai_vid</code>），
+            用于识别同一浏览器的首次到访并与注册账号关联，有效期 30 天。
+            该 Cookie 不用于广告或跨站追踪，仅在运营后台脱敏展示。
+          </p>
 
           <h2>7. 你的权利</h2>
           <p>
