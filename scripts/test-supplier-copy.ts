@@ -62,6 +62,16 @@ assertEqual(
   "付款后安排采购，可能延迟。",
   "procurement sentence reads as our own action",
 );
+assertEqual(
+  sanitizeSupplierCopy("就算您先买一个测好了，后面批量拿货也可能有些支持、有些不支持。"),
+  "就算您先买一个测好了，后面批量购买也可能有些支持、有些不支持。",
+  "wholesale wording reads as a normal purchase",
+);
+assertNotMatch(
+  sanitizeSupplierCopy("进价 118 元，成本价和代理价更低。"),
+  /进价|成本价|代理价/,
+  "wholesale price words removed",
+);
 
 // --- domains and brands ----------------------------------------------------
 

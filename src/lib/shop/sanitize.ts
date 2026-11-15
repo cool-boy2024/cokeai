@@ -258,6 +258,12 @@ export function sanitizeSupplierCopy(
     .replace(/向供货商/g, "安排")
     .replace(/货源店铺|货源方|供货商|供货方|上游供应商|供应商/g, "本店")
     .replace(/货源/g, "本店")
+    // Wholesale vocabulary ("批量拿货", "进价", "成本价") tells the buyer this
+    // shop resells someone else's stock. Product copy only needs the retail
+    // action, so read it as an ordinary purchase.
+    .replace(/批量拿货|批发拿货/g, "批量购买")
+    .replace(/拿货/g, "购买")
+    .replace(/进价|成本价|代理价|批发价/g, "价格")
     .replace(
       /\b(?:supplier|vendor|wholesaler|upstream\s+(?:shop|supplier)|wholesale\s+price|agent\s+price|cost\s+price)\b/gi,
       "本店",
