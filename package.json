@@ -39,7 +39,8 @@
     "test:shop:variants": "tsx scripts/test-shop-variants.ts",
     "test:security": "tsx scripts/test-security-status.ts",
     "test:site-guards": "tsx scripts/test-site-guards.ts",
-    "test:shop:copy": "tsx scripts/test-supplier-copy.ts"
+    "test:shop:copy": "tsx scripts/test-supplier-copy.ts",
+    "test:visits": "tsx scripts/test-visits.ts"
   },
   "dependencies": {
     "@noble/hashes": "^2.4.0",

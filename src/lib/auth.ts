@@ -6,6 +6,8 @@ import { config, isPlanActive } from "./config";
 import { query, toNumber } from "./db";
 import { randomToken, sha256 } from "./crypto";
 import { rememberAdminIp } from "./security";
+import { VISITOR_COOKIE } from "./visits-format";
+import { linkVisitorToUser } from "./visits";
 
 export const SESSION_COOKIE = "cokeai_session";
 
@@ -124,6 +126,17 @@ export async function createSession(userId: string): Promise<void> {
     path: "/",
     maxAge,
   });
+
+  // Attach the anonymous first-visit record to this account. Tracking must
+  // never block a successful login.
+  const visitorId = cookieStore.get(VISITOR_COOKIE)?.value;
+  if (visitorId) {
+    try {
+      await linkVisitorToUser(userId, visitorId);
+    } catch {
+      // Ignore: the visitor log is best-effort telemetry.
+    }
+  }
 }
 
 export async function destroySession(): Promise<void> {

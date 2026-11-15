@@ -5,6 +5,7 @@ import { logoutAction } from "@/app/actions/auth";
 import { requireAdmin } from "@/lib/auth";
 import { query } from "@/lib/db";
 import { countUnreadMessagesForAdmin } from "@/lib/support";
+import { countNewSignups24h } from "@/lib/visits";
 import { AppSidebar } from "@/components/AppSidebar";
 
 export const metadata: Metadata = {
@@ -40,7 +41,10 @@ export default async function AdminLayout({
        FROM shop_orders`,
   );
   const shopCounts = counts.rows[0];
-  const unreadTickets = await countUnreadMessagesForAdmin();
+  const [unreadTickets, newSignups] = await Promise.all([
+    countUnreadMessagesForAdmin(),
+    countNewSignups24h(),
+  ]);
 
   return (
     <div className="app-shell">
@@ -52,6 +56,7 @@ export default async function AdminLayout({
           "/admin/shop": Number(shopCounts?.pending || 0),
           "/admin/shop/queue": Number(shopCounts?.to_buy || 0),
           "/admin/support": unreadTickets,
+          "/admin/visitors": newSignups,
         }}
       />
       <main className="app-main">

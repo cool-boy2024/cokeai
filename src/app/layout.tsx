@@ -4,6 +4,7 @@ import { GeistMono } from "geist/font/mono";
 import { MotionLayer } from "@/components/motion/MotionLayer";
 import { NavProgress } from "@/components/NavProgress";
 import { SupportWidget } from "@/components/SupportWidget";
+import { VisitBeacon } from "@/components/VisitBeacon";
 import { config } from "@/lib/config";
 import { PUBLIC_API_SALES_ENABLED } from "@/lib/public-features";
 import "./globals.css";
@@ -78,6 +79,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <SupportWidget
           supportEmail={process.env.SUPPORT_EMAIL || "support@cokeai.cc.cd"}
         />
+        <VisitBeacon />
       </body>
     </html>
   );
