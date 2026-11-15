@@ -309,6 +309,93 @@ export async function setStrictMode(
   }
 }
 
+const ADMIN_IP_KEY_PREFIX = "sec:adminip:";
+const ADMIN_IP_TTL_SECONDS = 7 * 24 * 60 * 60;
+const ADMIN_IP_CACHE_MS = 30_000;
+
+/**
+ * Optional permanent allowlist, for an IP the operator controls before any
+ * login has happened (office line, VPN egress). Comma-separated exact IPs.
+ */
+function envAdminIps(): string[] {
+  return (process.env.SECURITY_ADMIN_IPS || "")
+    .split(/[,;\s]+/)
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
+const adminIpCache = new Map<string, { trusted: boolean; expiresAt: number }>();
+
+/**
+ * True for an operator IP that must stay reachable while rate limits are on.
+ * A successful admin login records its IP for a week; SECURITY_ADMIN_IPS adds
+ * IPs ahead of time. The auth layer keeps its own per-IP/per-email caps, so
+ * this is an escape hatch for the console, not a brute-force bypass.
+ */
+export async function isTrustedAdminIp(ip: string): Promise<boolean> {
+  if (!ip || ip === "local") return false;
+  if (envAdminIps().includes(ip)) return true;
+
+  const cached = adminIpCache.get(ip);
+  if (cached && Date.now() < cached.expiresAt) return cached.trusted;
+
+  const client = getRedis();
+  if (!client) return false;
+  try {
+    await ensureConnected(client);
+    const trusted = (await client.get(`${ADMIN_IP_KEY_PREFIX}${ip}`)) === "1";
+    if (adminIpCache.size > 500) adminIpCache.clear();
+    adminIpCache.set(ip, {
+      trusted,
+      expiresAt: Date.now() + ADMIN_IP_CACHE_MS,
+    });
+    return trusted;
+  } catch {
+    return false;
+  }
+}
+
+const adminIpSavedAt = new Map<string, number>();
+const ADMIN_IP_REFRESH_MS = 60 * 60 * 1000;
+
+/** Records the IP of a signed-in admin. Best-effort and throttled to hourly. */
+export async function rememberAdminIp(ip: string): Promise<void> {
+  if (!ip || ip === "local") return;
+  const last = adminIpSavedAt.get(ip);
+  if (last && Date.now() - last < ADMIN_IP_REFRESH_MS) return;
+  const client = getRedis();
+  if (!client) return;
+  try {
+    await ensureConnected(client);
+    await client.set(
+      `${ADMIN_IP_KEY_PREFIX}${ip}`,
+      "1",
+      "EX",
+      ADMIN_IP_TTL_SECONDS,
+    );
+    adminIpSavedAt.set(ip, Date.now());
+    adminIpCache.set(ip, { trusted: true, expiresAt: Date.now() + ADMIN_IP_CACHE_MS });
+  } catch (error) {
+    console.warn(
+      "[security] admin ip not remembered",
+      error instanceof Error ? error.message : error,
+    );
+  }
+}
+
+/**
+ * Message shown to customers while temporary protection is tightening limits.
+ * It deliberately does not mention counters, blocked paths or defense knobs;
+ * the operator console keeps those details.
+ */
+export const PUBLIC_ATTACK_NOTICE =
+  "网站正在遭受攻击，部分访问可能短暂受限。我们正在处理，请稍后刷新重试；已提交的订单、付款和工单都会保留。";
+
+/** Non-null only while strict/emergency protection is active. */
+export async function getPublicSecurityNotice(): Promise<string | null> {
+  return (await isStrictMode()) ? PUBLIC_ATTACK_NOTICE : null;
+}
+
 /**
  * Emergency defense is the admin-facing "one button" switch for a real attack.
  *

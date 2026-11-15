@@ -14,7 +14,7 @@ import { query } from "@/lib/db";
 import { generateReferralCode } from "@/lib/crypto";
 import { fixedWindowLimit } from "@/lib/rate-limit";
 import { safeNextPath } from "@/lib/redirects";
-import { recordSecurityEventOnce } from "@/lib/security";
+import { recordSecurityEventOnce, rememberAdminIp } from "@/lib/security";
 import {
   ensureGatewayIdentity,
   getGatewayIdentity,
@@ -123,7 +123,8 @@ export async function loginAction(
     id: string;
     password_hash: string;
     status: string;
-  }>("SELECT id, password_hash, status FROM users WHERE email = $1 LIMIT 1", [
+    role: string;
+  }>("SELECT id, password_hash, status, role FROM users WHERE email = $1 LIMIT 1", [
     parsed.data.email,
   ]);
 
@@ -147,6 +148,11 @@ export async function loginAction(
   }
 
   await createSession(user.id);
+  if (user.role === "admin") {
+    // Remember this operator IP so proxy rate limits can never lock the admin
+    // console out during an attack. The auth layer keeps its own login caps.
+    await rememberAdminIp(await getClientIp());
+  }
   redirect(safeNext(parsed.data.next));
 }
 

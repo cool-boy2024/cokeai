@@ -4,6 +4,7 @@ import { ExternalLink, LogOut, Plus } from "lucide-react";
 import { logoutAction } from "@/app/actions/auth";
 import { requireUser } from "@/lib/auth";
 import { AppSidebar } from "@/components/AppSidebar";
+import { SecurityNoticeBanner } from "@/components/SecurityNoticeBanner";
 import { getGatewayBalanceForRequest } from "@/lib/gateway-credits";
 import { formatCny } from "@/lib/money";
 import { countUnreadMessagesForUser } from "@/lib/support";
@@ -30,6 +31,7 @@ export default async function DashboardLayout({
     <div className="app-shell">
       <AppSidebar user={user} badges={{ "/dashboard/support": unreadTickets }} />
       <main className="app-main">
+        <SecurityNoticeBanner />
         <header className="app-topbar">
           <span className="app-topbar-title">控制台</span>
           <div className="app-topbar-meta">

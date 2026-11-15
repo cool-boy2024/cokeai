@@ -6,6 +6,8 @@ import {
   clientIpFromHeaders,
   isStrictMode,
   isSuspiciousPath,
+  isTrustedAdminIp,
+  PUBLIC_ATTACK_NOTICE,
   recordSecurityEventOnce,
   securityPolicy,
 } from "@/lib/security";
@@ -86,6 +88,66 @@ function policyFor(pathname: string): Policy | null {
   return POLICIES.find((entry) => entry.test(pathname))?.policy ?? null;
 }
 
+/**
+ * Friendly page for a customer who is being throttled during an attack. It
+ * auto-refreshes when the window resets and reassures the buyer that orders
+ * and payments are preserved. No counters or defense details are exposed.
+ */
+function limitedPageHtml(resetSeconds: number): string {
+  const wait = Math.max(1, resetSeconds);
+  return `<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta http-equiv="refresh" content="${wait}">
+<title>访问暂时受限 · CokeAI</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; display: grid; place-items: center;
+    padding: 24px; background: #f7f6f3; color: #1c1a17;
+    font: 15px/1.7 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+      "Microsoft YaHei", sans-serif;
+  }
+  main {
+    width: min(520px, 100%); padding: 32px; background: #fff;
+    border: 1px solid #e4dfd4; border-radius: 16px;
+    box-shadow: 0 20px 50px rgba(28, 26, 23, 0.08);
+  }
+  span {
+    display: inline-block; margin-bottom: 14px; padding: 3px 10px;
+    border-radius: 999px; background: #7a3b1e; color: #fff;
+    font-size: 12px; letter-spacing: 0.08em;
+  }
+  h1 { margin: 0 0 12px; font-size: 24px; line-height: 1.3; }
+  p { margin: 0 0 12px; color: #56514a; }
+  .actions { display: flex; gap: 12px; margin-top: 20px; }
+  a {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-height: 40px; padding: 0 18px; border-radius: 999px;
+    background: #1c1a17; color: #fff; text-decoration: none; font-size: 14px;
+  }
+  a.secondary { background: #fff; color: #1c1a17; border: 1px solid #d8d2c6; }
+</style>
+</head>
+<body>
+<main>
+  <span>临时保护中</span>
+  <h1>访问暂时受限</h1>
+  <p>${PUBLIC_ATTACK_NOTICE}</p>
+  <p>本页会在约 ${wait} 秒后自动刷新。请不要重复提交订单或付款。</p>
+  <div class="actions">
+    <a href="">刷新重试</a>
+    <a class="secondary" href="/">返回首页</a>
+  </div>
+</main>
+</body>
+</html>`;
+}
+
 function limitedResponse(request: NextRequest, resetSeconds: number): NextResponse {
   const retryAfter = String(Math.max(1, resetSeconds));
   const wantsJson =
@@ -95,7 +157,7 @@ function limitedResponse(request: NextRequest, resetSeconds: number): NextRespon
 
   if (wantsJson) {
     return NextResponse.json(
-      { error: "请求过于频繁，请稍后再试。" },
+      { error: "请求过于频繁，请稍后再试。", notice: PUBLIC_ATTACK_NOTICE },
       {
         status: 429,
         headers: {
@@ -106,10 +168,10 @@ function limitedResponse(request: NextRequest, resetSeconds: number): NextRespon
     );
   }
 
-  return new NextResponse("请求过于频繁，请稍后再试。", {
+  return new NextResponse(limitedPageHtml(Math.max(1, resetSeconds)), {
     status: 429,
     headers: {
-      "content-type": "text/plain; charset=utf-8",
+      "content-type": "text/html; charset=utf-8",
       "cache-control": "no-store",
       "retry-after": retryAfter,
     },
@@ -170,7 +232,7 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
       SHOP_CRAWL_WINDOW_SECONDS,
     );
     const crawlLimit = shopCrawlLimit(strict);
-    if (distinct > crawlLimit) {
+    if (distinct > crawlLimit && !(await isTrustedAdminIp(ip))) {
       await recordSecurityEventOnce(
         {
           type: "rate_limit",
@@ -199,6 +261,12 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   );
 
   if (!result.allowed) {
+    // An operator IP that completed an admin login (or is listed in
+    // SECURITY_ADMIN_IPS) must stay able to open the console and log in while
+    // an attack keeps ordinary IPs throttled.
+    if (await isTrustedAdminIp(ip)) {
+      return NextResponse.next();
+    }
     await recordSecurityEventOnce(
       {
         type: isServerAction ? "server_action" : "rate_limit",
