@@ -494,13 +494,13 @@ body {
   width: 32px;
   height: 32px;
   border-radius: 8px;
-  background: var(--ink);
+  background: transparent;
   font-size: 16px;
   font-weight: 700;
 }
 
 .public-header .logo-dot {
-  color: var(--green);
+  color: #3057c3;
 }
 
 .public-nav {
@@ -685,7 +685,7 @@ body {
   width: 32px;
   height: 32px;
   border-radius: 8px;
-  background: var(--ink);
+  background: transparent;
   font-size: 16px;
 }
 

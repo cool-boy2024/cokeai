@@ -108,14 +108,14 @@ pre {
   width: 28px;
   height: 28px;
   border-radius: 8px;
-  background: var(--ink);
+  background: transparent;
   font-size: 14px;
   font-weight: 700;
   box-shadow: none;
 }
 
 .logo-dot {
-  color: var(--green);
+  color: #3057c3;
 }
 
 .site-nav {
