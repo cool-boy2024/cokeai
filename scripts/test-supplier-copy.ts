@@ -85,6 +85,20 @@ for (const raw of [
   assertNotMatch(clean, /lovecodex|foo\.ai|example-shop\.dev|zyanai\.cc/, `domain masked: ${raw}`);
 }
 
+// Our own domain must survive: its ".cc" prefix looks like a TLD in the
+// bare-domain pattern, and masking it used to leave a stray ".cd".
+const ownAnnouncement = "长期网址：cokeai.cc.cd，建议收藏，方便下次购买。";
+assertEqual(
+  sanitizeSupplierCopy(ownAnnouncement),
+  ownAnnouncement,
+  "our own bare domain kept intact",
+);
+assertMatch(
+  sanitizeSupplierCopy("收藏 https://cokeai.cc.cd/shop 下次直接访问。"),
+  /https:\/\/cokeai\.cc\.cd\/shop/,
+  "our own URL kept intact",
+);
+
 // Official product sites are usage instructions, not supplier identity.
 assertMatch(
   sanitizeSupplierCopy("登录 https://chatgpt.com 后在 muse.ai 查看。"),

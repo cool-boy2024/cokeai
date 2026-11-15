@@ -212,9 +212,17 @@ export function sanitizeSupplierCopy(
   );
   text = text.replace(
     /(?<![\w.@])(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|cn|net|org|cloud|club|online|store|site|info|link|live|shop|app|dev|pro|biz|top|xyz|vip|fun|io|cc|co|ai|me|tv|us|uk|hk|tw|jp|kr|sg)(?:\/[^\s，。；、）)】\]"'<>]*)?/gi,
-    (value) => {
+    (value, offset: number, whole: string) => {
       const urlHost = hostFromValue(value);
-      return urlHost && isAllowedHost(urlHost) ? value : SUPPLIER_PLACEHOLDER;
+      if (urlHost && isAllowedHost(urlHost)) return value;
+      // A TLD in the pattern list can be the first half of our own domain
+      // (cokeai.cc.cd): masking "cokeai.cc" here would leave ".cd" behind and
+      // turn the announcement's 长期网址 into nonsense. If the following
+      // labels complete an allowed host, leave the whole host untouched.
+      const continuation = whole.slice(offset + value.length).match(/^\.[a-z0-9-]+/i)?.[0];
+      const extendedHost = continuation ? hostFromValue(`${value}${continuation}`) : null;
+      if (extendedHost && isAllowedHost(extendedHost)) return value;
+      return SUPPLIER_PLACEHOLDER;
     },
   );
 
