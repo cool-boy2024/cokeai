@@ -6,7 +6,7 @@ import {
   Warning,
   Clock,
   Copy,
-  Envelope,
+  Headset,
   ShieldCheck,
 } from "@phosphor-icons/react/dist/ssr";
 import { CopyButton } from "@/components/CopyButton";
@@ -205,7 +205,7 @@ export default async function ShopCheckoutPage({
                   <Warning size={16} />
                   <div>
                     收款信息读取失败，请返回重新下单或
-                    <a href={`mailto:${config.shopSupportEmail}`}>联系客服</a>
+                    <Link href={`/dashboard/support?orderId=${order.id}`}>提交站内工单</Link>
                     处理。
                   </div>
                 </div>
@@ -322,9 +322,12 @@ export default async function ShopCheckoutPage({
                   <p className="shop-muted">
                     <Copy size={14} /> 付款后联系客服确认，客服核对账单后会在后台标记到账。
                   </p>
-                  <a className="btn btn-light btn-block" href={`mailto:${config.shopSupportEmail}`}>
-                    <Envelope size={15} /> 联系客服
-                  </a>
+                  <Link
+                    className="btn btn-light btn-block"
+                    href={`/dashboard/support?orderId=${order.id}`}
+                  >
+                    <Headset size={15} /> 联系客服（站内工单）
+                  </Link>
                   <AutoRefresh seconds={30} />
                 </>
               ) : null}

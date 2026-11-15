@@ -98,6 +98,18 @@ export async function listUserTickets(userId: string): Promise<SupportTicket[]> 
   return result.rows.map(mapTicket);
 }
 
+/** Tickets linked to one order, newest first. Used by the order detail page. */
+export async function listTicketsForOrder(
+  userId: string,
+  orderId: string,
+): Promise<SupportTicket[]> {
+  const result = await query<TicketRow>(
+    `${ticketSelect(UNREAD_FOR_CUSTOMER)} WHERE t.user_id = $1 AND t.order_id = $2 ORDER BY t.updated_at DESC LIMIT 20`,
+    [userId, orderId],
+  );
+  return result.rows.map(mapTicket);
+}
+
 export async function listAllTickets(): Promise<SupportTicket[]> {
   const result = await query<TicketRow>(
     `${ticketSelect(UNREAD_FOR_ADMIN)} ORDER BY (t.status = 'open') DESC, t.updated_at DESC LIMIT 200`,

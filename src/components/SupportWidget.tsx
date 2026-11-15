@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChatCircleDots, PaperPlaneTilt, X } from "@phosphor-icons/react";
 
@@ -169,8 +170,9 @@ export function SupportWidget({ supportEmail }: { supportEmail: string }) {
           </form>
 
           <p className="support-foot">
-            AI 客服 · 复杂问题请发邮件{" "}
-            <a href={`mailto:${supportEmail}`}>{supportEmail}</a>
+            AI 客服 · 复杂问题请
+            <Link href="/dashboard/support">提交售后工单</Link>
+            {" "}或发邮件 <a href={`mailto:${supportEmail}`}>{supportEmail}</a>
           </p>
         </section>
       ) : null}

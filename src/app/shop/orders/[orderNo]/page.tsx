@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { ArrowLeft, Envelope } from "@phosphor-icons/react/dist/ssr";
+import { ArrowLeft, Headset } from "@phosphor-icons/react/dist/ssr";
 import { SiteFooter } from "@/components/SiteFooter";
 import { SiteHeader } from "@/components/SiteHeader";
 import { DeliveryReveal } from "@/components/shop/DeliveryReveal";
@@ -12,6 +12,7 @@ import { USDT_NETWORKS, networkForProvider } from "@/lib/payments/networks";
 import { formatCny } from "@/lib/money";
 import { decryptCustomerInput, findShopOrderByNo } from "@/lib/shop/orders";
 import { SHOP_COPY } from "@/lib/shop/copy";
+import { listTicketsForOrder } from "@/lib/support";
 
 function paymentLabel(provider: string): string {
   if (provider === "alipay_easypay") return "支付宝（易支付）";
@@ -35,6 +36,12 @@ export default async function ShopOrderPage({
 
   const order = await findShopOrderByNo(orderNo, user.id);
   if (!order) notFound();
+
+  const orderTickets = await listTicketsForOrder(user.id, order.id);
+  const activeTicket = orderTickets.find((ticket) => ticket.status === "open") ?? null;
+  const supportHref = activeTicket
+    ? `/dashboard/support/${activeTicket.id}`
+    : `/dashboard/support?orderId=${order.id}`;
 
   const delivered = order.procurement_status === "delivered";
   const input = decryptCustomerInput(order.customer_input_encrypted);
@@ -90,9 +97,9 @@ export default async function ShopOrderPage({
                     请在客服会话中发送你的支付宝收款码（需与实名一致）和收款姓名。运营核对订单与金额后按协商结果退款，
                     退款后可退款金额为 {formatCny(order.amount_micros)}，完成前请不要重复申请。
                   </p>
-                  <a className="text-link" href={`mailto:${config.shopSupportEmail}`}>
-                    联系售后（{config.shopSupportEmail}）
-                  </a>
+                  <Link className="text-link" href={supportHref}>
+                    {activeTicket ? "打开站内售后工单" : "提交站内售后工单"}
+                  </Link>
                 </div>
               ) : null}
 
@@ -163,9 +170,25 @@ export default async function ShopOrderPage({
                 </Link>
               ) : null}
 
-              <a className="btn btn-light btn-block" href={`mailto:${config.shopSupportEmail}`}>
-                <Envelope size={15} /> 联系售后
-              </a>
+              <Link className="btn btn-light btn-block" href={supportHref}>
+                <Headset size={15} />
+                {activeTicket
+                  ? activeTicket.unreadCount > 0
+                    ? `售后工单有新回复（${activeTicket.unreadCount}）`
+                    : "查看售后工单"
+                  : "联系售后（站内工单）"}
+              </Link>
+              {orderTickets.length > 0 && !activeTicket ? (
+                <Link
+                  className="text-link shop-order-support-history"
+                  href={`/dashboard/support/${orderTickets[0].id}`}
+                >
+                  查看历史工单
+                </Link>
+              ) : null}
+              <p className="shop-muted shop-order-support-note">
+                工单会关联本订单，运营在站内回复，回复后在「售后工单」里可查看。
+              </p>
             </aside>
           </div>
         </div>

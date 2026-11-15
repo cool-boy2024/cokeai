@@ -3,7 +3,7 @@ import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { formatDateTime } from "@/lib/format";
 import { listUserShopOrders } from "@/lib/shop/orders";
-import { listUserTickets, type TicketStatus } from "@/lib/support";
+import { listTicketsForOrder, listUserTickets, type TicketStatus } from "@/lib/support";
 import { createSupportTicketAction } from "@/app/actions/support";
 
 export const metadata: Metadata = { title: "售后工单" };
@@ -26,6 +26,21 @@ export default async function DashboardSupportPage({
     listUserShopOrders(user.id),
   ]);
 
+  // The order page links here with ?orderId=… so the ticket is filed against
+  // the right order. Only accept an id from this user's own order list.
+  const requestedOrderId = params.orderId || "";
+  const selectedOrder = requestedOrderId
+    ? orders.find((order) => order.id === requestedOrderId) || null
+    : null;
+  const defaultSubject = selectedOrder
+    ? `订单 ${selectedOrder.order_no} · ${selectedOrder.product_name} 售后`.slice(0, 200)
+    : "";
+  const orderTickets = selectedOrder
+    ? await listTicketsForOrder(user.id, selectedOrder.id)
+    : [];
+  const openOrderTicket =
+    orderTickets.find((ticket) => ticket.status === "open") ?? null;
+
   return (
     <>
       <div className="page-head">
@@ -36,6 +51,23 @@ export default async function DashboardSupportPage({
       </div>
 
       {params.error ? <div className="notice notice-red">{params.error}</div> : null}
+      {requestedOrderId && !selectedOrder ? (
+        <div className="notice notice-red">未找到该订单，请重新选择关联订单。</div>
+      ) : null}
+      {selectedOrder ? (
+        <div className="notice">
+          已关联订单 <span className="mono">{selectedOrder.order_no}</span>
+          （{selectedOrder.product_name}），填写问题后提交即可。
+          {openOrderTicket ? (
+            <>
+              {" "}
+              该订单已有处理中的工单，
+              <Link href={`/dashboard/support/${openOrderTicket.id}`}>打开工单</Link>
+              。
+            </>
+          ) : null}
+        </div>
+      ) : null}
 
       <section className="panel mb-16">
         <div className="panel-head">
@@ -53,12 +85,18 @@ export default async function DashboardSupportPage({
                 name="subject"
                 maxLength={200}
                 required
+                defaultValue={defaultSubject}
                 placeholder="一句话描述问题"
               />
             </div>
             <div className="field">
               <label htmlFor="orderId">关联订单（可选）</label>
-              <select id="orderId" className="input" name="orderId" defaultValue="">
+              <select
+                id="orderId"
+                className="input"
+                name="orderId"
+                defaultValue={selectedOrder?.id || ""}
+              >
                 <option value="">不关联订单</option>
                 {orders.map((order) => (
                   <option key={order.id} value={order.id}>
