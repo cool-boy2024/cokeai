@@ -18,6 +18,7 @@ import { ShopUsdtCountdown } from "@/components/shop/UsdtCountdown";
 import { getCurrentUser } from "@/lib/auth";
 import { config } from "@/lib/config";
 import { USDT_NETWORKS, networkForProvider } from "@/lib/payments/networks";
+import { USDT_FEE_NOTICE } from "@/lib/payments/usdt-copy";
 import { formatCny } from "@/lib/money";
 import { findShopOrderByNo } from "@/lib/shop/orders";
 import { createShopEasyPayCheckout } from "@/lib/shop/payments";
@@ -253,7 +254,16 @@ export default async function ShopCheckoutPage({
                         <strong>
                           {Number(usdtDeposit.expected_usdt).toFixed(2)} <small>USDT</small>
                         </strong>
-                        <em>请使用 {usdtMeta.chainLabel} 网络，金额必须一致</em>
+                        <em>请使用 {usdtMeta.chainLabel} 网络，到账金额不能少于应付金额</em>
+                      </div>
+                      <div className="notice notice-yellow">
+                        <Warning size={16} />
+                        <div>
+                          <strong>{USDT_FEE_NOTICE.title}</strong>
+                          {USDT_FEE_NOTICE.lines.map((line) => (
+                            <p key={line}>{line}</p>
+                          ))}
+                        </div>
                       </div>
                       <ShopUsdtCountdown
                         orderId={order.id}
@@ -287,7 +297,8 @@ export default async function ShopCheckoutPage({
                       <p className="shop-muted">
                         <ShieldCheck size={14} /> {usdtMeta.transferHint} 请在{" "}
                         {config.usdtQuoteMinutes} 分钟内完成，超时未到账会自动取消；
-                        转账金额与地址必须完全一致，等待 {usdtMeta.requiredConfirmations} 个区块确认后自动完成。
+                        地址必须完全一致，到账金额不能少于应付金额，等待{" "}
+                        {usdtMeta.requiredConfirmations} 个区块确认后自动完成。
                       </p>
                     </>
                   ) : (

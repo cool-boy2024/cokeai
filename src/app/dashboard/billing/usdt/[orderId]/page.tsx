@@ -1,7 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import QRCode from "qrcode";
-import { ArrowLeft, CheckCircle2, Clock3, ShieldAlert, XCircle } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowLeft,
+  CheckCircle2,
+  Clock3,
+  ShieldAlert,
+  XCircle,
+} from "lucide-react";
 import { CopyButton } from "@/components/CopyButton";
 import { UsdtPaymentStatus } from "@/components/UsdtPaymentStatus";
 import { requireUser } from "@/lib/auth";
@@ -9,6 +16,7 @@ import { config } from "@/lib/config";
 import { query } from "@/lib/db";
 import { expireUsdtOrderForUser } from "@/lib/payments/usdt";
 import { USDT_NETWORKS, networkForProvider } from "@/lib/payments/networks";
+import { USDT_FEE_NOTICE } from "@/lib/payments/usdt-copy";
 import { formatCny } from "@/lib/money";
 
 export const metadata: Metadata = { title: "USDT 支付" };
@@ -181,6 +189,15 @@ export default async function UsdtPaymentPage({
                 <input className="input mono" readOnly value={address} />
                 <CopyButton value={address} label="复制地址" />
               </div>
+              <div className="notice notice-yellow" style={{ marginTop: 16 }}>
+                <AlertTriangle size={16} />
+                <div>
+                  <strong>{USDT_FEE_NOTICE.title}</strong>
+                  {USDT_FEE_NOTICE.lines.map((line) => (
+                    <p key={line}>{line}</p>
+                  ))}
+                </div>
+              </div>
               <UsdtPaymentStatus
                 orderId={order.id}
                 expiresAt={order.pay_expires_at}
@@ -205,6 +222,7 @@ export default async function UsdtPaymentPage({
                 <li>支付时限：{config.usdtQuoteMinutes} 分钟，超时自动取消</li>
                 <li>到账确认：{requiredConfirmations} 个区块</li>
                 <li>{usdtMeta.transferHint}</li>
+                <li>提现手续费需另外加上，到账金额不能少于 {amountUsdt.toFixed(2)} USDT</li>
               </ul>
               <div className="notice" style={{ marginTop: 20 }}>
                 <ShieldAlert size={16} />

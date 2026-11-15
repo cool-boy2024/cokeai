@@ -222,7 +222,7 @@ export default async function ShopProductPage({
                   usdtNetworks: usdtNetworkIds.map((id) => ({
                     provider: USDT_NETWORKS[id].provider,
                     label: USDT_NETWORKS[id].label,
-                    hint: `${USDT_NETWORKS[id].chainLabel} · 链上确认`,
+                    hint: `${USDT_NETWORKS[id].chainLabel} · 提现手续费另加`,
                   })),
                   manual: false,
                   balance: {
