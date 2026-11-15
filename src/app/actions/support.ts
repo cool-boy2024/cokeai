@@ -21,8 +21,14 @@ export async function createSupportTicketAction(formData: FormData): Promise<voi
   const message = text(formData, "message").slice(0, 4000);
   const orderId = text(formData, "orderId") || null;
 
+  // Keep the order association when the form fails validation, so the buyer
+  // does not lose the context they arrived with.
+  const backTo = orderId
+    ? `/dashboard/support?orderId=${encodeURIComponent(orderId)}`
+    : "/dashboard/support";
+
   if (!subject || !message) {
-    redirect(`/dashboard/support?error=${encodeURIComponent("请填写标题和内容")}`);
+    redirect(`${backTo}&error=${encodeURIComponent("请填写标题和内容")}`);
   }
 
   if (orderId) {

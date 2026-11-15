@@ -3745,6 +3745,15 @@ tbody tr:hover {
   margin: 0;
 }
 
+.shop-order-support-history {
+  justify-content: center;
+  margin-top: 10px;
+}
+
+.shop-order-support-note {
+  margin-top: 10px;
+}
+
 .shop-delivery {
   display: flex;
   flex-direction: column;
