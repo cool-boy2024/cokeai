@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { fixedWindowLimit } from "@/lib/rate-limit";
+import { fixedWindowLimit, rollingDistinctCount } from "@/lib/rate-limit";
 import {
   clientIpFromHeaders,
   isStrictMode,
@@ -7,6 +7,12 @@ import {
   recordSecurityEventOnce,
   securityPolicy,
 } from "@/lib/security";
+import {
+  isSearchCrawler,
+  shopCrawlLimit,
+  shopDetailSlug,
+  SHOP_CRAWL_WINDOW_SECONDS,
+} from "@/lib/shop-crawl-guard";
 
 /**
  * Application-layer guard.
@@ -135,12 +141,41 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
     });
   }
 
+  const strict = await isStrictMode();
+
+  // A scraper can walk every product page inside the per-IP request budget.
+  // Count distinct product pages in a rolling minute and stop enumeration long
+  // before a full mirror is possible. Search engines stay exempt so indexing
+  // keeps working; Redis failures fail open and leave the request budget.
+  const slug = shopDetailSlug(pathname);
+  if (slug && request.method === "GET" && !isSearchCrawler(userAgent)) {
+    const distinct = await rollingDistinctCount(
+      `sec:crawl:${ip}`,
+      slug,
+      SHOP_CRAWL_WINDOW_SECONDS,
+    );
+    const crawlLimit = shopCrawlLimit(strict);
+    if (distinct > crawlLimit) {
+      await recordSecurityEventOnce(
+        {
+          type: "rate_limit",
+          ip,
+          path: pathname,
+          method: request.method,
+          detail: `商品页枚举 ${distinct}/${crawlLimit} 个/${SHOP_CRAWL_WINDOW_SECONDS}s`,
+          ua: userAgent,
+        },
+        60,
+      );
+      return limitedResponse(request, SHOP_CRAWL_WINDOW_SECONDS);
+    }
+  }
+
   const isServerAction =
     request.method === "POST" && request.headers.has("next-action");
   const policy = isServerAction ? SERVER_ACTION_POLICY : policyFor(pathname);
   if (!policy) return NextResponse.next();
 
-  const strict = await isStrictMode();
   const limit = strict ? Math.max(5, Math.floor(policy.limit / 2)) : policy.limit;
   const result = await fixedWindowLimit(
     `sec:rl:${policy.type}:${ip}`,

@@ -1,10 +1,10 @@
 # 安全防护与攻击处置
 
-最后核对：2026-11-14。本文按仓库代码和当前生产拓扑写；生产配置可能变化，动手前先按第 8 节在本地复核，生产变更必须单独审批。
+最后核对：2026-11-15。本文按仓库代码和当前生产拓扑写；生产配置可能变化，动手前先按第 8 节在本地复核，生产变更必须单独审批。
 
 ## 1. 一句话结论
 
-**当前真正生效的只有应用层防护**：Next.js `src/proxy.ts` 的扫描路径拦截、按 IP/邮箱的登录注册限流、小店/API/Server Action 限流、Redis 安全事件、`/admin/security` 管理员页，以及 n8n 每 5 分钟的安全告警。
+**当前真正生效的只有应用层防护**：Next.js `src/proxy.ts` 的扫描路径拦截、按 IP/邮箱的登录注册限流、小店/API/Server Action 限流、商品页枚举检测、Redis 安全事件、`/admin/security` 管理员页，以及 n8n 每 5 分钟的安全告警。
 
 **未启用**：边缘 Caddy 限流（Cloudflare Tunnel 仍指向 `app:3000`，不是 `edge:8080`）、CrowdSec、Anubis PoW、WAF。本机 2 vCPU / 3.5GB（约 1.5GB 可用）、40G 磁盘已用 85%（剩约 6GB），也不适合直接上重型 WAF。
 
@@ -19,6 +19,7 @@
 | 扫描拦截（应用层） | **已启用** | `/.env`、`/.git`、`wp-admin`、`phpMyAdmin`、路径穿越、`.php/.asp/.jsp/.cgi` 等常见探测，直接返回 404 并记录事件 | 伪装成正常路径的业务探测、SQL 注入/XSS 参数、分布式低频扫描、只请求首页和商品页的慢速爬取 |
 | 登录/注册频控 | **已启用** | `/login`、`/register` 页面 60 次/分钟/IP；登录 20 次/10 分钟/IP、10 次/10 分钟/邮箱；注册 10 次/10 分钟/IP、5 次/10 分钟/邮箱；失败突增会记 `auth` 事件 | 代理池分布式撞库、已泄露密码的一次性成功登录、人工慢速尝试；不能替代密码强度、2FA 和泄露密码检测 |
 | 下单频控 | **已启用** | 验证码接口 30 次/分钟/IP；`/api/shop/*` 120 次/分钟/IP；下单 10 次/10 分钟/用户；商品页 120 次/分钟/IP | 多账号分散下单、真人慢速库存探测、支付欺诈和拒付；不校验商品是否真的该被买 |
+| 商品页枚举检测 | **已启用** | 按 IP 统计**不同**商品详情页数量（滚动 60 秒，重复访问同一商品不累加）：正常 20 个/分钟、收紧时 10 个/分钟，超过返回 429 并记 `rate_limit` 事件 | 换 IP 的分布式镜像、绕开详情页直接抓 API、模拟搜索引擎 UA 的爬虫；它是「别让人一次抄完整店」，不是身份验证 |
 | Server Action 频控 | **已启用** | 所有带 `next-action` 的 POST 请求 60 次/分钟/IP，覆盖登录、注册、下单、后台操作等表单入口 | 正常用户连续操作被误伤（尤其共享出口 IP）、伪造普通 POST 绕过 `next-action` 的接口、业务层越权 |
 | 通用 API 频控 | **已启用** | `/api/*` 240 次/分钟/IP（`/api/health`、`/api/internal/*` 除外） | 慢速请求、分布式请求；`/api/internal/*` 只靠 `INTERNAL_API_SECRET` 保护，不在这一层 |
 | 边缘 Caddy 限流 | **未启用** | 计划在流量到达应用前按 IP 限速，省 CPU/内存，并能覆盖全部路径；`caddy-ratelimit` 由 Caddy 作者 mholt 维护 | 当前 Tunnel 不经过 edge，开了也不生效；不能挡 L3/L4 洪水；配置不当会打断 SSE 流式响应或误伤正常用户 |
@@ -43,6 +44,33 @@
   仅合并仓库不会自动更新生产 n8n。
 - **例外**：`04-gateway-maintenance.json` 的六个任务相互独立，失败时继续执行后续任务；
   这些接口自身记录错误，关键数据链路由上面的新鲜度检查兜底。
+
+### 2.2 商品页枚举检测（2026-11-15）
+
+单个 IP 在原有的 120 次/分钟预算内，足以把 36 个商品详情页全部走一遍；固定的请求计数挡不住这种「慢速整店镜像」。现在在 `src/proxy.ts` 里按 IP 统计**不同**商品详情页：
+
+- **口径**：Redis 有序集合 `sec:crawl:<ip>`，成员是商品 slug、分数是首次访问时间；进入前先删掉 60 秒前的成员，重复访问同一 slug 只更新时间，不增加数量。只有 `GET /shop/<slug>` 参与，`/shop` 列表页、条款/隐私/FAQ 等非商品 slug 不算。
+- **阈值**：正常 20 个不同商品/60 秒；应急防护或临时收紧时为 10 个。超过直接返回 429（JSON 请求返回 JSON），并记一条 `rate_limit` 事件，detail 形如 `商品页枚举 21/20 个/60s`。
+- **例外**：Googlebot、bingbot、百度、Yandex、Applebot、DuckDuckBot、搜狗、360 等搜索引擎 UA 不参与计数，避免自断收录。用 UA 伪装成搜索引擎可以绕过这一层，所以它是降低镜像速度，不是身份验证。
+- **失败开放**：Redis 不可用时返回 0，不拦截；固定窗口限流仍然生效。正常顾客几十秒内看 10–20 个商品几乎不可能，误伤面很小。
+- **代码**：`src/lib/shop-crawl-guard.ts`（纯函数，可测）+ `src/lib/rate-limit.ts` 的 `rollingDistinctCount`；测试 `npm run test:site-guards`。
+- **robots/sitemap**：此前生产 `APP_URL` 未设置，`robots.txt` 和 `sitemap.xml` 会输出 `http://localhost:3000`。现在两个路由改为从请求的 `x-forwarded-host` / `host` 推导公开域名（`src/lib/public-url.ts`），生产应输出 `https://cokeai.cc.cd`。
+
+### 2.3 Cloudflare 边缘层配置清单（控制台操作）
+
+应用层之外，Cloudflare 是当前唯一可用的边缘防护，不需要动 Tunnel 配置。以下在 Cloudflare 控制台由域名管理员操作，仓库不自动修改：
+
+1. **Security → Bots**：开启 Bot Fight Mode（免费版）或 Super Bot Fight Mode（Pro 及以上）。对「Definitely automated」设 Block，对「Verified bots」放行；**免费版 Bot Fight Mode 不支持按路径排除**，如影响 `/v1` 的 API 调用，先只开观察、确认无业务影响再升级策略。
+2. **Security → WAF → Managed rules**：启用 Cloudflare Managed Ruleset（免费版提供托管规则集），先以默认动作运行，观察 24 小时的误杀记录再收紧。
+3. **Security → WAF → Rate limiting rules**（免费版可建 1 条，Pro 更多）：
+   - `http.request.uri.path matches "^/shop/"` → 60 次/分钟/IP → 动作 Block 或 Managed Challenge；
+   - `http.request.uri.path eq "/login" or eq "/register"` → 10 次/分钟/IP → Managed Challenge；
+   - `starts_with(http.request.uri.path, "/api/")` → 120 次/分钟/IP → Block。
+   应用层阈值更细，边缘规则只做粗筛，宁可先松后紧。
+4. **Under Attack Mode**：只在确认攻击且站点明显变慢时临时开启，会挑战所有访客，影响转化，处理完立即关闭。
+5. **不要**在 Cloudflare 改 Tunnel、源站或 DNS 记录来「顺手加防护」；Tunnel 变更属于生产变更，按第 7 节单独审批。
+
+> 判断标准：先看 `/admin/security` 的拦截类型和 Top IP，再决定是加边缘规则还是只封单个 IP。不要因为背景扫描就开 Under Attack Mode。
 
 ## 3. 能不能上：逐项评估
 

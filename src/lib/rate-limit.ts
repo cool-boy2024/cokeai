@@ -125,6 +125,38 @@ export async function fixedWindowLimit(
   }
 }
 
+/**
+ * Counts distinct values seen inside a rolling window.
+ *
+ * Used by the shop crawl guard: each product slug is a sorted-set member, so
+ * repeated visits to the same product do not inflate the count. Fails open
+ * (returns 0) when Redis is unavailable — the fixed-window policy still caps
+ * total requests, and the guard must never take browsing down.
+ */
+export async function rollingDistinctCount(
+  key: string,
+  value: string,
+  windowSeconds: number,
+): Promise<number> {
+  const client = getRedis();
+  if (!client) return 0;
+  try {
+    await ensureConnected(client);
+    const now = Date.now();
+    await client
+      .multi()
+      .zremrangebyscore(key, 0, now - windowSeconds * 1_000)
+      .zadd(key, now, value)
+      .expire(key, windowSeconds * 2)
+      .exec();
+    return await client.zcard(key);
+  } catch (error) {
+    console.warn("[crawl-guard]", error instanceof Error ? error.message : error);
+    globalForRedis.cokeaiRedisDisabledUntil = Date.now() + 30_000;
+    return 0;
+  }
+}
+
 export async function acquireConcurrencySlot(
   userId: string,
   limit: number,
