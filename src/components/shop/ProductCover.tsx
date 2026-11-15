@@ -22,14 +22,13 @@ const COVER_CAPTIONS: Record<string, string> = {
   gemini: "Google",
   grok: "xAI",
   muse: "Muse AI",
-  "muse-supplier": "Muse AI",
   "codex-sms": "Codex 接码",
   neutral: "CokeAI",
 };
 
-/** Image covers. Supplier covers are used only where the image is the source. */
+/** Image covers. Public filenames must stay neutral: no supplier wording. */
 const COVER_IMAGES: Record<string, string> = {
-  "muse-supplier": "/shop/muse-supplier.jpg",
+  muse: "/shop/muse.jpg",
   "codex-sms": "/shop/codex-sms-cover.png",
 };
 
@@ -66,7 +65,10 @@ export function ProductCover({
     );
   }
 
-  const key = variant || brand || "neutral";
+  // Rows created before the rename still store the old value; map it in memory
+  // so the cover keeps working without ever writing that word to the page.
+  const key =
+    variant === "muse-supplier" ? "muse" : variant || brand || "neutral";
   const image = COVER_IMAGES[key];
   if (image) {
     return (

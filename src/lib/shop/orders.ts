@@ -6,6 +6,7 @@ import { decryptSecret, encryptSecret } from "@/lib/crypto";
 import { query, toNumber, withTransaction } from "@/lib/db";
 import { isPurchasable, type ShopInputField } from "./copy";
 import { getMembershipInfo, memberPriceMicros } from "./membership";
+import { sanitizeSupplierCopy } from "./sanitize";
 
 export type ShopOrderStatus =
   | "pending_payment"
@@ -114,7 +115,9 @@ function mapOrder(row: Record<string, unknown>): ShopOrderDetail {
     paid_at: row.paid_at ? String(row.paid_at) : null,
     delivered_at: row.delivered_at ? String(row.delivered_at) : null,
     product_slug: String(row.product_slug),
-    product_name: String(row.product_name),
+    // Snapshots are written at checkout, but rows created before the public
+    // copy scrubber existed still carry supplier wording. Clean on read too.
+    product_name: sanitizeSupplierCopy(String(row.product_name)),
     brand: String(row.brand),
     unit_price_micros: toNumber(row.unit_price_micros as string | number),
     qty: Number(row.qty),
@@ -361,10 +364,10 @@ export async function createShopOrder(input: {
         orderId,
         product.id,
         product.slug,
-        product.name,
+        sanitizeSupplierCopy(product.name),
         product.brand,
         variant?.id ?? null,
-        variant?.label || "",
+        sanitizeSupplierCopy(variant?.label || ""),
         priceMicros,
         qty,
         source?.offer_id || null,

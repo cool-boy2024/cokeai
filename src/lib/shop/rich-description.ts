@@ -193,10 +193,21 @@ function rewriteImages(
   });
 }
 
+/**
+ * Upstream articles link to their own catalogue (`/item/442`) and help centre
+ * (`/user/help/article.12`). Those paths are useless here and leak the
+ * supplier's URL structure, so only our own routes may survive as relative
+ * links; anything else is downgraded to plain text.
+ */
+const INTERNAL_HREF =
+  /^\/(?:$|shop(?:\/|$)|pricing(?:\/|$)|docs(?:\/|$)|help(?:\/|$)|tools\/2fa$|terms$|privacy$|api\/shop\/(?:images|media)\/)/;
+
 function safeHref(raw: string, base: string): string | null {
   const value = unescapeAttribute(raw.trim());
   if (!value) return null;
-  if (value.startsWith("/")) return value.startsWith("//") ? null : value;
+  if (value.startsWith("/")) {
+    return value.startsWith("//") || !INTERNAL_HREF.test(value) ? null : value;
+  }
   if (value.startsWith("#")) return value;
   const resolved = absoluteUrl(value, base);
   if (!resolved) return null;
