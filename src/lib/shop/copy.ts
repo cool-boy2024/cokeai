@@ -39,7 +39,10 @@ export const SHOP_COPY = {
 
   delivery: {
     manual: "人工发货",
-    auto: "自动发货",
+    // All orders in this shop are placed with the supplier by hand, including
+    // offers imported with a supplier "auto" delivery flag. Do not show buyers
+    // an automatic-delivery promise we cannot keep.
+    auto: "人工发货",
   } as const satisfies Record<ShopDeliveryMethod, string>,
 
   /**

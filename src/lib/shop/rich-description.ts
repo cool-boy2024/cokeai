@@ -149,9 +149,8 @@ function scrubTextNode(input: string, identities: SupplierIdentity[]): string {
   let text = sanitizeSupplierCopy(input);
   for (const identity of identities) text = sanitizeSupplierCopy(text, identity);
   text = text
-    .replace(/自动发货/g, "人工发货")
-    .replace(/系统会自动显示充值卡密/g, "卡密会显示在你的订单详情页")
-    .replace(/下单自动发/g, "下单后人工发")
+    // Auto-delivery claims are already rewritten by sanitizeSupplierCopy
+    // above; this only cleans HTML stored before that rule existed.
     .replace(/本商品为\s*CDK\s*人工发货\s*。?/g, "本商品为 CDK 卡密商品。")
     .replace(/100\s*%\s*(?:可用|有效|成功|稳定|靠谱)/gi, "可用")
     .replace(/永久\s*(?:可用|有效|使用)/gi, "长期可用")
