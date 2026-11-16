@@ -11,11 +11,13 @@ import { SHOP_PRODUCT_CATEGORIES } from "@/lib/shop/categories";
 import { createImportJob, drainQueuedJobs, runImportJob } from "@/lib/shop/import";
 import { notifyShopOrderDelivered } from "@/lib/shop/notify";
 import {
+  cancelShopOrder,
   deliverShopItem,
   markShopItemOutOfStock,
   markShopOrderPaid,
   refundShopOrder,
   rejectShopManualPaymentClaim,
+  reopenShopOrder,
   requestShopRefund,
   startShopProcurement,
 } from "@/lib/shop/orders";
@@ -134,6 +136,57 @@ export async function adminRejectShopPaymentClaimAction(formData: FormData): Pro
   }
   revalidatePath(`/admin/shop/orders/${orderId}`);
   revalidatePath("/shop/checkout/[orderNo]", "page");
+  redirect(`/admin/shop/orders/${orderId}?saved=1`);
+}
+
+/**
+ * 运营取消一笔待支付订单。客户联系说不要了、或者确认这单不会再付款时用。
+ * 已付款的订单不能用这个，要走退款——否则钱和状态对不上。
+ */
+export async function adminCancelShopOrderAction(formData: FormData): Promise<void> {
+  const admin = await requireAdmin();
+  const orderId = text(formData, "orderId");
+  try {
+    await cancelShopOrder({
+      orderId,
+      adminId: admin.id,
+      reason: text(formData, "reason") || "运营取消",
+    });
+  } catch (error) {
+    redirect(
+      `/admin/shop/orders/${orderId}?error=${encodeURIComponent(
+        error instanceof Error ? error.message : "取消失败",
+      )}`,
+    );
+  }
+  revalidatePath(`/admin/shop/orders/${orderId}`);
+  revalidatePath("/admin/shop/orders");
+  revalidatePath("/shop/orders/[orderNo]", "page");
+  redirect(`/admin/shop/orders/${orderId}?saved=1`);
+}
+
+/**
+ * 把已取消 / 已过期的订单重新打开成待支付。
+ *
+ * 用在「客户其实付了钱，但订单已经过期或被取消」的情况——这种情况下
+ * markShopOrderPaid 会拒绝，运营没有别的路，只能改数据库。
+ */
+export async function adminReopenShopOrderAction(formData: FormData): Promise<void> {
+  const admin = await requireAdmin();
+  const orderId = text(formData, "orderId");
+  try {
+    const reason = text(formData, "reason");
+    if (!reason) throw new Error("请填写重新打开的原因（例如：客户已付款，订单此前已过期）");
+    await reopenShopOrder({ orderId, adminId: admin.id, reason });
+  } catch (error) {
+    redirect(
+      `/admin/shop/orders/${orderId}?error=${encodeURIComponent(
+        error instanceof Error ? error.message : "重开失败",
+      )}`,
+    );
+  }
+  revalidatePath(`/admin/shop/orders/${orderId}`);
+  revalidatePath("/admin/shop/orders");
   redirect(`/admin/shop/orders/${orderId}?saved=1`);
 }
 

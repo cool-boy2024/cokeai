@@ -5,6 +5,7 @@ import { ArrowLeft, Headset } from "@phosphor-icons/react/dist/ssr";
 import { SiteFooter } from "@/components/SiteFooter";
 import { SiteHeader } from "@/components/SiteHeader";
 import { AutoRefresh } from "@/components/shop/AutoRefresh";
+import { CancelOrderButton } from "@/components/shop/CancelOrderButton";
 import { DeliveryReveal } from "@/components/shop/DeliveryReveal";
 import { OrderTimeline } from "@/components/shop/OrderTimeline";
 import { getCurrentUser } from "@/lib/auth";
@@ -210,9 +211,12 @@ export default async function ShopOrderPage({
               </dl>
 
               {order.status === "pending_payment" ? (
-                <Link className="btn btn-primary btn-block" href={`/shop/checkout/${order.order_no}`}>
-                  去支付
-                </Link>
+                <>
+                  <Link className="btn btn-primary btn-block" href={`/shop/checkout/${order.order_no}`}>
+                    去支付
+                  </Link>
+                  <CancelOrderButton orderId={order.id} />
+                </>
               ) : null}
 
               <Link className="btn btn-light btn-block" href={supportHref}>

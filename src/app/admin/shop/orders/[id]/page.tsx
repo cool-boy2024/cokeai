@@ -3,11 +3,13 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AlertTriangle, ArrowLeft, CheckCircle2, ExternalLink, PackageCheck } from "lucide-react";
 import {
+  adminCancelShopOrderAction,
   adminDeliverShopAction,
   adminMarkShopPaidAction,
   adminOutOfStockShopAction,
   adminRefundShopAction,
   adminRejectShopPaymentClaimAction,
+  adminReopenShopOrderAction,
   adminRequestShopRefundAction,
   adminStartProcurementAction,
 } from "@/app/actions/admin-shop";
@@ -108,9 +110,12 @@ export default async function AdminShopOrderDetailPage({
         ).rows[0] ?? null
       : null;
   const canProcure = order.status === "paid" || order.status === "procuring";
+  // 已交付也要能退款：发错卡密、账号有问题、客户投诉，这些都要赔。
+  // refundShopOrder 本身只挡 refunded，UI 不该比后端更严。
   const canRefund =
     order.status === "paid" ||
     order.status === "procuring" ||
+    order.status === "delivered" ||
     order.status === "refund_pending";
   const canPay = order.status === "pending_payment" && ["manual", "alipay_manual"].includes(order.payment_provider);
   const procurementText = [
@@ -429,6 +434,69 @@ export default async function AdminShopOrderDetailPage({
                   </label>
                   <button className="btn btn-primary btn-block" type="submit">
                     确认到账
+                  </button>
+                </form>
+              </div>
+            </section>
+          ) : null}
+
+          {canPay ? (
+            <section className="panel">
+              <div className="panel-head">
+                <div>
+                  <h2>取消订单</h2>
+                  <p>客户改主意、下错单，或确认这笔不会再付款时使用</p>
+                </div>
+              </div>
+              <div className="panel-body">
+                <form action={adminCancelShopOrderAction} className="shop-admin-form">
+                  <input type="hidden" name="orderId" value={order.id} />
+                  <p className="shop-muted">
+                    取消后订单变为「已取消」，客户在订单页能看到状态但不能再付款。
+                    已收到钱的订单不能用这个，请走退款。
+                  </p>
+                  <label className="shop-field">
+                    <span>取消原因（客户可见）</span>
+                    <input
+                      name="reason"
+                      placeholder="例如：客户联系说明不需要了"
+                      maxLength={200}
+                    />
+                  </label>
+                  <button className="btn btn-danger btn-block" type="submit">
+                    取消订单
+                  </button>
+                </form>
+              </div>
+            </section>
+          ) : null}
+
+          {order.status === "cancelled" || order.status === "expired" ? (
+            <section className="panel">
+              <div className="panel-head">
+                <div>
+                  <h2>重新打开订单</h2>
+                  <p>钱其实到了，但订单已经关闭时用这个</p>
+                </div>
+              </div>
+              <div className="panel-body">
+                <form action={adminReopenShopOrderAction} className="shop-admin-form">
+                  <input type="hidden" name="orderId" value={order.id} />
+                  <p className="shop-muted">
+                    订单关闭后无法直接确认到账。如果客户确实付了款，先用这里把它恢复成
+                    「待支付」，再回到上面的「确认到账」登记。
+                  </p>
+                  <label className="shop-field">
+                    <span>重新打开的原因（内部记录）</span>
+                    <input
+                      name="reason"
+                      placeholder="例如：客户已付款，支付宝交易号 xxx，订单此前已过期"
+                      maxLength={500}
+                      required
+                    />
+                  </label>
+                  <button className="btn btn-light btn-block" type="submit">
+                    重新打开为待支付
                   </button>
                 </form>
               </div>

@@ -626,6 +626,32 @@ export async function markShopOrderPaid(input: {
       [order.id],
     );
 
+    // 客户付了款，页面上就该立刻少一件：已售 +qty、库存 -qty。
+    //
+    // 这两个数是货源的快照，平时由货源同步覆盖。但客户下单后如果只等 6 小时
+    // 一次的同步，中间这段时间页面还在说「库存充足」，会引导更多人去下已经不
+    // 存在的货。所以这里先就近扣一次；下一次货源同步会用上游的真实数字重新
+    // 覆盖，两边不会累加。
+    await client.query(
+      `UPDATE shop_products p
+          SET supplier_sold = p.supplier_sold + sold.units,
+              -- 货源标注「充足」(-1) 时没有具体件数可扣，保持原样。
+              supplier_stock = CASE
+                WHEN p.supplier_stock > 0
+                  THEN GREATEST(0, p.supplier_stock - sold.units)
+                ELSE p.supplier_stock
+              END,
+              updated_at = now()
+         FROM (
+           SELECT product_id, SUM(qty)::int AS units
+             FROM shop_order_items
+            WHERE order_id = $1 AND product_id IS NOT NULL
+            GROUP BY product_id
+         ) AS sold
+        WHERE p.id = sold.product_id`,
+      [order.id],
+    );
+
     await client.query(
       `INSERT INTO shop_order_events
          (order_id, actor_type, actor_id, event, note, metadata)
@@ -843,6 +869,94 @@ export async function requestShopRefund(input: {
       `INSERT INTO shop_order_events (order_id, actor_type, actor_id, event, note)
        VALUES ($1, 'admin', $2, 'refund_requested', $3)`,
       [input.orderId, input.adminId, (input.reason || "协商退款").slice(0, 1000)],
+    );
+  });
+}
+
+/**
+ * 取消一笔还没收到钱的订单。
+ *
+ * 两个入口：客户在订单页自己取消（改主意、下错单），运营在后台取消（客户
+ * 联系说要退、或者确认这单不会再付）。只有 pending_payment 能取消——已经
+ * 付过钱的单必须走 refundShopOrder，否则钱和状态对不上。
+ *
+ * 取消是**软关闭**：不删数据，订单页仍然能查到，客户看到的是「已取消」。
+ */
+export async function cancelShopOrder(input: {
+  orderId: string;
+  /** 客户自己取消时传，运营取消时不传。 */
+  userId?: string;
+  /** 运营取消时传，用来记事件来源。 */
+  adminId?: string;
+  reason?: string;
+}): Promise<void> {
+  await withTransaction(async (client) => {
+    const result = await client.query<{ status: string; user_id: string }>(
+      `SELECT status, user_id FROM shop_orders WHERE id = $1 FOR UPDATE`,
+      [input.orderId],
+    );
+    const order = result.rows[0];
+    if (!order) throw new Error("订单不存在");
+    // 客户只能取消自己的单。
+    if (input.userId && order.user_id !== input.userId) throw new Error("订单不存在");
+    if (order.status === "cancelled") return;
+    if (order.status !== "pending_payment") {
+      throw new Error("只有待支付的订单可以直接取消；已付款的订单请走退款");
+    }
+
+    await client.query(
+      `UPDATE shop_orders SET status = 'cancelled', updated_at = now() WHERE id = $1`,
+      [input.orderId],
+    );
+    await client.query(
+      `INSERT INTO shop_order_events (order_id, actor_type, actor_id, event, note)
+       VALUES ($1, $2, $3, 'cancelled', $4)`,
+      [
+        input.orderId,
+        input.adminId ? "admin" : "user",
+        input.adminId || input.userId || null,
+        (input.reason || "订单已取消").slice(0, 500),
+      ],
+    );
+  });
+}
+
+/**
+ * 把已经关闭的订单重新打开成待支付。
+ *
+ * 用在「钱其实到了，但订单已经过期/被取消」这种尴尬场景：markShopOrderPaid
+ * 对关闭的订单会抛 ORDER_CLOSED，运营没有别的路可走，只能手动改数据库。
+ * 重开之后运营就能正常确认到账、继续采购。
+ */
+export async function reopenShopOrder(input: {
+  orderId: string;
+  adminId: string;
+  reason: string;
+}): Promise<void> {
+  await withTransaction(async (client) => {
+    const result = await client.query<{ status: string }>(
+      `SELECT status FROM shop_orders WHERE id = $1 FOR UPDATE`,
+      [input.orderId],
+    );
+    const order = result.rows[0];
+    if (!order) throw new Error("订单不存在");
+    if (order.status === "pending_payment") return;
+    if (!["cancelled", "expired"].includes(order.status)) {
+      throw new Error("只有已取消 / 已过期的订单可以重新打开");
+    }
+
+    await client.query(
+      `UPDATE shop_orders
+          SET status = 'pending_payment',
+              expires_at = now() + interval '24 hours',
+              updated_at = now()
+        WHERE id = $1`,
+      [input.orderId],
+    );
+    await client.query(
+      `INSERT INTO shop_order_events (order_id, actor_type, actor_id, event, note)
+       VALUES ($1, 'admin', $2, 'reopened', $3)`,
+      [input.orderId, input.adminId, input.reason.slice(0, 500)],
     );
   });
 }
