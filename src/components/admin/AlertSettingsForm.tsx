@@ -23,7 +23,7 @@ const CHANNELS: Array<{ value: AlertChannel; label: string; hint: string }> = [
   {
     value: "email",
     label: "邮箱 SMTP",
-    hint: "用 QQ / 163 / Gmail 的 SMTP 授权码发信；收件人可填多个，用逗号分隔。",
+    hint: "用飞书企业邮箱 / QQ / 163 / Gmail 的 SMTP 授权码发信；收件人可填多个，用逗号分隔。",
   },
   {
     value: "off",
@@ -33,6 +33,7 @@ const CHANNELS: Array<{ value: AlertChannel; label: string; hint: string }> = [
 ];
 
 const PRESETS = [
+  { value: "feishu", label: "飞书企业邮箱", host: "smtp.feishu.cn", port: 465 },
   { value: "qq", label: "QQ 邮箱", host: "smtp.qq.com", port: 465 },
   { value: "163", label: "163 邮箱", host: "smtp.163.com", port: 465 },
   { value: "gmail", label: "Gmail", host: "smtp.gmail.com", port: 465 },
@@ -52,6 +53,14 @@ export type AlertFormValues = {
     replyTo: string;
     passwordConfigured: boolean;
   };
+  /** 客户邮件专用发件箱；没有配置时全部为空。 */
+  customerSmtp: {
+    host: string;
+    port: number;
+    user: string;
+    from: string;
+    passwordConfigured: boolean;
+  };
   emailCopy: boolean;
 };
 
@@ -63,8 +72,18 @@ export function AlertSettingsForm({ current }: { current: AlertFormValues }) {
     );
     return match?.value || "custom";
   });
-  const [host, setHost] = useState(current.smtp.host || "smtp.qq.com");
+  const [host, setHost] = useState(current.smtp.host || "smtp.feishu.cn");
   const [port, setPort] = useState(current.smtp.port || 465);
+  const [customerPreset, setCustomerPreset] = useState(() => {
+    const match = PRESETS.find(
+      (item) => item.host && item.host === current.customerSmtp.host,
+    );
+    return match?.value || (current.customerSmtp.host ? "custom" : "");
+  });
+  const [customerHost, setCustomerHost] = useState(current.customerSmtp.host);
+  const [customerPort, setCustomerPort] = useState(
+    current.customerSmtp.port || 465,
+  );
   const [emailCopy, setEmailCopy] = useState(
     current.channel === "email" || current.emailCopy,
   );
@@ -82,6 +101,15 @@ export function AlertSettingsForm({ current }: { current: AlertFormValues }) {
     if (next && next.host) {
       setHost(next.host);
       setPort(next.port);
+    }
+  };
+
+  const applyCustomerPreset = (value: string) => {
+    setCustomerPreset(value);
+    const next = PRESETS.find((item) => item.value === value);
+    if (next && next.host) {
+      setCustomerHost(next.host);
+      setCustomerPort(next.port);
     }
   };
 
@@ -265,6 +293,122 @@ export function AlertSettingsForm({ current }: { current: AlertFormValues }) {
           </small>
         </>
       ) : null}
+
+      {/*
+        客户邮件发件箱独立于告警渠道：关掉告警只是不再推提醒，客户邮件（发货通知等）
+        还得照常发，所以这一段不放在 showSmtp 里。
+      */}
+      <div className="divider" />
+      <p className="small muted">
+        <strong>客户邮件发件箱</strong>
+        <br />
+        {current.customerSmtp.passwordConfigured ? (
+          <>
+            已分开：发给客户的邮件用{" "}
+            <span className="mono">
+              {current.customerSmtp.from ||
+                current.customerSmtp.user ||
+                "客户邮箱"}
+            </span>{" "}
+            发出，伙伴那里收不到，客户回复也只回到这个邮箱。
+          </>
+        ) : (
+          <>
+            还没分开：发给客户的邮件现在借用上面的伙伴邮箱发出，客户会看到伙伴邮箱地址，
+            回复也落到伙伴信箱。填好下面几项即可拆成两个身份；留空表示不改动。
+          </>
+        )}
+      </p>
+      <div className="form-row">
+        <div className="field">
+          <label htmlFor="customer-smtp-preset">邮箱服务商</label>
+          <select
+            id="customer-smtp-preset"
+            className="input"
+            value={customerPreset}
+            onChange={(event) => applyCustomerPreset(event.target.value)}
+          >
+            <option value="">保持不变 / 手动填写</option>
+            {PRESETS.filter((item) => item.value !== "custom").map((item) => (
+              <option key={item.value} value={item.value}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="field">
+          <label htmlFor="customer-smtp-port">端口</label>
+          <input
+            id="customer-smtp-port"
+            className="input mono"
+            name="customerSmtpPort"
+            type="number"
+            min={1}
+            max={65535}
+            value={customerPort}
+            onChange={(event) =>
+              setCustomerPort(Number(event.target.value) || 465)
+            }
+          />
+          <small className="hint">465 为 SSL，587 为 STARTTLS。</small>
+        </div>
+      </div>
+      <div className="field">
+        <label htmlFor="customer-smtp-host">SMTP 服务器</label>
+        <input
+          id="customer-smtp-host"
+          className="input mono"
+          name="customerSmtpHost"
+          value={customerHost}
+          onChange={(event) => setCustomerHost(event.target.value)}
+          placeholder="smtp.feishu.cn"
+        />
+      </div>
+      <div className="form-row">
+        <div className="field">
+          <label htmlFor="customer-smtp-user">SMTP 账号</label>
+          <input
+            id="customer-smtp-user"
+            className="input"
+            name="customerSmtpUser"
+            type="email"
+            defaultValue={current.customerSmtp.user}
+            placeholder="客服邮箱，例如 support@cokeai.cc.cd"
+          />
+        </div>
+        <div className="field">
+          <label htmlFor="customer-smtp-pass">授权码 / 专用密码</label>
+          <input
+            id="customer-smtp-pass"
+            className="input"
+            name="customerSmtpPass"
+            type="password"
+            autoComplete="new-password"
+            placeholder={
+              current.customerSmtp.passwordConfigured
+                ? "已保存，留空不修改"
+                : "飞书企业邮箱请填专用密码"
+            }
+          />
+        </div>
+      </div>
+      <div className="field">
+        <label htmlFor="customer-smtp-from">发件人</label>
+        <input
+          id="customer-smtp-from"
+          className="input"
+          name="customerSmtpFrom"
+          type="email"
+          defaultValue={
+            current.customerSmtp.from || current.customerSmtp.user
+          }
+          placeholder="通常与 SMTP 账号相同"
+        />
+        <small className="hint">
+          飞书企业邮箱要求发件人必须等于登录账号，所以两个发件箱得各用一个邮箱：
+          一个给伙伴/内部，一个给客户。
+        </small>
+      </div>
 
       <div className="form-actions">
         <button className="btn btn-light" type="submit" name="intent" value="save">

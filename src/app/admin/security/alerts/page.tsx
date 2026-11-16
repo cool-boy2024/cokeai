@@ -52,6 +52,13 @@ export default async function AlertSettingsPage({
       replyTo: config.smtp.replyTo,
       passwordConfigured: Boolean(config.smtp.pass),
     },
+    customerSmtp: {
+      host: config.customerSmtp.host,
+      port: config.customerSmtp.port,
+      user: config.customerSmtp.user,
+      from: config.customerSmtp.from,
+      passwordConfigured: Boolean(config.customerSmtp.pass),
+    },
     emailCopy: config.emailCopy,
   };
 

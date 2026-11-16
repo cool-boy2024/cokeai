@@ -28,6 +28,12 @@ export async function saveAlertSettingsAction(formData: FormData): Promise<void>
       smtpFrom: String(formData.get("smtpFrom") || ""),
       smtpTo: String(formData.get("smtpTo") || ""),
       smtpReplyTo: String(formData.get("smtpReplyTo") || ""),
+      // 客户邮件发件箱：和伙伴邮箱分开的第二套身份，留空表示不改动。
+      customerSmtpHost: String(formData.get("customerSmtpHost") || ""),
+      customerSmtpPort: String(formData.get("customerSmtpPort") || ""),
+      customerSmtpUser: String(formData.get("customerSmtpUser") || ""),
+      customerSmtpPass: String(formData.get("customerSmtpPass") || ""),
+      customerSmtpFrom: String(formData.get("customerSmtpFrom") || ""),
       emailCopy: String(formData.get("emailCopy") || ""),
     },
     current,

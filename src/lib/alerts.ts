@@ -25,7 +25,16 @@ export type SmtpSettings = {
 export type AlertConfig = {
   channel: AlertChannel;
   webhookUrl: string;
+  /** 伙伴/运营方向的发信账号：告警、邮件副本和伙伴通知都走它。 */
   smtp: SmtpSettings;
+  /**
+   * 客户邮件专用发件箱，和 `smtp` 是两个不同身份。
+   *
+   * 飞书企业邮箱要求 From 必须等于登录账号，所以「发给伙伴的」和「发给客户的」
+   * 不能共用一个账号——否则两端都会收到对方的信。留空时客户邮件退回 `smtp`
+   *（兼容老部署），并在日志里提示管理员配置独立发件箱。
+   */
+  customerSmtp: SmtpSettings;
   /**
    * Send an email copy to the partner even when the primary alert channel is
    * WeCom/Feishu/webhook. Shop events always get the copy when SMTP is ready.
@@ -47,6 +56,7 @@ export const ALERT_CHANNEL_LABELS: Record<AlertChannel, string> = {
 };
 
 export const SMTP_PRESETS = {
+  feishu: { host: "smtp.feishu.cn", port: 465 },
   qq: { host: "smtp.qq.com", port: 465 },
   "163": { host: "smtp.163.com", port: 465 },
   gmail: { host: "smtp.gmail.com", port: 465 },
@@ -68,7 +78,23 @@ function emptyConfig(): AlertConfig {
     channel: "off",
     webhookUrl: "",
     smtp: { ...EMPTY_SMTP },
+    customerSmtp: { ...EMPTY_SMTP },
     emailCopy: false,
+  };
+}
+
+/** 逐字段修补库里的 SMTP 块；缺失的字段回到空值，避免半截数据把发信弄崩。 */
+function normalizeSmtp(input: Partial<SmtpSettings> | null | undefined): SmtpSettings {
+  const smtp = (input || {}) as Partial<SmtpSettings>;
+  const port = Number(smtp.port);
+  return {
+    host: typeof smtp.host === "string" ? smtp.host : "",
+    port: Number.isFinite(port) && port > 0 ? Math.trunc(port) : 465,
+    user: typeof smtp.user === "string" ? smtp.user : "",
+    pass: typeof smtp.pass === "string" ? smtp.pass : "",
+    from: typeof smtp.from === "string" ? smtp.from : "",
+    to: typeof smtp.to === "string" ? smtp.to : "",
+    replyTo: typeof smtp.replyTo === "string" ? smtp.replyTo : "",
   };
 }
 
@@ -80,20 +106,11 @@ function normalize(input: Partial<AlertConfig> | null): AlertConfig {
   ).includes(input.channel as AlertChannel)
     ? (input.channel as AlertChannel)
     : "off";
-  const smtp = (input.smtp || {}) as Partial<SmtpSettings>;
-  const port = Number(smtp.port);
   return {
     channel,
     webhookUrl: typeof input.webhookUrl === "string" ? input.webhookUrl : "",
-    smtp: {
-      host: typeof smtp.host === "string" ? smtp.host : "",
-      port: Number.isFinite(port) && port > 0 ? Math.trunc(port) : 465,
-      user: typeof smtp.user === "string" ? smtp.user : "",
-      pass: typeof smtp.pass === "string" ? smtp.pass : "",
-      from: typeof smtp.from === "string" ? smtp.from : "",
-      to: typeof smtp.to === "string" ? smtp.to : "",
-      replyTo: typeof smtp.replyTo === "string" ? smtp.replyTo : "",
-    },
+    smtp: normalizeSmtp(input.smtp),
+    customerSmtp: normalizeSmtp(input.customerSmtp),
     emailCopy:
       typeof input.emailCopy === "boolean" ? input.emailCopy : channel === "email",
   };
@@ -148,6 +165,11 @@ function smtpReady(smtp: SmtpSettings): boolean {
   return Boolean(smtp.host && smtp.user && smtp.pass && smtp.from && smtp.to);
 }
 
+/** 发信的最低要求。客户邮件没有固定收件人，所以不看 `to`。 */
+function smtpCanSend(smtp: SmtpSettings): boolean {
+  return Boolean(smtp.host && smtp.user && smtp.pass && smtp.from);
+}
+
 export async function isAlertConfigured(): Promise<boolean> {
   const config = await getAlertConfig();
   if (config.channel === "off") return false;
@@ -184,6 +206,12 @@ export type AlertConfigInput = {
   smtpFrom?: string;
   smtpTo?: string;
   smtpReplyTo?: string;
+  /** 客户邮件专用发件箱；留空表示不改动已保存的值。 */
+  customerSmtpHost?: string;
+  customerSmtpPort?: string;
+  customerSmtpUser?: string;
+  customerSmtpPass?: string;
+  customerSmtpFrom?: string;
   emailCopy?: string;
 };
 
@@ -200,7 +228,14 @@ export function buildAlertConfig(
     return { error: "未知的告警渠道" };
   }
   if (channel === "off") {
-    return { config: { ...emptyConfig(), channel: "off" } };
+    // 关掉告警不等于注销客户发件箱：客户邮件不是告警，不该跟着一起被清空。
+    return {
+      config: {
+        ...emptyConfig(),
+        channel: "off",
+        customerSmtp: { ...current.customerSmtp },
+      },
+    };
   }
 
   const emailCopy =
@@ -218,6 +253,56 @@ export function buildAlertConfig(
   const pass = (input.smtpPass || current.smtp.pass || "").trim();
   const from = (input.smtpFrom || current.smtp.from || "").trim();
   const to = (input.smtpTo || current.smtp.to || "").trim();
+
+  // 客户邮件发件箱：和伙伴通知完全分开，避免发给 wjl 的邮件和发给客户的邮件
+  // 混在同一账号里（飞书要求 From 必须等于登录账号，两个身份就要两个邮箱）。
+  // 四项都留空 = 不改动已保存的值；填了任一项就要求四项齐全，宁可报错也不让
+  // 它悄悄退回伙伴账号发信。收件人固定在发送时决定，所以这里不存 `to`。
+  const customerHost = (input.customerSmtpHost ?? "").trim();
+  // 端口字段在表单里始终有值；这里再兜一层，避免只改账号时因为没带端口而报错。
+  const customerPort = Number(
+    input.customerSmtpPort || current.customerSmtp.port || 465,
+  );
+  const customerUser = (input.customerSmtpUser ?? "").trim();
+  const customerPass = (input.customerSmtpPass ?? "").trim();
+  const customerFrom = (input.customerSmtpFrom ?? "").trim();
+  // 端口在表单里始终有值，单凭它分不清「改没改」，所以不参与「动过」判断。
+  const customerTouched = Boolean(
+    customerHost || customerUser || customerPass || customerFrom,
+  );
+  let customerSmtp: SmtpSettings = { ...current.customerSmtp };
+  if (customerTouched) {
+    if (!customerHost) return { error: "客户邮件发件箱：请填写 SMTP 服务器" };
+    if (!Number.isFinite(customerPort) || customerPort <= 0 || customerPort > 65535) {
+      return { error: "客户邮件发件箱：SMTP 端口不正确" };
+    }
+    if (!isEmail(customerUser)) {
+      return { error: "客户邮件发件箱：账号需要是邮箱地址" };
+    }
+    if (!isEmail(customerFrom)) {
+      return { error: "客户邮件发件箱：发件人需要是邮箱地址" };
+    }
+    // 密码留空沿用已保存的值，和伙伴邮箱的规则一致；但换账号时必须重填，
+    // 免得把旧密码套到新账号上。
+    const sameIdentity =
+      customerHost.toLowerCase() === current.customerSmtp.host.toLowerCase() &&
+      customerUser.toLowerCase() === current.customerSmtp.user.toLowerCase() &&
+      customerFrom.toLowerCase() === current.customerSmtp.from.toLowerCase();
+    const nextPass = customerPass || (sameIdentity ? current.customerSmtp.pass : "");
+    if (!nextPass) {
+      return { error: "客户邮件发件箱：请填写授权码或专用密码" };
+    }
+    customerSmtp = {
+      host: customerHost,
+      port: Math.trunc(customerPort),
+      user: customerUser,
+      pass: nextPass,
+      from: customerFrom,
+      to: "",
+      replyTo: customerFrom,
+    };
+  }
+
   // Email is mandatory for every active channel: shop events are always
   // delivered to the partner's mailbox even when WeCom/Feishu is primary.
   const needsSmtp = true; // "off" already returned above
@@ -255,7 +340,7 @@ export function buildAlertConfig(
       replyTo: replyTo || from,
     };
     if (channel === "email") {
-      return { config: { channel, webhookUrl: "", smtp, emailCopy: true } };
+      return { config: { channel, webhookUrl: "", smtp, customerSmtp, emailCopy: true } };
     }
     const url = (input.webhookUrl || current.webhookUrl || "").trim();
     if (!url) return { error: "请填写机器人 Webhook 地址" };
@@ -263,7 +348,7 @@ export function buildAlertConfig(
       return { error: "Webhook 必须是 https 地址（本地调试允许 localhost）" };
     }
     return {
-      config: { channel, webhookUrl: url, smtp, emailCopy },
+      config: { channel, webhookUrl: url, smtp, customerSmtp, emailCopy },
     };
   }
 
@@ -277,6 +362,7 @@ export function buildAlertConfig(
       channel,
       webhookUrl: url,
       smtp: { ...current.smtp, replyTo: replyTo || current.smtp.replyTo },
+      customerSmtp,
       emailCopy: false,
     },
   };
@@ -381,10 +467,13 @@ function sendEmail(
 }
 
 /**
- * Sends a one-off message to a customer (e.g. a shop delivery notice) through
- * the operator's SMTP relay. Customer mail is not an alert: it never goes to
- * the partner recipient or webhook, and without SMTP there is nothing to send
- * with. Callers must treat a failure as non-fatal.
+ * Sends a one-off message to a customer (e.g. a shop delivery notice).
+ *
+ * 客户邮件优先使用「客户邮件发件箱」（`customerSmtp`），和发给伙伴/运营的通知
+ * 是两个不同身份，避免两端互相收到对方的信。没配置专用发件箱时退回伙伴账号以
+ * 兼容老部署，并在日志里点名，提醒管理员去后台把两个身份分开。
+ * Customer mail is not an alert: it never goes to the partner recipient or
+ * webhook. Callers must treat a failure as non-fatal.
  */
 export async function sendCustomerEmail(input: {
   to: string;
@@ -393,12 +482,20 @@ export async function sendCustomerEmail(input: {
 }): Promise<AlertResult> {
   const config = await getAlertConfig();
   const to = input.to.trim();
-  if (!smtpReady(config.smtp)) {
+  if (!isEmail(to)) return { ok: false, error: "客户邮箱无效" };
+  const dedicated = smtpCanSend(config.customerSmtp) ? config.customerSmtp : null;
+  const fallback = smtpCanSend(config.smtp) ? config.smtp : null;
+  const smtp = dedicated || fallback;
+  if (!smtp) {
     return { ok: false, error: "SMTP 未配置，客户邮件未发送" };
   }
-  if (!isEmail(to)) return { ok: false, error: "客户邮箱无效" };
+  if (!dedicated) {
+    console.warn(
+      "[alerts] 客户邮件正在借用伙伴邮箱发件，请在后台配置「客户邮件发件箱」把两个身份分开",
+    );
+  }
   return sendEmailTo(
-    config.smtp,
+    smtp,
     to,
     input.text,
     input.subject,
@@ -409,7 +506,13 @@ export async function sendCustomerEmail(input: {
 /** Whether customer mail can actually leave the shop right now. */
 export async function customerMailReady(): Promise<boolean> {
   const config = await getAlertConfig();
-  return smtpReady(config.smtp);
+  return smtpCanSend(config.customerSmtp) || smtpCanSend(config.smtp);
+}
+
+/** 客户邮件是否已经用上独立发件箱（后台据此提示「还没分开」）。 */
+export async function customerMailSeparated(): Promise<boolean> {
+  const config = await getAlertConfig();
+  return smtpCanSend(config.customerSmtp);
 }
 
 export async function sendAlert(

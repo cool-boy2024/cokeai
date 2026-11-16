@@ -56,10 +56,21 @@ async function main() {
     to: "partner@example.com",
     replyTo: "",
   };
+  // Partner mailbox and the separate customer mailbox are two identities.
+  const customerSmtp = {
+    host: "smtp.feishu.cn",
+    port: 465,
+    user: "support@example.com",
+    pass: "customer-secret",
+    from: "support@example.com",
+    to: "",
+    replyTo: "support@example.com",
+  };
   const current = {
     channel: "wecom" as const,
     webhookUrl: "https://example.com/hook",
     smtp,
+    customerSmtp,
     emailCopy: false,
   };
   const copy = buildAlertConfig(
@@ -122,6 +133,65 @@ async function main() {
     "config" in copyOff && !copyOff.config.emailCopy,
     "取消勾选后应关闭邮件副本",
   );
+
+  // 客户发件箱：关闭告警不能把它一起清掉；改伙伴邮箱也不能顶掉它。
+  const alertsOff = buildAlertConfig({ channel: "off" }, current);
+  assert(
+    "config" in alertsOff &&
+      alertsOff.config.customerSmtp.user === customerSmtp.user &&
+      alertsOff.config.customerSmtp.pass === customerSmtp.pass,
+    "关闭告警不应清空客户邮件发件箱",
+  );
+  assert(
+    "config" in copy && copy.config.customerSmtp.user === customerSmtp.user,
+    "只改伙伴邮箱时客户发件箱应保持不变",
+  );
+
+  const separated = buildAlertConfig(
+    {
+      channel: "email",
+      smtpHost: "smtp.feishu.cn",
+      smtpPort: "465",
+      smtpUser: "partner@example.com",
+      smtpPass: "partner-secret",
+      smtpFrom: "partner@example.com",
+      smtpTo: "partner@example.com",
+      smtpReplyTo: "",
+      customerSmtpHost: "smtp.feishu.cn",
+      customerSmtpPort: "465",
+      customerSmtpUser: "support@example.com",
+      customerSmtpPass: "customer-secret-2",
+      customerSmtpFrom: "support@example.com",
+    },
+    current,
+  );
+  assert(
+    "config" in separated &&
+      separated.config.smtp.user === "partner@example.com" &&
+      separated.config.customerSmtp.user === "support@example.com" &&
+      separated.config.customerSmtp.pass === "customer-secret-2" &&
+      separated.config.customerSmtp.to === "",
+    "伙伴邮箱和客户发件箱应各自保存，互不覆盖",
+  );
+
+  const badCustomer = buildAlertConfig(
+    {
+      channel: "email",
+      smtpHost: smtp.host,
+      smtpPort: String(smtp.port),
+      smtpUser: smtp.user,
+      smtpPass: smtp.pass,
+      smtpFrom: smtp.from,
+      smtpTo: smtp.to,
+      customerSmtpHost: "smtp.feishu.cn",
+      customerSmtpPort: "465",
+      customerSmtpUser: "not-an-email",
+      customerSmtpPass: "x",
+      customerSmtpFrom: "support@example.com",
+    },
+    current,
+  );
+  assert("error" in badCustomer, "客户发件箱账号非法时应被拒绝");
 
   // Integration: order creation + local balance settlement.
   const passwordHash = await hashPassword("ShopBalance123!");
