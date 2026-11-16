@@ -19,6 +19,8 @@ loadEnv();
  */
 
 const apply = process.argv.includes("--apply");
+// 有历史订单的重复行默认跳过，必须显式 --force 才会归档。
+const force = process.argv.includes("--force");
 const { default: pg } = await import("pg");
 const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
 
@@ -45,8 +47,18 @@ try {
            JOIN shop_product_sources s ON s.product_id = p.id
            JOIN shop_offers o ON o.id = s.offer_id
           WHERE o.external_key = $1
-          -- 在售优先保留；同为在售时，同步过的优先；再按更新时间。
+          -- 保留规则，从最"像主商品"的往下排：
+          --   1. 在售（active）优先——草稿/暂停/归档都不是客户能买到的那一行
+          --   2. 货源已售数字大的优先——这是"主推商品"最可靠的信号
+          --   3. 有历史订单的
+          --   4. 最近同步过的
+          --   5. 最近更新的
+          --
+          -- 第 2 条必须排在第 3 条前面：曾有一组重复里，一个有 3 个订单但货源
+          -- 已售为 0 的副商品，把货源已售 25168 的主商品挤掉了。
           ORDER BY (p.status = 'active') DESC,
+                   p.supplier_sold DESC,
+                   (SELECT count(*) FROM shop_order_items i WHERE i.product_id = p.id) DESC,
                    p.supplier_synced_at DESC NULLS LAST,
                    p.updated_at DESC`,
         [external_key],
@@ -54,11 +66,22 @@ try {
 
       // 排序已经把「该保留的」排在第一位。
       const keep = rows.rows[0];
-      const drop = rows.rows.filter((row) => row.id !== keep.id);
+      const candidates = rows.rows.filter((row) => row.id !== keep.id);
 
       console.log(`\n${external_key}`);
       console.log(`  保留 ${keep.slug} (sold=${keep.supplier_sold}, 订单 ${keep.order_items})`);
-      for (const row of drop) {
+
+      for (const row of candidates) {
+        // 安全闸：有历史订单的行永远不自动归档。订单快照指向这一行，归档它
+        // 会让客户在自己的订单页看到一个「已下架」的商品，还可能影响售后。
+        // 这种重复只能人工判断，脚本不替人做决定。
+        if (Number(row.order_items) > 0 && !force) {
+          console.log(
+            `  跳过 ${row.slug} (sold=${row.supplier_sold}, 订单 ${row.order_items}) ` +
+              `—— 有历史订单，不自动归档；确认要归档请加 --force`,
+          );
+          continue;
+        }
         console.log(`  归档 ${row.slug} (sold=${row.supplier_sold}, 订单 ${row.order_items})`);
         if (apply) {
           await client.query(
