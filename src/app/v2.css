@@ -677,6 +677,135 @@ tbody tr:hover {
   overflow-x: auto;
 }
 
+/* Order-list search sits directly above the status tabs and keeps the same
+   filter via a hidden field, so search and tabs compose. */
+.order-search {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.order-search .input {
+  width: min(360px, 100%);
+  min-height: 32px;
+  flex: 0 1 360px;
+  font-size: 13px;
+}
+
+/* ---------- Pagination ---------- */
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 14px 0 0;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* Inside a panel: match the table's own horizontal padding. */
+.pager--inset {
+  margin: 0 16px;
+  padding: 14px 0 16px;
+}
+
+.pager-total {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.pager-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.pager-btn {
+  display: inline-flex;
+  min-width: 30px;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 550;
+  line-height: 1;
+  text-decoration: none;
+  transition:
+    border-color 140ms ease,
+    background 140ms ease,
+    color 140ms ease;
+}
+
+.pager-btn:hover {
+  border-color: #cfcbc3;
+  background: var(--paper-deep);
+}
+
+.pager-btn.is-current {
+  border-color: transparent;
+  background: var(--ink);
+  color: #fff;
+}
+
+.pager-btn.is-disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.pager-gap {
+  padding: 0 2px;
+  color: var(--muted);
+}
+
+.pager-jump {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.pager-jump label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pager-jump input {
+  width: 56px;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  text-align: center;
+  outline: none;
+}
+
+.pager-jump input:focus {
+  border-color: var(--green);
+}
+
+@media (max-width: 640px) {
+  .pager {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
 .nowrap {
   white-space: nowrap;
 }
@@ -1358,6 +1487,8 @@ tbody tr:hover {
   border-radius: 7px;
   color: var(--muted);
   font-size: 13px;
+  /* The unread-ticket badge sits on the label's top-right corner. */
+  position: relative;
   transition:
     background 120ms ease,
     color 120ms ease;
@@ -1387,6 +1518,33 @@ tbody tr:hover {
   border-radius: 50%;
   background: var(--green);
   content: "";
+}
+
+/* Unread ticket badge: a solid red pill with a white number, pinned to the top
+   right corner of the 工单 label. Uses the same red as other badges, but filled
+   instead of the quiet soft-red pending counts so unread replies stand out. */
+.sidebar-label-badged {
+  position: relative;
+}
+
+.sidebar-link .sidebar-badge-live {
+  position: absolute;
+  top: -8px;
+  left: 100%;
+  display: inline-flex;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 4px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--red);
+  box-shadow: 0 0 0 2px #fbfaf7;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
 }
 
 /* Pending work in the sidebar: unpaid orders and orders waiting to be bought. */

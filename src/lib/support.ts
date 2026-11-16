@@ -71,8 +71,12 @@ const UNREAD_FOR_CUSTOMER = `(SELECT COUNT(*) FROM support_ticket_messages m
   WHERE m.ticket_id = t.id AND m.author = 'admin'
     AND (t.customer_read_at IS NULL OR m.created_at > t.customer_read_at))::int`;
 
+// Closed tickets carry no unread weight for the operator: the work is done, and
+// the sidebar badge only covers open tickets. This expression is the single
+// source for both the list rows and the badge so they can never disagree.
 const UNREAD_FOR_ADMIN = `(SELECT COUNT(*) FROM support_ticket_messages m
   WHERE m.ticket_id = t.id AND m.author = 'customer'
+    AND t.status = 'open'
     AND (t.admin_read_at IS NULL OR m.created_at > t.admin_read_at))::int`;
 
 function ticketSelect(unreadExpr: string): string {
@@ -274,12 +278,18 @@ export async function countUnreadMessagesForUser(userId: string): Promise<number
   return Number(result.rows[0]?.count || 0);
 }
 
+/**
+ * Sidebar badge: customer messages the operator has not opened yet, counted
+ * across open tickets only. A closed ticket is handled work — it must not keep
+ * a number on the menu, even if the customer replied before closing it.
+ */
 export async function countUnreadMessagesForAdmin(): Promise<number> {
   const result = await query<{ count: string }>(
     `SELECT COUNT(*)::text AS count
        FROM support_ticket_messages m
        JOIN support_tickets t ON t.id = m.ticket_id
       WHERE m.author = 'customer'
+        AND t.status = 'open'
         AND (t.admin_read_at IS NULL OR m.created_at > t.admin_read_at)`,
   );
   return Number(result.rows[0]?.count || 0);

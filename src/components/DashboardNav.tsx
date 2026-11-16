@@ -21,6 +21,7 @@ import {
   Users,
   Wallet,
 } from "lucide-react";
+import { LiveNavBadge } from "./LiveNavBadge";
 
 // The customer console is shop-focused: balance, recharge, shop orders and
 // settings only. API key and usage management is no longer exposed here.
@@ -82,6 +83,9 @@ export function DashboardNav({
         const Icon = item.icon;
         const active = isActive(item.href, pathname);
         const count = badges?.[item.href] || 0;
+        // Support tickets are the one entry whose count changes while the
+        // operator is inside the section, so it renders its own live badge.
+        const live = admin && item.href === "/admin/support";
         return (
           <Link
             key={item.href}
@@ -89,8 +93,11 @@ export function DashboardNav({
             className={`sidebar-link${active ? " active" : ""}`}
           >
             <Icon />
-            <span>{item.label}</span>
-            {count > 0 ? (
+            <span className={live ? "sidebar-label-badged" : undefined}>
+              {item.label}
+              {live ? <LiveNavBadge count={count} /> : null}
+            </span>
+            {!live && count > 0 ? (
               <span className="nav-count" aria-label={`${count} 个待处理`}>
                 {count > 99 ? "99+" : count}
               </span>
