@@ -22,7 +22,7 @@
     "shop:sync": "tsx scripts/shop-sync.ts",
     "shop:zyanai": "tsx scripts/sync-zyanai.ts",
     "shop:aibuy": "tsx scripts/sync-aibuy.ts",
-    "shop:dedupe": "tsx scripts/cleanup-duplicate-products.ts",
+    "shop:dedupe": "node scripts/cleanup-duplicate-products.mjs",
     "test:shop": "tsx scripts/test-shop.ts",
     "pricing:sync": "node scripts/pricing-sync.mjs",
     "verify:sub2api": "node scripts/verify-sub2api-config.mjs",
