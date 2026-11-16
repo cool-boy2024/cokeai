@@ -45,8 +45,17 @@ assertEqual(salesLabel(inStock), "已售 88 · 库存 9", "label reads as design
 
 const abundant = salesDisplay({ supplierSold: 10673, supplierStock: -1 });
 assertEqual(abundant.remaining, null, "充足 has no number to show");
+assertEqual(abundant.abundant, true, "充足 is flagged as in stock");
 assertEqual(abundant.soldOut, false, "充足 is never sold out");
-assertEqual(salesLabel(abundant), "已售 10673", "no invented stock number");
+assertEqual(
+  salesLabel(abundant),
+  "已售 10673 · 现货充足",
+  "充足 says 现货充足 instead of inventing a number",
+);
+
+// 货源充足但还没有销量：只写「现货充足」，不显示「已售 0」。
+const abundantNoSales = salesDisplay({ supplierSold: 0, supplierStock: -1 });
+assertEqual(salesLabel(abundantNoSales), "现货充足", "abundant with no sales");
 
 // --- 货源售罄：页面转缺货、下单要拦 ---------------------------------------
 
@@ -57,8 +66,9 @@ assertEqual(salesLabel(soldOut), "已售 88 · 已售罄", "sold-out label");
 
 // --- 什么都没有：不显示 ---------------------------------------------------
 
-const nothing = salesDisplay({ supplierSold: 0, supplierStock: -1 });
-assertEqual(salesLabel(nothing), "", "no sold count and no stock shows nothing");
+// 货源没给任何信息时才是空白。
+const nothing = salesDisplay({ supplierSold: 0, supplierStock: 0 });
+assertEqual(salesLabel(nothing), "已售罄", "zero stock with no sales still shows sold out");
 
 // --- 脏输入 ---------------------------------------------------------------
 

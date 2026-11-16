@@ -649,6 +649,23 @@ async function persistProduct(
       [offerId, product.costMicros, product.availability],
     );
 
+    // 同一个货源可能已经有一个「旧 slug」的商品（品牌识别规则改过之后，slug
+    // 会变）。只按 slug 做 ON CONFLICT 会新建一行，旧的继续挂在线上，而新的
+    // 才是每次同步刷新的那一行——于是前台看到的是一个永远没有库存/销量的旧商品。
+    // 先按 offer 找已关联的商品，找到就复用它的 slug。
+    const existing = await client.query<{ slug: string }>(
+      `SELECT p.slug
+         FROM shop_product_sources s
+         JOIN shop_products p ON p.id = s.product_id
+        WHERE s.offer_id = $1
+          -- 归档行是运营或清理脚本停用的，不能把新同步导向它们。
+          AND p.status <> 'archived'
+        ORDER BY p.supplier_synced_at DESC NULLS LAST, p.updated_at DESC
+        LIMIT 1`,
+      [offerId],
+    );
+    const slug = existing.rows[0]?.slug || product.slug;
+
     const shopProduct = await client.query<{ id: string }>(
       `INSERT INTO shop_products
          (slug, brand, category, product_type, name, subtitle, description, cover_variant,
@@ -696,7 +713,7 @@ async function persistProduct(
              updated_at = now()
        RETURNING id`,
       [
-        product.slug,
+        slug,
         product.brand,
         product.category,
         product.title,

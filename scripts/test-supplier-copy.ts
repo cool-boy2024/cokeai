@@ -1,6 +1,7 @@
 import {
   sanitizeSupplierAlt,
   sanitizeSupplierCopy,
+  stripSupplierPricing,
 } from "../src/lib/shop/sanitize";
 import { buildRichDescriptionHtml } from "../src/lib/shop/rich-description";
 
@@ -184,5 +185,55 @@ const settlementHtml = buildRichDescriptionHtml(
   '<p>正常说明。</p><p>如果退款成功，可退金额按实际官方退款金额的 <strong>80% 结算</strong>，另外 <strong>20% 为卡台手续费</strong>。</p>',
 );
 assertNotMatch(settlementHtml, /80\s*%<\/strong>|卡台手续费/, "settlement block removed from HTML");
+
+// --- 上游标价不能出现在本站文案里 -----------------------------------------
+// 客户看到的价格必须和我们收的一致；文案里带着上游标价既自相矛盾，也暴露拿货价。
+
+assertEqual(
+  stripSupplierPricing("codex短效接码-只可接一次 2.5元/条"),
+  "codex短效接码-只可接一次按商品页价格",
+  "per-unit supplier price is replaced",
+);
+assertEqual(
+  stripSupplierPricing("换号需要收取30元一次。"),
+  "换号需要收取按商品页价格。",
+  "one-off fee becomes a reference to our price",
+);
+assertEqual(
+  stripSupplierPricing("每笔扣除40元手续费，将剩余应退金额退回"),
+  "每笔扣除手续费，将剩余应退金额退回",
+  "fee amount dropped, wording kept",
+);
+assertEqual(
+  stripSupplierPricing("本店决定开始加收退费手续费 20 元"),
+  "本店决定开始加收退费手续费",
+  "trailing fee amount dropped",
+);
+assertEqual(
+  stripSupplierPricing("购买质保 30 天、总价 120 元，第 12 天掉号"),
+  "购买质保 30 天、总价，第 12 天掉号",
+  "total price dropped",
+);
+assertEqual(
+  stripSupplierPricing("月卡 ¥30.00 元/月"),
+  "月卡 按商品页价格",
+  "yen sign and monthly price replaced",
+);
+// 不带「元」的数字（时长、天数）必须原样保留。
+assertEqual(
+  stripSupplierPricing("质保 30 天，24 小时内发货"),
+  "质保 30 天，24 小时内发货",
+  "durations are untouched",
+);
+// 已经清洗过的文案再跑一次不应继续变化。
+const once = stripSupplierPricing("扣除40元手续费");
+assertEqual(stripSupplierPricing(once), once, "price stripping is idempotent");
+
+// 走完整清洗链时也一样。
+assertNotMatch(
+  sanitizeSupplierCopy("短效接码 2.5元/条，收取30元一次换号"),
+  /\d+(?:\.\d+)?\s*元/,
+  "no supplier price survives the full scrub",
+);
 
 console.log("supplier copy: ok");

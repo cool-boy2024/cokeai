@@ -13,10 +13,12 @@ export type ShopSalesDisplay = {
   /** 上游累计已售件数。 */
   sold: number;
   /**
-   * 上游当前库存；null 表示货源标注为「充足/无限」，没有具体件数。
-   * 0 表示真的没货了——此时商品不可售。
+   * 上游当前库存件数；null 表示货源标注为「充足/非常多」这类没有具体件数的
+   * 档位。0 表示真的没货了——此时商品不可售。
    */
   remaining: number | null;
+  /** 货源标了「充足」但没有具体件数。客户仍然想知道「有货」。 */
+  abundant: boolean;
   /** 货源确实没货（remaining === 0）。 */
   soldOut: boolean;
 };
@@ -56,6 +58,7 @@ export function salesDisplay(input: {
     sold,
     // 负数（含 -1）表示「充足」，没有具体剩余件数可展示。
     remaining: stock >= 0 ? stock : null,
+    abundant: stock < 0,
     soldOut: stock === 0,
   };
 }
@@ -71,6 +74,9 @@ export function salesLabel(display: ShopSalesDisplay): string {
   if (display.sold > 0) parts.push(`已售 ${display.sold}`);
   if (display.remaining !== null) {
     parts.push(display.remaining > 0 ? `库存 ${display.remaining}` : "已售罄");
+  } else if (display.abundant) {
+    // 货源说「充足」但没有件数。只写「有货」是事实，编一个数字就不是了。
+    parts.push("现货充足");
   }
   return parts.join(" · ");
 }
