@@ -15,7 +15,7 @@ const QUICK_QUESTIONS = [
 ];
 
 const GREETING =
-  "你好，我是 CokeAI 客服。充值、小店发货、模型价格和 API 接入的问题都可以问我。";
+  "你好，我是 CokeAI 客服。商品咨询、下单和发货进度的问题都可以问我。";
 
 export function SupportWidget({ supportEmail }: { supportEmail: string }) {
   const pathname = usePathname();

@@ -267,7 +267,7 @@ export function SiteNav({ loggedIn }: { loggedIn: boolean }) {
             </Link>
           </>
         )}
-        <p>OpenAI 兼容接口 · 余额不过期</p>
+        <p>数字商品 · 人工发货 · 订单可查</p>
       </div>
     </div>
   );

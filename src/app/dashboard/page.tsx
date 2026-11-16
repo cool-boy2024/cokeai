@@ -231,7 +231,7 @@ export default async function DashboardPage() {
             </div>
             <div className="panel-body">
               <div className="balance-amount">{formatCny(balance * 1_000_000)}</div>
-              <div className="small muted mt-8">余额不过期</div>
+              <div className="small muted mt-8">账户余额</div>
               <Link
                 className="btn btn-dark btn-sm btn-block mt-16"
                 href="/dashboard/billing"

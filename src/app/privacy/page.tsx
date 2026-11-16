@@ -19,7 +19,7 @@ export default function PrivacyPage() {
           <div className="legal-meta">最后更新：2026-11-15</div>
 
           <p>
-            本政策说明 CokeAI 在提供 AI API 接入服务时如何处理个人信息。
+            本政策说明 CokeAI 在提供数字商品销售服务时如何处理个人信息。
             我们只收集运营与计费所需的数据。
           </p>
 

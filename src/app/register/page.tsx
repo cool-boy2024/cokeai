@@ -67,7 +67,7 @@ export default async function RegisterPage({
               <p className="auth-sub">
                 {safeNext?.startsWith("/shop/")
                   ? "注册后自动回到刚才的商品页，继续完成下单。"
-                  : "注册后充值即可在小店下单，余额不过期。"}
+                  : "注册后即可在小店下单，订单进度随时可查。"}
               </p>
             </div>
             <AuthForm mode="register" next={safeNext} refCode={refCode} />
