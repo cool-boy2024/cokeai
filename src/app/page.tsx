@@ -48,7 +48,7 @@ const SHOP_FAQ = [
   {
     question: "小店支持退款吗？",
     answer:
-      "未开始处理的订单可以申请退款；已交付、已兑换或已到账的订单不支持。USDT 退款需要人工核对地址。",
+      "未开始处理的订单可以申请退款；已交付、已兑换或已到账的订单不支持。退款由人工审核处理。",
   },
   {
     question: "订单在哪里查看？",
@@ -110,10 +110,10 @@ export default async function HomePage() {
           <HeroOrbit />
 
           <div className="hero-float hero-float-a" aria-hidden="true">
-            <Wallet size={16} />
+            <Check size={16} />
             <div>
-              <strong>USDT · 多网络</strong>
-              <span>链上确认后到账</span>
+              <strong>人工审核</strong>
+              <span>订单进度可查</span>
             </div>
           </div>
           <div className="hero-float hero-float-b" aria-hidden="true">
