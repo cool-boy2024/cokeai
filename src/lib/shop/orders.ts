@@ -205,10 +205,11 @@ export async function createShopOrder(input: {
       input_fields: unknown;
       eta_max_minutes: number;
       qty_max: number;
+      supplier_stock: number;
     }>(
       `SELECT id, slug, name, brand, price_micros, status, availability,
               pricing_review_required, input_fields, eta_max_minutes,
-              $2::int AS qty_max
+              supplier_stock, $2::int AS qty_max
          FROM shop_products
         WHERE id = $1
         FOR UPDATE`,
@@ -248,6 +249,16 @@ export async function createShopOrder(input: {
     if (hasVariants && !variant) throw new Error("请选择商品规格");
     if (!isPurchasable(variant ? variant.availability : product.availability)) {
       throw new Error("商品暂时缺货");
+    }
+
+    // 货源库存是唯一的售卖上限：上游没货我们就卖不了。商品行已经
+    // FOR UPDATE，同一时刻的并发下单会在这里排队，不会超卖。
+    const supplierStock = Number(product.supplier_stock ?? -1);
+    if (supplierStock === 0) {
+      throw new Error("货源已售罄，正在补货，请稍后再来");
+    }
+    if (supplierStock > 0 && (input.qty || 1) > supplierStock) {
+      throw new Error(`货源仅剩 ${supplierStock} 件，请调整购买数量`);
     }
 
     const membershipResult = await client.query<{

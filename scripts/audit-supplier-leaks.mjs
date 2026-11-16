@@ -36,6 +36,8 @@ const RATE_LIMIT_RETRIES = 3;
 const PATTERNS = [
   { name: "supplier domain zyanai.cc", re: /zyanai\.cc/i },
   { name: "supplier name zyanai", re: /\bzyanai\b/i },
+  { name: "supplier domain ai-buy.vip", re: /ai-buy\.vip/i },
+  { name: "supplier name aibuy", re: /\baibuy\b/i },
   { name: "supplier domain aibijia", re: /aibijia/i },
   { name: "supplier domain wzyp", re: /wzyp\./i },
   { name: "supplier domain gshh.top", re: /gshh\.top/i },
@@ -218,7 +220,7 @@ async function main() {
       if (!path) continue;
       if (
         /^\/shop\/zy-/i.test(path) ||
-        /^\/shop\/auto-(?:zyanai|aibijia|aibuji|wzyp|lovecodex|ldxp|kapay|beibei|aisou|talkai|gshh)-/i.test(path)
+        /^\/shop\/(?:auto-(?:zyanai|aibijia|aibuji|wzyp|lovecodex|ldxp|kapay|beibei|aisou|talkai|gshh)|q-)-/i.test(path)
       ) {
         leaks.push({
           path: "/sitemap.xml",

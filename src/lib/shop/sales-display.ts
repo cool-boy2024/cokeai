@@ -1,0 +1,76 @@
+/**
+ * 商品页展示口径的纯函数。
+ *
+ * 放在这个文件里是因为客户端组件（BuyForm）也要用它：这里不能 import
+ * 任何数据库代码，否则 `pg` 会被打进浏览器包。
+ *
+ * 两个数字都来自上游货源公开数据，不做人工编造：
+ *   已售   = 上游累计已售件数
+ *   剩余   = 上游当前库存；-1 表示「充足」，不展示具体件数
+ */
+
+export type ShopSalesDisplay = {
+  /** 上游累计已售件数。 */
+  sold: number;
+  /**
+   * 上游当前库存；null 表示货源标注为「充足/无限」，没有具体件数。
+   * 0 表示真的没货了——此时商品不可售。
+   */
+  remaining: number | null;
+  /** 货源确实没货（remaining === 0）。 */
+  soldOut: boolean;
+};
+
+/**
+ * 把上游的库存字段收敛成一个数字。
+ *
+ * 上游 `stock` 可能是数字，也可能是「充足 / 非常多 / 一般 / 即将售罄」这类
+ * 文字。文字档位不代表具体件数，只有正整数才当作真实库存。
+ */
+export function normalizeSupplierStock(stock: unknown): number {
+  if (typeof stock === "number" && Number.isFinite(stock)) {
+    return Math.trunc(stock);
+  }
+  const text = String(stock ?? "").trim();
+  if (/^\d+$/.test(text)) return Number(text);
+  // 「充足 / 无限 / 非常多」——有货，但没有具体上限。
+  if (/充足|无限|非常多|爆棚|大量|有货|一般/.test(text)) return -1;
+  // 「售罄 / 缺货 / 无货 / 下架」——真的没货。
+  if (/售罄|缺货|无货|下架|即将售罄|少量|紧张/.test(text)) return 0;
+  return -1;
+}
+
+export function salesDisplay(input: {
+  /** 上游累计已售。 */
+  supplierSold: number;
+  /** 上游当前库存；-1 = 充足。 */
+  supplierStock: number;
+}): ShopSalesDisplay {
+  const sold = Number.isFinite(input.supplierSold)
+    ? Math.max(0, Math.trunc(input.supplierSold))
+    : 0;
+  const stock = Number.isFinite(input.supplierStock)
+    ? Math.trunc(input.supplierStock)
+    : -1;
+  return {
+    sold,
+    // 负数（含 -1）表示「充足」，没有具体剩余件数可展示。
+    remaining: stock >= 0 ? stock : null,
+    soldOut: stock === 0,
+  };
+}
+
+/**
+ * One-line storefront label, e.g. 「已售 88 · 库存 9」.
+ *
+ * 上游没给数字的时候（已售 0、库存充足），只显示有的那个；两个都没有就
+ * 什么都不显示，避免满屏「已售 0」。
+ */
+export function salesLabel(display: ShopSalesDisplay): string {
+  const parts: string[] = [];
+  if (display.sold > 0) parts.push(`已售 ${display.sold}`);
+  if (display.remaining !== null) {
+    parts.push(display.remaining > 0 ? `库存 ${display.remaining}` : "已售罄");
+  }
+  return parts.join(" · ");
+}

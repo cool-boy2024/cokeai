@@ -6189,6 +6189,18 @@ body {
   font-size: 11px;
 }
 
+/* 销量与批次剩余：列表行内也要看得到，用蓝色区分于普通标签。 */
+.public-main .shop-row-tags .shop-row-sales {
+  background: #edf3fb;
+  color: #2f5b93;
+  font-variant-numeric: tabular-nums;
+}
+
+.public-main .shop-row-tags .shop-row-sales.is-sold-out {
+  background: var(--paper-deep);
+  color: var(--muted);
+}
+
 .public-main .shop-row-side {
   display: grid;
   justify-items: end;

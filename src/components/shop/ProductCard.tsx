@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowUpRight } from "@phosphor-icons/react/dist/ssr";
 import { startingPriceMicros, type PublicShopProduct } from "@/lib/shop/catalog";
 import { etaLabel, productPriceLabel, warrantyShortLabel } from "@/lib/shop/copy";
+import { salesLabel } from "@/lib/shop/sales-display";
 import { ProductCover } from "./ProductCover";
 import { AvailabilityBadge } from "./ShopBadges";
 
@@ -14,6 +15,7 @@ export function ProductCard({
 }) {
   const price = startingPriceMicros(product);
   const hasVariants = product.variants.length > 0;
+  const sales = salesLabel(product.sales);
   return (
     <Link
       href={`/shop/${product.slug}`}
@@ -33,12 +35,19 @@ export function ProductCard({
         <div className="shop-product-card-top">
           <span className="shop-product-brand">{product.brand.toUpperCase()}</span>
           <AvailabilityBadge
-            availability={product.availability}
-            preorder={product.preorder}
+            availability={product.sales.soldOut ? "out_of_stock" : product.availability}
+            preorder={product.preorder && !product.sales.soldOut}
           />
         </div>
         <h3>{product.name}</h3>
         <p>{product.subtitle}</p>
+        {sales ? (
+          <span
+            className={`shop-product-sales${product.sales.soldOut ? " is-sold-out" : ""}`}
+          >
+            {sales}
+          </span>
+        ) : null}
         <div className="shop-product-card-foot">
           <div>
             <strong>

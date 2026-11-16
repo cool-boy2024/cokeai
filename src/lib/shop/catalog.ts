@@ -1,5 +1,6 @@
 import { query } from "@/lib/db";
 import { parseInputFields, parseStringList, type ShopInputField } from "./copy";
+import { salesDisplay, type ShopSalesDisplay } from "./display-sales";
 import { preorderSql } from "./preorder";
 import { sanitizeStoredRichHtml } from "./rich-description";
 import {
@@ -66,6 +67,12 @@ export type PublicShopProduct = {
   preorder: boolean;
   /** Selectable options. Empty means the product is sold as a single item. */
   variants: ShopVariant[];
+  /** 上游累计已售件数，每次货源同步刷新。 */
+  supplier_sold: number;
+  /** 上游当前库存；-1 表示充足，0 表示断货。 */
+  supplier_stock: number;
+  /** 展示口径：已售 / 剩余 / 售罄。见 sales-display.ts。 */
+  sales: ShopSalesDisplay;
   featured: boolean;
   sort_order: number;
   display_category: string;
@@ -83,11 +90,14 @@ type RawProduct = Omit<
   | "image_url"
   | "description_images"
   | "variants"
+  | "sales"
 > & {
   includes: unknown;
   usage_notes: unknown;
   input_fields: unknown;
   help_article_ids: unknown;
+  supplier_sold: number | string | null;
+  supplier_stock: number | string | null;
 };
 
 /** JSONB may arrive parsed (pg) or as the raw string from a manual SQL edit. */
@@ -122,6 +132,12 @@ function hydrate(row: RawProduct): PublicShopProduct {
     help_article_ids: parseHelpArticleIds(row.help_article_ids),
     display_category: String(row.display_category || ""),
     description_html: String(row.description_html || ""),
+    supplier_sold: Number(row.supplier_sold || 0),
+    supplier_stock: Number(row.supplier_stock ?? -1),
+    sales: salesDisplay({
+      supplierSold: Number(row.supplier_sold || 0),
+      supplierStock: Number(row.supplier_stock ?? -1),
+    }),
     image_url: null,
     description_images: [],
     variants: [],
@@ -331,7 +347,7 @@ const PUBLIC_COLUMNS = `
   cover_variant, price_micros, delivery_method, eta_min_minutes, eta_max_minutes,
   warranty_type, warranty_days, warranty_note, includes, usage_notes, customer_notice,
   refund_policy, input_fields, availability, featured, sort_order, help_article_ids,
-  display_category,
+  display_category, supplier_sold, supplier_stock,
   -- Preorder has three sources: the operator switch (preorder_manual), the
   -- supplier marker in availability_reason, and Muse's operating policy.
   -- Only the derived boolean reaches public types.

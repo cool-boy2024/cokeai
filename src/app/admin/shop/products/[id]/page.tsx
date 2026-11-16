@@ -280,6 +280,23 @@ export default async function AdminShopProductEditPage({
               </label>
             </div>
 
+            <div className="shop-supplier-stock">
+              <div>
+                <span>货源已售</span>
+                <strong>{product.supplier_sold}</strong>
+              </div>
+              <div>
+                <span>货源库存</span>
+                <strong>
+                  {product.supplier_stock < 0 ? "充足" : product.supplier_stock}
+                </strong>
+              </div>
+            </div>
+            <p className="shop-muted">
+              商品页的「已售 / 库存」直接来自货源公开数据，每次货源同步自动刷新，
+              无需手工维护。货源库存为 0 时商品页显示「已售罄」并停止下单。
+            </p>
+
             <label className="shop-compliance">
               <input
                 type="checkbox"

@@ -10,7 +10,15 @@ async function main() {
   if (limit !== undefined && (!Number.isInteger(limit) || limit < 1)) {
     throw new Error("--limit 需要正整数");
   }
-  const result = await syncZyanaiProducts({ dryRun, limit });
+  const idsArg = process.argv.find((arg) => arg.startsWith("--ids="));
+  const ids = idsArg
+    ? idsArg
+        .split("=")[1]
+        .split(",")
+        .map((value) => Number(value.trim()))
+        .filter((value) => Number.isInteger(value) && value > 0)
+    : undefined;
+  const result = await syncZyanaiProducts({ dryRun, limit, ids });
   console.log(JSON.stringify(result, null, 2));
   if (result.skipped.length > 0) process.exitCode = 1;
 }

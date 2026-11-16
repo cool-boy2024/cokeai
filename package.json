@@ -7,6 +7,7 @@
     "dev": "next dev",
     "build": "next build",
     "build:zyanai": "esbuild scripts/sync-zyanai.ts --bundle --platform=node --format=cjs --target=node22 --tsconfig=tsconfig.json --external:pg-native --external:pg-cloudflare --outfile=zyanai-sync.cjs",
+    "build:aibuy": "esbuild scripts/sync-aibuy.ts --bundle --platform=node --format=cjs --target=node22 --tsconfig=tsconfig.json --external:pg-native --external:pg-cloudflare --outfile=aibuy-sync.cjs",
     "deploy:prod": "gh workflow run deploy.yml --ref main",
     "start": "next start",
     "typecheck": "tsc --noEmit",
@@ -20,6 +21,7 @@
     "shop:price": "node scripts/shop-price-adjust.mjs",
     "shop:sync": "tsx scripts/shop-sync.ts",
     "shop:zyanai": "tsx scripts/sync-zyanai.ts",
+    "shop:aibuy": "tsx scripts/sync-aibuy.ts",
     "test:shop": "tsx scripts/test-shop.ts",
     "pricing:sync": "node scripts/pricing-sync.mjs",
     "verify:sub2api": "node scripts/verify-sub2api-config.mjs",
@@ -40,6 +42,7 @@
     "test:security": "tsx scripts/test-security-status.ts",
     "test:site-guards": "tsx scripts/test-site-guards.ts",
     "test:redirects": "tsx scripts/test-redirects.ts",
+    "test:shop:sales": "tsx scripts/test-shop-sales.ts",
     "test:shop:copy": "tsx scripts/test-supplier-copy.ts",
     "test:visits": "tsx scripts/test-visits.ts"
   },

@@ -17,8 +17,10 @@ import {
   AvailabilityBadge,
   DeliveryBadge,
   EtaBadge,
+  SalesBadge,
   WarrantyBadge,
 } from "@/components/shop/ShopBadges";
+import { ShareButton } from "@/components/shop/ShareButton";
 import { getCurrentUser } from "@/lib/auth";
 import { config } from "@/lib/config";
 import { getGatewayBalance } from "@/lib/gateway-credits";
@@ -113,8 +115,10 @@ export default async function ShopProductPage({
                 </div>
                 <div className="shop-detail-badges">
                   <AvailabilityBadge
-                    availability={product.availability}
-                    preorder={product.preorder}
+                    availability={
+                      product.sales.soldOut ? "out_of_stock" : product.availability
+                    }
+                    preorder={product.preorder && !product.sales.soldOut}
                   />
                   <DeliveryBadge
                     method={product.delivery_method}
@@ -130,6 +134,8 @@ export default async function ShopProductPage({
                     days={product.warranty_days}
                     note={product.warranty_note}
                   />
+                  <SalesBadge sales={product.sales} />
+                  <ShareButton title={product.name} path={`/shop/${product.slug}`} />
                 </div>
               </div>
 

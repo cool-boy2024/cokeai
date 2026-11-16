@@ -703,9 +703,10 @@ ALTER TABLE shop_suppliers ADD COLUMN IF NOT EXISTS last_success_at TIMESTAMPTZ;
 ALTER TABLE shop_suppliers ADD COLUMN IF NOT EXISTS last_feed_hash TEXT;
 
 -- 2026-11-13: zyanai.cc mirror (manual procurement, public list + item pages).
+-- 2026-11-16: ai-buy.vip runs the same storefront software.
 ALTER TABLE shop_suppliers DROP CONSTRAINT IF EXISTS shop_suppliers_kind_check;
 ALTER TABLE shop_suppliers ADD CONSTRAINT shop_suppliers_kind_check
-  CHECK (kind IN ('aibijia', 'manual', 'zyanai'));
+  CHECK (kind IN ('aibijia', 'manual', 'zyanai', 'aibuy'));
 
 INSERT INTO schema_migrations (version) VALUES ('003_shop') ON CONFLICT (version) DO NOTHING;
 
@@ -974,3 +975,22 @@ CREATE INDEX IF NOT EXISTS site_visits_user_idx
   WHERE user_id IS NOT NULL;
 
 INSERT INTO schema_migrations (version) VALUES ('007_site_visits') ON CONFLICT (version) DO NOTHING;
+
+-- ============================================================================
+-- 008_shop_display_sales：商品页展示货源的真实库存与已售
+--
+-- 两个数字全部来自上游公开数据，不做任何人工编造：
+--   supplier_sold   上游累计已售（含我们自己的采购，不会重复计数）
+--   supplier_stock  上游当前库存；-1 表示"充足/无限"，不代表具体件数
+--   supplier_synced_at 最近一次从货源刷新这两个数的时间
+--
+-- 页面显示「已售 N · 库存还剩 M」。库存以货源为准：上游没货我们就卖不了，
+-- 所以 stock 归零时商品页转缺货、下单被拒。每次货源同步刷新这两个数。
+-- 纯加法迁移：只加列，不改既有数据。
+-- ============================================================================
+ALTER TABLE shop_products ADD COLUMN IF NOT EXISTS supplier_sold INTEGER NOT NULL DEFAULT 0
+  CHECK (supplier_sold >= 0);
+ALTER TABLE shop_products ADD COLUMN IF NOT EXISTS supplier_stock INTEGER NOT NULL DEFAULT -1;
+ALTER TABLE shop_products ADD COLUMN IF NOT EXISTS supplier_synced_at TIMESTAMPTZ;
+
+INSERT INTO schema_migrations (version) VALUES ('008_shop_display_sales') ON CONFLICT (version) DO NOTHING;
