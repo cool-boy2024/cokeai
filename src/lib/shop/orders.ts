@@ -76,8 +76,10 @@ export type ShopOrderDetail = ShopOrderSummary & {
   }>;
 };
 
-const ORDER_SELECT = `
-  SELECT o.id, o.order_no, o.status, o.amount_micros, o.subtotal_micros,
+// Split so the admin list can add u.email / u.name without duplicating the
+// column list — the plain ORDER_SELECT deliberately does not join users.
+const ORDER_COLUMNS = `
+         o.id, o.order_no, o.status, o.amount_micros, o.subtotal_micros,
          o.payment_provider, o.provider_ref, o.pay_amount, o.pay_currency, o.pay_address,
          o.pay_txid, o.pay_expires_at, o.expires_at, o.created_at, o.paid_at,
          o.delivered_at, o.user_id, o.customer_note, o.admin_note,
@@ -97,9 +99,14 @@ const ORDER_SELECT = `
             WHERE p.order_id = o.id AND p.order_kind = 'shop'
             ORDER BY p.reported_at DESC NULLS LAST LIMIT 1
          ) AS reported_at
+`;
+
+const ORDER_FROM = `
     FROM shop_orders o
     JOIN shop_order_items i ON i.order_id = o.id
 `;
+
+const ORDER_SELECT = `SELECT ${ORDER_COLUMNS} ${ORDER_FROM}`;
 
 function mapOrder(row: Record<string, unknown>): ShopOrderDetail {
   return {
@@ -549,7 +556,9 @@ export async function listAdminShopOrders(
   values.push(Math.max(filter?.offset || 0, 0));
   const offsetPlaceholder = `$${values.length}`;
   const result = await query<Record<string, unknown>>(
-    `${ORDER_SELECT}
+    // u.email / u.name must be in the select list, not just the JOIN — the
+    // search condition needs the table, and the table row needs the columns.
+    `SELECT ${ORDER_COLUMNS}, u.email, u.name ${ORDER_FROM}
       JOIN users u ON u.id = o.user_id
      WHERE ${condition}
      ORDER BY o.created_at DESC
