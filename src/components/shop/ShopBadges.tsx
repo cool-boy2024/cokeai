@@ -7,6 +7,7 @@ import {
   type ShopDeliveryMethod,
   type ShopWarrantyType,
 } from "@/lib/shop/copy";
+import { salesLabel, type ShopSalesDisplay } from "@/lib/shop/sales-display";
 
 export function AvailabilityBadge({
   availability,
@@ -69,6 +70,19 @@ export function EtaBadge({
 }) {
   return (
     <span className="shop-badge shop-badge-muted">{etaLabel(min, max, preorder)}</span>
+  );
+}
+
+export function SalesBadge({ sales }: { sales: ShopSalesDisplay }) {
+  // 没有基数也没有批次的商品不显示计数，避免满屏「已售 0」。
+  const label = salesLabel(sales);
+  if (!label) return null;
+  return (
+    <span
+      className={`shop-badge shop-badge-sales${sales.soldOut ? " is-sold-out" : ""}`}
+    >
+      {label}
+    </span>
   );
 }
 

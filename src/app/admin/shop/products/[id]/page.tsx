@@ -278,7 +278,44 @@ export default async function AdminShopProductEditPage({
                   defaultValue={product.sort_order}
                 />
               </label>
+              <label className="shop-field">
+                <span>历史销量基数（站外真实成交件数）</span>
+                <input
+                  name="soldBaseline"
+                  type="number"
+                  min={0}
+                  step={1}
+                  defaultValue={product.sold_baseline}
+                />
+              </label>
+              <label className="shop-field">
+                <span>本批次放量（0 = 不限量）</span>
+                <input
+                  name="batchSize"
+                  type="number"
+                  min={0}
+                  step={1}
+                  defaultValue={product.batch_size}
+                />
+              </label>
+              <label className="shop-field">
+                <span>卖完后自动补货间隔（分钟，0 = 不自动补货）</span>
+                <input
+                  name="batchRefillMinutes"
+                  type="number"
+                  min={0}
+                  step={5}
+                  defaultValue={product.batch_refill_minutes}
+                />
+              </label>
             </div>
+
+            <p className="shop-muted">
+              商品页显示「已售 = 历史销量基数 + 本站已付款件数」，
+              「库存还剩 = 本批次放量 − 本站已付款件数」，真实订单会自动加减。
+              本批次卖完后会显示「补货中」并停止下单；补货时把放量改大或重新设置即可。
+              销量基数只填站外渠道的真实成交件数，不要填估计值。
+            </p>
 
             <label className="shop-compliance">
               <input

@@ -7,6 +7,7 @@ import {
   productPriceLabel,
   warrantyShortLabel,
 } from "@/lib/shop/copy";
+import { salesLabel } from "@/lib/shop/sales-display";
 import { ProductCover } from "./ProductCover";
 import { AvailabilityBadge } from "./ShopBadges";
 
@@ -18,6 +19,7 @@ import { AvailabilityBadge } from "./ShopBadges";
 export function ProductRow({ product }: { product: PublicShopProduct }) {
   const price = startingPriceMicros(product);
   const hasVariants = product.variants.length > 0;
+  const sales = salesLabel(product.sales);
   return (
     <Link href={`/shop/${product.slug}`} className="shop-row">
       <div className="shop-row-cover">
@@ -47,13 +49,18 @@ export function ProductRow({ product }: { product: PublicShopProduct }) {
             )}
           </span>
           {hasVariants ? <span>{product.variants.length} 个档位</span> : null}
+          {sales ? (
+            <span className={`shop-row-sales${product.sales.soldOut ? " is-sold-out" : ""}`}>
+              {sales}
+            </span>
+          ) : null}
         </div>
       </div>
 
       <div className="shop-row-side">
         <AvailabilityBadge
-          availability={product.availability}
-          preorder={product.preorder}
+          availability={product.sales.soldOut ? "out_of_stock" : product.availability}
+          preorder={product.preorder && !product.sales.soldOut}
         />
         <div className="shop-row-price">
           <strong>

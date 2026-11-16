@@ -974,3 +974,31 @@ CREATE INDEX IF NOT EXISTS site_visits_user_idx
   WHERE user_id IS NOT NULL;
 
 INSERT INTO schema_migrations (version) VALUES ('007_site_visits') ON CONFLICT (version) DO NOTHING;
+
+-- ============================================================================
+-- 008_shop_display_sales：商品页展示销量与批次剩余
+--
+-- 两个展示口径字段，与真实履约数据分开存：
+--   sold_baseline  站外历史销量基数（运营按真实渠道流水填写）
+--   batch_size     本批次放量；0 表示不启用批次限量
+-- 页面上的「已售 = sold_baseline + 本站已付款件数」，
+-- 「库存还剩 = batch_size − 本站已付款件数」，真实订单自动增减。
+-- 纯加法迁移：只加列，不改既有数据。
+-- ============================================================================
+ALTER TABLE shop_products ADD COLUMN IF NOT EXISTS sold_baseline INTEGER NOT NULL DEFAULT 0
+  CHECK (sold_baseline >= 0);
+ALTER TABLE shop_products ADD COLUMN IF NOT EXISTS batch_size INTEGER NOT NULL DEFAULT 0
+  CHECK (batch_size >= 0);
+-- 批次起点：剩余 = batch_size − 本批次开始后的已付款件数。
+ALTER TABLE shop_products ADD COLUMN IF NOT EXISTS batch_started_at TIMESTAMPTZ
+  NOT NULL DEFAULT now();
+-- 自动补货间隔（分钟）。0 = 不自动补货；卖完后隔这么久自动开新批次。
+ALTER TABLE shop_products ADD COLUMN IF NOT EXISTS batch_refill_minutes INTEGER NOT NULL DEFAULT 0
+  CHECK (batch_refill_minutes >= 0);
+
+-- 2026-11-16: ai-buy.vip 货源（tokyo 主题，与 zyanai 同构）。
+ALTER TABLE shop_suppliers DROP CONSTRAINT IF EXISTS shop_suppliers_kind_check;
+ALTER TABLE shop_suppliers ADD CONSTRAINT shop_suppliers_kind_check
+  CHECK (kind IN ('aibijia', 'manual', 'zyanai', 'aibuy'));
+
+INSERT INTO schema_migrations (version) VALUES ('008_shop_display_sales') ON CONFLICT (version) DO NOTHING;

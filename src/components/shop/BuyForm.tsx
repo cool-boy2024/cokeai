@@ -9,6 +9,7 @@ import { authHref } from "@/lib/redirects";
 import type { PublicShopProduct } from "@/lib/shop/catalog";
 import { formatCny } from "@/lib/money";
 import { isPurchasable, productPriceLabel, SHOP_COPY } from "@/lib/shop/copy";
+import { salesLabel } from "@/lib/shop/sales-display";
 
 const initial: ShopCheckoutState = {};
 
@@ -91,7 +92,11 @@ export function BuyForm({
   const [captchaVersion, setCaptchaVersion] = useState(0);
   const [captchaRefreshing, setCaptchaRefreshing] = useState(false);
   const captchaPending = useRef(false);
-  const available = isPurchasable(effectiveAvailability);
+  // 批次售罄的商品视为缺货，即使供应商那边还有货：批次是运营定的售卖上限，
+  // 卖完就停下等补货，页面和下单入口保持一致。
+  const soldOut = product.sales.soldOut;
+  const salesHint = salesLabel(product.sales);
+  const available = isPurchasable(effectiveAvailability) && !soldOut;
   const maxQty = Math.max(1, Math.trunc(qtyMax));
   const totalMicros = unitMicros * qty;
 
@@ -292,6 +297,9 @@ export function BuyForm({
             </span>
           </div>
           <MemberPriceNote listPriceMicros={listUnitMicros} />
+          {salesHint ? (
+            <p className={`shop-buy-sales${soldOut ? " is-sold-out" : ""}`}>{salesHint}</p>
+          ) : null}
           {variantSelector}
           {effectivePreorder ? (
             <div className="shop-preorder-reminder">

@@ -59,6 +59,8 @@ const SUPPLIER_BRAND_NAMES = [
   "AI小店",
   "RedeemGPT",
   "zyanai",
+  "ai-buy",
+  "aibuy",
   "wzyp",
   "aibuji",
   "aibijia",

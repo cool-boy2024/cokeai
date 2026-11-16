@@ -2852,6 +2852,49 @@ tbody tr:hover {
   color: var(--muted);
 }
 
+/* 销量与批次剩余：与库存状态同一行，蓝色弱化，避免抢价格视线。 */
+.shop-badge-sales {
+  border-color: transparent;
+  background: #edf3fb;
+  color: #2f5b93;
+}
+
+.shop-badge-sales.is-sold-out {
+  background: #f1efe9;
+  color: var(--muted);
+}
+
+.shop-product-sales {
+  display: block;
+  margin: -2px 0 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.shop-product-sales.is-sold-out {
+  color: var(--yellow);
+}
+
+/* 分享按钮复用徽章样式，但它是个可点击按钮。 */
+.shop-badge-share {
+  border-color: transparent;
+  background: #eef6f2;
+  color: #2f6f52;
+  font: inherit;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.shop-badge-share:hover {
+  background: #e2f0e9;
+}
+
+.shop-badge-share:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
 .shop-empty-state {
   padding: 64px 24px;
   border: 1px dashed var(--line);

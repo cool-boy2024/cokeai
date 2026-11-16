@@ -13,17 +13,39 @@ import { buildRichDescriptionHtml } from "@/lib/shop/rich-description";
 import { sanitizeSupplierCopy } from "@/lib/shop/sanitize";
 
 /**
- * zyanai.cc mirror.
+ * Tokyo-theme supplier mirrors (zyanai.cc, ai-buy.vip).
  *
- * The supplier exposes a public JSON list and a public item page. We copy the
- * offer (title, price, stock) and the factual product description. Product
- * images are mirrored into our own storage (shop_images) and served from our
- * own domain, so the shop never hotlinks the supplier. Contact handles and
- * wholesale tiers are still stripped. Purchases stay manual: an operator buys
- * the matching item on zyanai after our order is paid.
+ * Both shops run the same storefront software: a public JSON list at
+ * /user/api/index/commodity and a public item page carrying
+ * setVar("_var_item", {...}). We copy the offer (title, price, stock) and the
+ * factual product description. Product images are mirrored into our own
+ * storage (shop_images) and served from our own domain, so the shop never
+ * hotlinks a supplier. Contact handles and wholesale tiers are still stripped.
+ * Purchases stay manual: an operator buys the matching item upstream after our
+ * order is paid.
  */
 
-const BASE = "https://zyanai.cc";
+export type TokyoSource = {
+  /** shop_suppliers.kind and shop_offers external_key namespace. */
+  kind: "zyanai" | "aibuy";
+  base: string;
+  /** Neutral public slug prefix; must never identify the supplier. */
+  slugPrefix: string;
+};
+
+export const ZYANAI_SOURCE: TokyoSource = {
+  kind: "zyanai",
+  base: "https://zyanai.cc",
+  slugPrefix: "p-",
+};
+
+export const AIBUY_SOURCE: TokyoSource = {
+  kind: "aibuy",
+  base: "https://ai-buy.vip",
+  slugPrefix: "q-",
+};
+
+const BASE = ZYANAI_SOURCE.base;
 const LIST_URL = `${BASE}/user/api/index/commodity?limit=100&page=1`;
 const USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36";
@@ -145,11 +167,11 @@ function absoluteHttpUrl(raw: string, base: string): string | null {
   }
 }
 
-function extractImageUrls(descriptionHtml: string): string[] {
+function extractImageUrls(descriptionHtml: string, base: string = BASE): string[] {
   const urls: string[] = [];
   const seen = new Set<string>();
   for (const match of descriptionHtml.matchAll(IMG_SRC_PATTERN)) {
-    const resolved = absoluteHttpUrl(match[1] ?? "", BASE);
+    const resolved = absoluteHttpUrl(match[1] ?? "", base);
     if (!resolved || seen.has(resolved)) continue;
     seen.add(resolved);
     urls.push(resolved);
@@ -170,7 +192,10 @@ function extractHelpArticleIds(html: string): string[] {
   return ids;
 }
 
-export function parseItemPage(html: string): {
+export function parseItemPage(
+  html: string,
+  base: string = BASE,
+): {
   item: ZyanaiItem | null;
   descriptionHtml: string;
   imageUrls: string[];
@@ -194,7 +219,7 @@ export function parseItemPage(html: string): {
   return {
     item,
     descriptionHtml,
-    imageUrls: extractImageUrls(descriptionHtml),
+    imageUrls: extractImageUrls(descriptionHtml, base),
     helpArticleIds: extractHelpArticleIds(html),
     reservationActive: hasActiveReservationNotice(html),
   };
@@ -211,8 +236,11 @@ export function availabilityOf(stock: unknown): "in_stock" | "low_stock" | "out_
 }
 
 /** Strip claims we cannot stand behind and supplier-only sales talk. */
-export function scrubZyanaiCopy(input: string): string {
-  let text = sanitizeSupplierCopy(input, { store: "zyanai", url: BASE });
+export function scrubZyanaiCopy(
+  input: string,
+  source: TokyoSource = ZYANAI_SOURCE,
+): string {
+  let text = sanitizeSupplierCopy(input, { store: source.kind, url: source.base });
   text = text
     .replace(/100\s*%\s*(?:可用|有效|成功|稳定|靠谱)/gi, "可用")
     .replace(/百分百\s*(?:可用|有效|成功)/gi, "可用")
@@ -279,6 +307,17 @@ function cleanTitle(raw: string): string {
   return title.slice(0, 120);
 }
 
+function detectBrandFromCategory(name: string | undefined): ZyanaiProduct["brand"] | null {
+  const text = (name || "").trim();
+  if (!text) return null;
+  if (/claude|anthropic/i.test(text)) return "claude";
+  if (/grok/i.test(text)) return "grok";
+  if (/gemini|google|谷歌/i.test(text)) return "gemini";
+  if (/chatgpt|gpt|openai/i.test(text)) return "chatgpt";
+  if (/muse/i.test(text)) return "muse";
+  return null;
+}
+
 function detectBrand(title: string): ZyanaiProduct["brand"] {
   if (/muse/i.test(title)) return "muse";
   if (/claude|anthropic/i.test(title) && !/gemini|gpt/i.test(title)) return "claude";
@@ -343,14 +382,19 @@ function detectWarranty(text: string): Pick<ZyanaiProduct, "warrantyType" | "war
  * Public slugs must never identify the supplier. `p-` is a neutral product
  * number; the supplier item id stays in shop_offers.
  */
-function slugFor(id: number, brand: string, title: string): string {
+function slugFor(
+  id: number,
+  brand: string,
+  title: string,
+  prefix = ZYANAI_SOURCE.slugPrefix,
+): string {
   const ascii = title
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 40)
     .replace(/-+$/g, "");
-  return `p-${id}${brand !== "other" ? `-${brand}` : ""}${ascii ? `-${ascii}` : ""}`.slice(0, 80);
+  return `${prefix}${id}${brand !== "other" ? `-${brand}` : ""}${ascii ? `-${ascii}` : ""}`.slice(0, 80);
 }
 
 function imageAlt(url: string): string {
@@ -373,11 +417,13 @@ export function toProduct(
     helpArticleIds?: string[];
     /** Overrides the JSON-derived decision with the rendered page state. */
     preorder?: boolean;
+    source?: TokyoSource;
   },
 ): ZyanaiProduct {
+  const source = extras?.source ?? ZYANAI_SOURCE;
   const title = cleanTitle(item.name || "");
   const preorder = extras?.preorder ?? isPreorderStock(item);
-  const rawDescription = scrubZyanaiCopy(extractReadableText(descriptionHtml));
+  const rawDescription = scrubZyanaiCopy(extractReadableText(descriptionHtml), source);
   // Some listings ship almost no copy; a short but useful note beats an empty
   // section on the product page.
   const description = (
@@ -390,13 +436,14 @@ export function toProduct(
     .map((tag) => tag.trim())
     .filter((tag) => tag && !/(?:批发|代理|分销|合伙人|会员价|拿货|进价|成本|内部价|邀请)/.test(tag));
   const text = [title, tags.join(","), description].join("\n");
-  const brand = detectBrand(title);
+  // 标题不一定带品牌词（"Plus 12个月卡密"），上游分类通常更准，先看分类再看标题。
+  const brand = detectBrandFromCategory(item.category?.name) || detectBrand(title);
   const category = detectCategory(title);
   const imageUrls = (extras?.imageUrls ?? [])
     .slice(0, MAX_DESCRIPTION_IMAGES)
     .map((url) => ({ url, alt: imageAlt(url) }));
   return {
-    externalId: `zyanai:${item.id}`,
+    externalId: `${source.kind}:${item.id}`,
     title,
     costMicros: Math.max(0, Math.round(Number(item.price || "0") * 1_000_000)),
     // A preorder is still purchasable: the supplier accepts the order and
@@ -405,53 +452,60 @@ export function toProduct(
     // replaces every "现货 / N 分钟发货" label on the storefront.
     availability: preorder ? "low_stock" : availabilityOf(item.stock),
     preorder,
-    url: `${BASE}/item/${item.id}`,
+    url: `${source.base}/item/${item.id}`,
     description,
     descriptionHtml: descriptionHtml.slice(0, 80_000),
     tags,
     brand,
     category,
-    slug: slugFor(item.id, brand, title),
+    slug: slugFor(item.id, brand, title, source.slugPrefix),
     displayCategory: displayCategoryOf(item),
-    coverUrl: item.cover ? absoluteHttpUrl(item.cover, BASE) : null,
+    coverUrl: item.cover ? absoluteHttpUrl(item.cover, source.base) : null,
     imageUrls,
     helpArticleIds: extras?.helpArticleIds ?? [],
     ...detectWarranty(text),
   };
 }
 
-async function ensureSupplier(): Promise<string> {
+function listUrlOf(source: TokyoSource): string {
+  return `${source.base}/user/api/index/commodity?limit=100&page=1`;
+}
+
+async function ensureSupplier(source: TokyoSource): Promise<string> {
   const existing = await query<{ id: string }>(
-    "SELECT id FROM shop_suppliers WHERE kind = 'zyanai' ORDER BY created_at LIMIT 1",
+    "SELECT id FROM shop_suppliers WHERE kind = $1 ORDER BY created_at LIMIT 1",
+    [source.kind],
   );
   if (existing.rows[0]) return existing.rows[0].id;
   const inserted = await query<{ id: string }>(
     `INSERT INTO shop_suppliers (name, kind, feed_url, meta_url)
-     VALUES ('zyanai', 'zyanai', $1, $2) RETURNING id`,
-    [LIST_URL, BASE],
+     VALUES ($1, $1, $2, $3) RETURNING id`,
+    [source.kind, listUrlOf(source), source.base],
   );
   return inserted.rows[0].id;
 }
 
-async function loadCatalog(): Promise<ZyanaiItem[]> {
-  const raw = await fetchText(LIST_URL);
+async function loadCatalog(source: TokyoSource): Promise<ZyanaiItem[]> {
+  const raw = await fetchText(listUrlOf(source));
   const parsed = JSON.parse(raw) as { code?: number; data?: ZyanaiItem[] };
   if (parsed.code !== 200 || !Array.isArray(parsed.data)) {
-    throw new Error("zyanai 商品列表格式不正确");
+    throw new Error(`${source.kind} 商品列表格式不正确`);
   }
   return parsed.data.filter((item) => item.status === 1 && item.hide !== 1);
 }
 
-export async function syncZyanaiProducts(options?: {
-  limit?: number;
-  dryRun?: boolean;
-}): Promise<ZyanaiSyncResult> {
-  const supplierId = await ensureSupplier();
-  const catalog = await loadCatalog();
-  const selected = options?.limit ? catalog.slice(0, options.limit) : catalog;
+export async function syncTokyoProducts(
+  source: TokyoSource,
+  options?: TokyoSyncOptions,
+): Promise<ZyanaiSyncResult> {
+  const supplierId = await ensureSupplier(source);
+  const catalog = await loadCatalog(source);
+  const wanted = options?.ids && options.ids.length > 0 ? new Set(options.ids) : null;
+  const filtered = wanted ? catalog.filter((item) => wanted.has(Number(item.id))) : catalog;
+  const selected = options?.limit ? filtered.slice(0, options.limit) : filtered;
   const result: ZyanaiSyncResult = {
     supplierId,
-    itemsSeen: catalog.length,
+    itemsSeen: filtered.length,
     imported: 0,
     skipped: [],
   };
@@ -465,8 +519,8 @@ export async function syncZyanaiProducts(options?: {
   try {
     for (const item of selected) {
       try {
-        const page = await fetchText(`${BASE}/item/${item.id}`);
-        const parsed = parseItemPage(page);
+        const page = await fetchText(`${source.base}/item/${item.id}`);
+        const parsed = parseItemPage(page, source.base);
         const merged: ZyanaiItem = { ...item, ...(parsed.item || {}), id: item.id };
         if (merged.status !== 1 || merged.hide === 1) {
           result.skipped.push({ id: item.id, reason: "下架" });
@@ -478,16 +532,22 @@ export async function syncZyanaiProducts(options?: {
           // The rendered banner is the supplier's own UI truth; the JSON
           // fields cover pages whose theme no longer emits the class.
           preorder: parsed.reservationActive || isPreorderStock(merged),
+          source,
         });
         if (!product.title || product.costMicros <= 0) {
           result.skipped.push({ id: item.id, reason: "标题或价格为空" });
+          continue;
+        }
+        // 教程类条目不是可售商品（上游常挂占位价），不导入。
+        if (/教程/.test(product.title)) {
+          result.skipped.push({ id: item.id, reason: "教程类条目" });
           continue;
         }
         if (options?.dryRun) {
           result.imported += 1;
           continue;
         }
-        await persistProduct(supplierId, product);
+        await persistProduct(supplierId, product, source);
         result.imported += 1;
       } catch (error) {
         result.skipped.push({
@@ -526,14 +586,35 @@ export async function syncZyanaiProducts(options?: {
   }
 }
 
-async function persistProduct(supplierId: string, product: ZyanaiProduct): Promise<void> {
+type TokyoSyncOptions = {
+  limit?: number;
+  dryRun?: boolean;
+  /** 只同步指定的上游商品 ID；不填则同步整个目录。 */
+  ids?: number[];
+};
+
+/** zyanai 入口，保持既有调用方（脚本、内部路由、测试）不变。 */
+export function syncZyanaiProducts(options?: TokyoSyncOptions): Promise<ZyanaiSyncResult> {
+  return syncTokyoProducts(ZYANAI_SOURCE, options);
+}
+
+/** ai-buy.vip 入口。 */
+export function syncAibuyProducts(options?: TokyoSyncOptions): Promise<ZyanaiSyncResult> {
+  return syncTokyoProducts(AIBUY_SOURCE, options);
+}
+
+async function persistProduct(
+  supplierId: string,
+  product: ZyanaiProduct,
+  source: TokyoSource,
+): Promise<void> {
   const retail = autoRetailPrice(product.costMicros, await getShopTargetMarginBps());
   const productId = await withTransaction(async (client) => {
     const offer = await client.query<{ id: string; price_micros: string }>(
       `INSERT INTO shop_offers
          (supplier_id, external_key, supplier_product_slug, source_store, source_title,
           price_micros, availability, url, raw)
-       VALUES ($1, $2, $3, 'zyanai', $4, $5, $6, $7, $8::jsonb)
+       VALUES ($1, $2, $3, $9, $4, $5, $6, $7, $8::jsonb)
        ON CONFLICT (supplier_id, external_key) DO UPDATE
          SET source_title = EXCLUDED.source_title, price_micros = EXCLUDED.price_micros,
              availability = EXCLUDED.availability, url = EXCLUDED.url, raw = EXCLUDED.raw,
@@ -548,6 +629,7 @@ async function persistProduct(supplierId: string, product: ZyanaiProduct): Promi
         product.availability,
         product.url,
         JSON.stringify({ tags: product.tags }),
+        source.kind,
       ],
     );
     const offerId = offer.rows[0].id;
@@ -641,8 +723,8 @@ async function persistProduct(supplierId: string, product: ZyanaiProduct): Promi
   try {
     const richHtml = buildRichDescriptionHtml(product.descriptionHtml, {
       imageMap,
-      base: BASE,
-      identities: [{ store: "zyanai", url: BASE }],
+      base: source.base,
+      identities: [{ store: source.kind, url: source.base }],
     });
     if (richHtml) {
       await query("UPDATE shop_products SET description_html = $2 WHERE id = $1", [
@@ -654,7 +736,7 @@ async function persistProduct(supplierId: string, product: ZyanaiProduct): Promi
     // The plain-text description remains the fallback; never fail the sync
     // because a formatting pass rejected one page.
     console.warn(
-      `[shop/zyanai] 商品 ${product.externalId} 富文本排版失败: ${
+      `[shop/${source.kind}] 商品 ${product.externalId} 富文本排版失败: ${
         error instanceof Error ? error.message : String(error)
       }`,
     );
