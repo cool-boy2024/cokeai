@@ -71,9 +71,27 @@ export default async function DashboardSupportTicketPage({
                 {message.author === "admin" ? "运营" : "我"} ·{" "}
                 {formatDateTime(message.createdAt)}
               </div>
-              <div className="small" style={{ whiteSpace: "pre-wrap" }}>
-                {message.body}
-              </div>
+              {message.body ? (
+                <div className="small" style={{ whiteSpace: "pre-wrap" }}>
+                  {message.body}
+                </div>
+              ) : null}
+              {message.imageHashes?.length ? (
+                <div className="support-images">
+                  {message.imageHashes.map((hash) => (
+                    <a
+                      key={hash}
+                      href={`/api/support/images/${hash}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {/* 工单图片走鉴权路由，不用 next/image 优化（那是公开资源用的） */}
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={`/api/support/images/${hash}`} alt="工单图片" loading="lazy" />
+                    </a>
+                  ))}
+                </div>
+              ) : null}
             </div>
           ))}
         </div>
@@ -86,7 +104,7 @@ export default async function DashboardSupportTicketPage({
           </div>
         </div>
         <div className="panel-body">
-          <form action={replySupportTicketAction} className="form-stack">
+          <form action={replySupportTicketAction} className="form-stack" encType="multipart/form-data">
             <input type="hidden" name="ticketId" value={ticket.id} />
             <div className="field">
               <textarea
@@ -94,9 +112,20 @@ export default async function DashboardSupportTicketPage({
                 name="message"
                 rows={3}
                 maxLength={4000}
-                required
-                placeholder="补充说明…"
+                placeholder="补充说明…（只发图片可以不写字）"
               />
+            </div>
+            <div className="field">
+              <label className="support-upload">
+                <span>上传图片（收款码、报错截图）</span>
+                <input
+                  type="file"
+                  name="images"
+                  accept="image/png,image/jpeg,image/webp"
+                  multiple
+                />
+                <small>PNG / JPG / WebP，单张不超过 5MB，最多 3 张</small>
+              </label>
             </div>
             <div className="form-actions">
               <button className="btn btn-dark btn-sm" type="submit">
