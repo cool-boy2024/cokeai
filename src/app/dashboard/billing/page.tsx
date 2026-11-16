@@ -89,7 +89,7 @@ export default async function BillingPage({
       <div className="page-head">
         <div>
           <h1>充值</h1>
-          <p>自定义金额，充多少到多少，余额不过期。</p>
+          <p>自定义金额，充多少到多少。</p>
         </div>
         <div className="page-head-actions">
           <span className="badge badge-dark">余额 {formatCny(balanceResult.balance * 1_000_000)}</span>

@@ -15,7 +15,7 @@ export function SiteFooter() {
             <Logo />
             <p>
               {PUBLIC_API_SALES_ENABLED
-                ? "兼容 OpenAI SDK 的 AI API 接入服务。按量计费，余额不过期。"
+                ? "CokeAI 数字商品小店，提供账号、接码与订阅相关商品。"
                 : "CokeAI 数字商品小店。人工审核后发货，订单进度可查。"}
             </p>
           </div>

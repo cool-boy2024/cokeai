@@ -87,8 +87,8 @@ async function systemPrompt(userContext?: string): Promise<string> {
 
   const apiLines = PUBLIC_API_SALES_ENABLED
     ? [
-        `API：兼容 OpenAI Chat Completions，Base URL 为 ${config.appUrl}/v1，接入文档在 ${config.appUrl}/docs。`,
-        "计费：人民币按量计费，1 元 = 1 额度，余额不过期。",
+        "商品：AI 账号、接码、订阅类数字商品，人工审核后发货。",
+        "订单：下单后进度可在订单页查看，交付内容也在订单页领取。",
         priceLines ? `当前可售模型与价格：${priceLines}。` : "当前没有可售模型。",
       ]
     : [];

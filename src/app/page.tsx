@@ -34,37 +34,6 @@ type LandingPlan = {
   highlight: boolean;
 };
 
-const API_FAQ = [
-  {
-    question: "CokeAI 的接口和 OpenAI 有什么不同？",
-    answer:
-      "接口兼容 OpenAI Chat Completions。替换 Base URL 和 API Key 就能用，按人民币余额计费。",
-  },
-  {
-    question: "怎么计费？",
-    answer:
-      "按每次请求的实际 Token 用量结算，输入和输出分别计价。价格与每笔用量在控制台可查。",
-  },
-  {
-    question: "怎么充值？",
-    answer:
-      "在控制台选择 USDT 转账，链上确认后额度自动到账。可选网络以充值页面实际开通为准。",
-  },
-  {
-    question: "支持哪些模型？",
-    answer: "控制台模型列表和价格页会列出当前可用的模型与价格。",
-  },
-  {
-    question: "API Key 安全吗？",
-    answer:
-      "Key 只在创建时完整显示一次，可以随时在控制台撤销。不要写进前端代码或公开仓库。",
-  },
-  {
-    question: "余额会过期吗？",
-    answer: "不会。充值额度按实际用量扣费，剩余余额一直有效。",
-  },
-];
-
 const SHOP_FAQ = [
   {
     question: "怎么购买？",
@@ -87,7 +56,7 @@ const SHOP_FAQ = [
   },
 ];
 
-const FAQ = PUBLIC_API_SALES_ENABLED ? [...API_FAQ.slice(0, 4), ...SHOP_FAQ] : SHOP_FAQ;
+const FAQ = SHOP_FAQ;
 
 const FAQ_SCHEMA = {
   "@context": "https://schema.org",
@@ -259,7 +228,7 @@ export default async function HomePage() {
                       不买用不完的套餐。
                     </h2>
                     <p>
-                      每次调用按 Token 结算，余额不过期。用量、费用和 Key
+                      每次调用按 Token 结算。用量、费用和 Key
                       限额在控制台一次看清。
                     </p>
                   </div>
@@ -428,7 +397,7 @@ export default async function HomePage() {
                   <div className="kicker">Credits</div>
                   <h2>充值包</h2>
                 </div>
-                <p>人民币充值，1 元 = 1 额度，余额不过期。</p>
+                <p>人民币充值，1 元 = 1 额度。</p>
               </div>
               <div className="plan-grid plan-editorial">
                 {orderedPlans.map((plan) => (
@@ -514,7 +483,7 @@ export default async function HomePage() {
                   </h2>
                   <p>
                     {PUBLIC_API_SALES_ENABLED
-                      ? "余额不过期 · USDT 充值 · 用量可查"
+                      ? "USDT 充值 · 用量可查"
                       : "人工审核后发货 · 订单进度可查 · 质保按商品标注"}
                   </p>
                 </div>

@@ -9,7 +9,7 @@ import { PUBLIC_API_SALES_ENABLED } from "@/lib/public-features";
 
 export const metadata: Metadata = {
   title: "接入教程",
-  description: "CokeAI OpenAI 兼容 API：鉴权、聊天补全、流式输出与错误码。",
+  description: "CokeAI 数字商品小店使用说明。",
 };
 
 export const dynamic = "force-dynamic";
@@ -49,7 +49,7 @@ export default async function DocsPage() {
 
         <article className="doc-content">
           <h1>接入教程</h1>
-          <p>兼容 OpenAI Chat Completions。替换 Base URL 和 API Key 即可使用。</p>
+          <p>这里是小店的使用说明。</p>
 
           <h2 id="quickstart">快速开始</h2>
           <p>

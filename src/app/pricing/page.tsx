@@ -12,7 +12,7 @@ import { PUBLIC_API_SALES_ENABLED } from "@/lib/public-features";
 
 export const metadata: Metadata = {
   title: "价格",
-  description: "CokeAI 模型价格与充值包。人民币按量计费，余额不过期。",
+  description: "CokeAI 数字商品小店，提供账号、接码与订阅相关商品。",
 };
 
 export const dynamic = "force-dynamic";
@@ -59,7 +59,7 @@ export default async function PricingPage() {
             <div>
               <div className="kicker">Pricing</div>
               <h1>按量付费，<br />不为闲置买单。</h1>
-              <p>按实际 Token 用量结算，输入与输出分别计价，余额不过期。</p>
+              <p>按实际用量结算，输入与输出分别计价。</p>
             </div>
             <Link className="btn btn-primary" href="/register">
               创建账号 <ArrowRight size={16} />
@@ -130,7 +130,7 @@ export default async function PricingPage() {
                   <div className="kicker">Credits</div>
                   <h2>充值包</h2>
                 </div>
-                <p>1 元 = 1 额度，余额不过期。</p>
+                <p>1 元 = 1 额度。</p>
               </div>
               <div className="plan-grid plan-editorial">
                 {orderedPlans.map((plan) => (

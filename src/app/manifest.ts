@@ -4,7 +4,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "CokeAI · 可预算的 AI API",
     short_name: "CokeAI",
-    description: "OpenAI 兼容的 AI API 接入、预算与用量管理平台。",
+    description: "CokeAI 数字商品小店，提供账号、接码与订阅相关商品。",
     start_url: "/dashboard",
     display: "standalone",
     background_color: "#f7f6f3",
