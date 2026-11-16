@@ -53,6 +53,238 @@ function stripeSignature(payload, secret) {
   return `t=${timestamp},v1=${signature}`;
 }
 
+/** The app stores sha256(token) and compares that; see src/lib/auth.ts. */
+async function makeSession(userId) {
+  const token = crypto.randomBytes(32).toString("base64url");
+  await pool.query(
+    "INSERT INTO sessions (token_hash, user_id, expires_at) VALUES ($1, $2, now() + interval '1 hour')",
+    [sha256(token), userId],
+  );
+  return `cokeai_session=${token}`;
+}
+
+async function htmlFetch(path, cookie) {
+  const response = await fetch(`${appUrl}${path}`, {
+    headers: cookie ? { cookie } : {},
+    redirect: "manual",
+  });
+  return { response, text: await response.text() };
+}
+
+/** Every occurrence of a marker's following number, e.g. 份 badge digits. */
+function countMarker(text, marker) {
+  return text.split(marker).length - 1;
+}
+
+async function cleanupByEmail(email) {
+  await pool.query(
+    "DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE email = $1)",
+    [email],
+  );
+  await pool.query("DELETE FROM users WHERE email = $1", [email]);
+}
+
+/**
+ * Sidebar badge = customer messages not yet opened, open tickets only. A closed
+ * ticket contributes nothing; opening the detail page clears the ticket.
+ */
+async function testSupportUnreadBadge() {
+  const email = `support-${suffix}@example.test`;
+  const user = await pool.query(
+    `INSERT INTO users (email, password_hash, name, role, referral_code)
+     VALUES ($1, 'unused', 'E2E Support User', 'admin', $2)
+     RETURNING id`,
+    [email, `SUP${suffix.toUpperCase()}`.slice(0, 20)],
+  );
+  const userId = user.rows[0].id;
+  const cookie = await makeSession(userId);
+
+  try {
+    const openTicket = await pool.query(
+      "INSERT INTO support_tickets (user_id, subject, status) VALUES ($1, 'open one', 'open') RETURNING id",
+      [userId],
+    );
+    const openId = openTicket.rows[0].id;
+    await pool.query(
+      `INSERT INTO support_ticket_messages (ticket_id, author, body)
+       VALUES ($1, 'customer', 'hello'), ($1, 'customer', 'anyone?')`,
+      [openId],
+    );
+    const closedTicket = await pool.query(
+      "INSERT INTO support_tickets (user_id, subject, status) VALUES ($1, 'closed one', 'closed') RETURNING id",
+      [userId],
+    );
+    await pool.query(
+      "INSERT INTO support_ticket_messages (ticket_id, author, body) VALUES ($1, 'customer', 'done')",
+      [closedTicket.rows[0].id],
+    );
+
+    const before = await jsonFetch("/api/admin/support/unread", {
+      headers: { cookie },
+    });
+    assert(before.response.status === 200, "unread endpoint responds for admin");
+    assert(
+      before.body.count === 2,
+      `unread counts only the open ticket (expected 2, got ${before.body.count})`,
+    );
+
+    const unauthorized = await jsonFetch("/api/admin/support/unread");
+    assert(
+      unauthorized.response.status === 404,
+      "unread endpoint hides itself from anonymous callers",
+    );
+
+    const detail = await htmlFetch(`/admin/support/${openId}`, cookie);
+    assert(detail.response.status === 200, "ticket detail renders for admin");
+
+    const after = await jsonFetch("/api/admin/support/unread", {
+      headers: { cookie },
+    });
+    assert(after.body.count === 0, `reading clears the badge (got ${after.body.count})`);
+
+    const closedAgain = await pool.query(
+      "SELECT status FROM support_tickets WHERE id = $1",
+      [openId],
+    );
+    assert(closedAgain.rows[0].status === "open", "reading does not close the ticket");
+
+    await pool.query(
+      "INSERT INTO support_ticket_messages (ticket_id, author, body) VALUES ($1, 'customer', 'still here')",
+      [openId],
+    );
+    const replied = await jsonFetch("/api/admin/support/unread", {
+      headers: { cookie },
+    });
+    assert(replied.body.count === 1, "a new customer reply increments the badge");
+
+    await pool.query(
+      "UPDATE support_tickets SET status = 'closed' WHERE id = $1",
+      [openId],
+    );
+    const closed = await jsonFetch("/api/admin/support/unread", {
+      headers: { cookie },
+    });
+    assert(closed.body.count === 0, "closing a ticket drops its unread messages");
+  } finally {
+    await cleanupByEmail(email);
+  }
+}
+
+function insertOrder(userId, orderNo, status) {
+  return pool.query(
+    `INSERT INTO shop_orders
+       (order_no, user_id, status, subtotal_micros, amount_micros,
+        payment_provider, expires_at, created_at)
+     VALUES ($1, $2, $3, 1000000, 1000000, 'manual', now() + interval '1 hour', now())
+     RETURNING id`,
+    [orderNo, userId, status],
+  );
+}
+
+/** Admin list: exact order-number match composes with the status tab and paging. */
+async function testAdminOrderSearchAndPaging() {
+  const email = `orders-${suffix}@example.test`;
+  const user = await pool.query(
+    `INSERT INTO users (email, password_hash, name, role, referral_code)
+     VALUES ($1, 'unused', 'E2E Orders User', 'admin', $2)
+     RETURNING id`,
+    [email, `ORD${suffix.toUpperCase()}`.slice(0, 20)],
+  );
+  const userId = user.rows[0].id;
+  const cookie = await makeSession(userId);
+  const unique = suffix.toUpperCase();
+  const paidNo = `CK${unique}PAID`.slice(0, 30);
+  const pendingNo = `CK${unique}PEND`.slice(0, 30);
+
+  try {
+    const paid = await insertOrder(userId, paidNo, "paid");
+    const pending = await insertOrder(userId, pendingNo, "pending_payment");
+    await pool.query(
+      `INSERT INTO shop_order_items (order_id, product_id, product_slug, product_name, brand, unit_price_micros, qty)
+       VALUES ($1, NULL, 'e2e-paid', 'E2E Paid', 'other', 1000000, 1),
+              ($2, NULL, 'e2e-pending', 'E2E Pending', 'other', 1000000, 1)`,
+      [paid.rows[0].id, pending.rows[0].id],
+    );
+
+    const byOrderNo = await htmlFetch(
+      `/admin/shop/orders?q=${encodeURIComponent(paidNo.toLowerCase())}`,
+      cookie,
+    );
+    assert(byOrderNo.response.status === 200, "order list renders with a search");
+    assert(byOrderNo.text.includes(paidNo), "exact order number finds its order");
+    assert(
+      !byOrderNo.text.includes(pendingNo),
+      "exact match does not leak other order numbers",
+    );
+
+    const wrongStatus = await htmlFetch(
+      `/admin/shop/orders?status=delivered&q=${encodeURIComponent(paidNo)}`,
+      cookie,
+    );
+    assert(
+      !wrongStatus.text.includes(paidNo),
+      "order-number search composes with the status filter",
+    );
+
+    const partial = await htmlFetch(
+      `/admin/shop/orders?q=${encodeURIComponent(`CK${unique}`)}`,
+      cookie,
+    );
+    assert(
+      !partial.text.includes(paidNo) && !partial.text.includes(pendingNo),
+      "a partial order number finds nothing (exact match only)",
+    );
+
+    const paged = await htmlFetch("/admin/shop/orders?page=2", cookie);
+    assert(paged.response.status === 200, "page 2 renders");
+    assert(paged.text.includes("第 2 /"), "pager reports the current page");
+
+    const beyond = await htmlFetch("/admin/shop/orders?page=999", cookie);
+    assert(beyond.response.status === 200, "an out-of-range page does not fail");
+    assert(!beyond.text.includes("第 999 /"), "out-of-range pages clamp to the last page");
+  } finally {
+    await cleanupByEmail(email);
+  }
+}
+
+/** Public catalog: paging slices the cards, the toolbar total stays the filter total. */
+async function testShopCatalogPaging() {
+  const prefix = `e2e-page-${suffix}`;
+  try {
+    for (let index = 0; index < 14; index += 1) {
+      await pool.query(
+        `INSERT INTO shop_products
+           (slug, brand, name, subtitle, price_micros, status, availability,
+            copy_ready, display_category, sort_order)
+         VALUES ($1, 'other', $2, '分页测试商品', 1000000, 'active', 'in_stock',
+                 TRUE, '其他', $3)`,
+        [`${prefix}-${index}`, `E2E 分页商品 ${index}`, 9000 + index],
+      );
+    }
+
+    const page1 = await htmlFetch("/shop?category=other");
+    const page2 = await htmlFetch("/shop?category=other&page=2");
+    assert(page1.response.status === 200, "shop page renders");
+    assert(page2.response.status === 200, "shop page 2 renders");
+    assert(
+      countMarker(page1.text, prefix) === 12,
+      `page 1 shows 12 cards (got ${countMarker(page1.text, prefix)})`,
+    );
+    assert(
+      countMarker(page2.text, prefix) === 2,
+      `page 2 shows the remaining 2 cards (got ${countMarker(page2.text, prefix)})`,
+    );
+
+    const totalMatch = page1.text.match(/件商品/g);
+    assert((totalMatch || []).length > 0, "toolbar total is rendered");
+
+    await pool.query("DELETE FROM shop_products WHERE slug LIKE $1", [`${prefix}-%`]);
+  } catch (error) {
+    await pool.query("DELETE FROM shop_products WHERE slug LIKE $1", [`${prefix}-%`]);
+    throw error;
+  }
+}
+
 const suffix = Date.now().toString(36);
 const referrerEmail = `referrer-${suffix}@example.test`;
 const buyerEmail = `buyer-${suffix}@example.test`;
@@ -280,12 +512,19 @@ try {
   });
   assert(insufficient.response.status === 402, "insufficient balance rejected");
 
+  await testSupportUnreadBadge();
+  await testAdminOrderSearchAndPaging();
+  await testShopCatalogPaging();
+
   console.log("E2E smoke tests passed:");
   console.log("- health, auth, model list");
   console.log("- non-stream and stream billing");
   console.log("- Stripe webhook fulfillment and idempotency");
   console.log("- referral commission");
   console.log("- internal secret and hard budget");
+  console.log("- support unread badge (open only, clears on read)");
+  console.log("- admin order exact search and paging");
+  console.log("- shop catalog paging keeps the filtered total");
 } catch (error) {
   console.error(error);
   process.exitCode = 1;

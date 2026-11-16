@@ -8,6 +8,7 @@ import {
   Question,
   X,
 } from "@phosphor-icons/react/dist/ssr";
+import { Pagination } from "@/components/Pagination";
 import { SiteFooter } from "@/components/SiteFooter";
 import { SiteHeader } from "@/components/SiteHeader";
 import { ProductCard } from "@/components/shop/ProductCard";
@@ -42,10 +43,18 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic";
 
-function shopHref(category: ShopCategorySlug, query = ""): string {
+/** 每页商品数。想调整分页大小只改这一处。 */
+const PAGE_SIZE = 12;
+
+/**
+ * Links always start from page 1 unless a page is given, so switching category
+ * or search resets paging. `page` is dropped at 1 to keep URLs clean.
+ */
+function shopHref(category: ShopCategorySlug, query = "", page = 1): string {
   const params = new URLSearchParams();
   if (category !== "all") params.set("category", category);
   if (query) params.set("q", query);
+  if (page > 1) params.set("page", String(page));
   const suffix = params.toString();
   return suffix ? `/shop?${suffix}` : "/shop";
 }
@@ -85,6 +94,7 @@ export default async function ShopPage({
     ? params.category
     : "all";
   const query = (params.q || "").trim().slice(0, 60);
+  const requestedPage = Number.parseInt(params.page || "1", 10);
 
   const [catalog, user, trending] = await Promise.all([
     listPublicProducts(),
@@ -108,6 +118,14 @@ export default async function ShopPage({
   categoryCounts.set("all", searchPool.length);
 
   const products = filterProductsByCategory(searchPool, category);
+  // Paging applies to the right-hand card list only. The sidebar counts and the
+  // toolbar total stay on the filtered set, not the current page.
+  const totalPages = Math.max(1, Math.ceil(products.length / PAGE_SIZE));
+  const page = Math.min(
+    Math.max(Number.isFinite(requestedPage) ? requestedPage : 1, 1),
+    totalPages,
+  );
+  const pagedProducts = products.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   const productById = new Map(allProducts.map((product) => [product.id, product]));
 
   // Hot strip: only real paid-order data, only on the unfiltered catalog.
@@ -136,6 +154,8 @@ export default async function ShopPage({
           .filter((product) => !visibleIds.has(product.id))
           .slice(0, 3)
       : [];
+  // Sub-pages are rarely a curation signal; keep "also worth a look" on page 1.
+  const showRecommended = recommended.length > 0 && page === 1;
 
   const categoryLabel = SHOP_CATEGORY_LABELS[category];
 
@@ -165,6 +185,7 @@ export default async function ShopPage({
                 {category !== "all" ? (
                   <input type="hidden" name="category" value={category} />
                 ) : null}
+                {/* 新搜索从第 1 页开始：不携带 page 参数。 */}
                 <div className="shop-search-field">
                   <MagnifyingGlass size={18} />
                   <input
@@ -177,7 +198,7 @@ export default async function ShopPage({
                   />
                   {query ? (
                     <Link
-                      href={shopHref(category)}
+                      href={shopHref(category, "", 1)}
                       className="shop-search-clear"
                       aria-label="清除搜索"
                     >
@@ -200,7 +221,7 @@ export default async function ShopPage({
                 return (
                   <Link
                     key={item.slug}
-                    href={shopHref(item.slug, query)}
+                    href={shopHref(item.slug, query, 1)}
                     className={`shop-side-link${active ? " active" : ""}`}
                     aria-current={active ? "page" : undefined}
                   >
@@ -283,14 +304,26 @@ export default async function ShopPage({
                 </Link>
               </div>
             ) : (
-              <div className="shop-row-list">
-                {products.map((product) => (
-                  <ProductRow product={product} key={product.id} />
-                ))}
-              </div>
+              <>
+                <div className="shop-row-list">
+                  {pagedProducts.map((product) => (
+                    <ProductRow product={product} key={product.id} />
+                  ))}
+                </div>
+                <Pagination
+                  className="pager--public"
+                  page={page}
+                  totalPages={totalPages}
+                  total={products.length}
+                  nouns="件商品"
+                  hrefFor={(next) => shopHref(category, query, next)}
+                  action="/shop"
+                  hidden={{ category: category === "all" ? undefined : category, q: query || undefined }}
+                />
+              </>
             )}
 
-            {recommended.length > 0 ? (
+            {showRecommended ? (
               <section className="shop-recommend">
                 <div className="shop-section-head">
                   <h2>也可以看看</h2>

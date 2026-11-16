@@ -30,6 +30,9 @@ export default async function AdminSupportTicketPage({
   const ticket = await getTicket(id);
   if (!ticket) notFound();
   const messages = await listTicketMessages(id);
+  // Opening the thread is the "I read it" action. The sidebar badge also lives
+  // in a cached layout, so the shell's count is only refreshed by the badge's
+  // own fetch; do not expect this render to update it.
   await markTicketReadByAdmin(id);
 
   return (

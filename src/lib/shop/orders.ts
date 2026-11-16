@@ -470,11 +470,18 @@ export async function getUserShopOrderSummary(
   };
 }
 
-export async function listAdminShopOrders(filter?: {
+type AdminOrderFilter = {
   status?: string;
+  /** Exact order number (CK…), never a pattern. */
+  orderNo?: string;
   limit?: number;
-}): Promise<ShopOrderDetail[]> {
-  const values: unknown[] = [];
+  offset?: number;
+};
+
+function adminOrderCondition(
+  filter: AdminOrderFilter | undefined,
+  values: unknown[],
+): string {
   let condition = "TRUE";
   if (filter?.status === "unreported") {
     // Manual Alipay orders past their deadline with no buyer report. These are
@@ -497,18 +504,54 @@ export async function listAdminShopOrders(filter?: {
     values.push(filter.status);
     condition += ` AND o.status = $${values.length}`;
   }
+  if (filter?.orderNo) {
+    values.push(filter.orderNo);
+    condition += ` AND o.order_no = $${values.length}`;
+  }
+  return condition;
+}
+
+export async function listAdminShopOrders(
+  filter?: AdminOrderFilter,
+): Promise<ShopOrderDetail[]> {
+  const values: unknown[] = [];
+  const condition = adminOrderCondition(filter, values);
   values.push(Math.min(Math.max(filter?.limit || 100, 1), 500));
+  const limitPlaceholder = `$${values.length}`;
+  values.push(Math.max(filter?.offset || 0, 0));
+  const offsetPlaceholder = `$${values.length}`;
   const result = await query<Record<string, unknown>>(
     `${ORDER_SELECT}
       JOIN users u ON u.id = o.user_id
      WHERE ${condition}
-     ORDER BY o.created_at DESC LIMIT $${values.length}`,
+     ORDER BY o.created_at DESC
+     LIMIT ${limitPlaceholder} OFFSET ${offsetPlaceholder}`,
     values,
   );
   return result.rows.map((row) => {
     const mapped = mapOrder(row);
     return { ...mapped, email: String(row.email || ""), name: String(row.name || "") };
   });
+}
+
+/**
+ * Total rows behind the current filter, for the pager and the header count.
+ * Joins the item table exactly like the list query so the count and the page
+ * slices can never disagree if an order ever carries more than one item row.
+ */
+export async function countAdminShopOrders(
+  filter?: AdminOrderFilter,
+): Promise<number> {
+  const values: unknown[] = [];
+  const condition = adminOrderCondition(filter, values);
+  const result = await query<{ count: string }>(
+    `SELECT COUNT(*)::text AS count
+       FROM shop_orders o
+       JOIN shop_order_items i ON i.order_id = o.id
+      WHERE ${condition}`,
+    values,
+  );
+  return Number(result.rows[0]?.count || 0);
 }
 
 export async function getAdminShopOrder(id: string): Promise<ShopOrderDetail | null> {
