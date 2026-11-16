@@ -1,0 +1,98 @@
+{
+  "name": "CokeAI｜ai-buy 商品镜像同步（每 6 小时）",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## ai-buy 商品镜像同步\n\n每 6 小时拉取 ai-buy.vip 公开商品列表与详情，更新小店的商品标题、介绍、价格和库存状态。\n\n- 缺货商品自动隐藏，补货自动恢复上架\n- 售价按拿货价 ÷ 0.7 重算，价格变动写入历史\n- 只同步商品，订单仍由人工采购，不触发任何下单\n- 单款抓取失败保留旧内容，结果写入 shop_sync_runs\n\n手动：后台脚本 `docker compose exec app node aibuy-sync.cjs`，或带 secret 调 `POST /api/internal/shop/aibuy-sync`。",
+        "height": 260,
+        "width": 400,
+        "color": 6
+      },
+      "id": "e2b1c3d4-5f60-4a71-8b82-a3c4d5e6f001",
+      "name": "使用说明",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -560,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "47 */6 * * *"
+            }
+          ]
+        }
+      },
+      "id": "e2b1c3d4-5f60-4a71-8b82-a3c4d5e6f002",
+      "name": "每 6 小时 :47",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -40,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://app:3000/api/internal/shop/aibuy-sync",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-internal-secret",
+              "value": "={{ $env.INTERNAL_API_SECRET }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{}",
+        "options": {
+          "timeout": 300000,
+          "response": {
+            "response": {
+              "fullResponse": true
+            }
+          }
+        }
+      },
+      "id": "e2b1c3d4-5f60-4a71-8b82-a3c4d5e6f003",
+      "name": "同步 ai-buy 商品",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        210,
+        80
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "每 6 小时 :47": {
+      "main": [
+        [
+          {
+            "node": "同步 ai-buy 商品",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Shanghai"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": []
+}

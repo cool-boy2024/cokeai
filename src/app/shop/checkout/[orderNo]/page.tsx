@@ -60,6 +60,13 @@ export default async function ShopCheckoutPage({
   const order = await findShopOrderByNo(orderNo, user.id);
   if (!order) notFound();
   if (order.status !== "pending_payment") redirect(`/shop/orders/${orderNo}`);
+  // A closed order must not show a payable address or QR for ANY channel. Only
+  // the USDT path used to check expiry, so a buyer could still pay the EasyPay
+  // link or the manual Alipay QR after the order had expired — money out, order
+  // closed. Send them to the order page, which explains the state.
+  if (new Date(order.expires_at).getTime() <= Date.now()) {
+    redirect(`/shop/orders/${orderNo}`);
+  }
   const personal = order.payment_provider === "alipay_manual" ? (await query<{ qr_data_url: string; payee: string; reported_reference: string | null; payer_note: string | null; reported_at: string | null }>("SELECT qr_data_url,payee,reported_reference,payer_note,reported_at FROM manual_alipay_payments WHERE order_id=$1 AND order_kind='shop'", [order.id])).rows[0] : null;
   // An admin can send a claim back; while no new claim is reported, show why.
   const rejectedClaim =

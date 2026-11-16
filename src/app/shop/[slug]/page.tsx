@@ -21,6 +21,7 @@ import {
   WarrantyBadge,
 } from "@/components/shop/ShopBadges";
 import { ShareButton } from "@/components/shop/ShareButton";
+import { MobileBuyBar } from "@/components/shop/MobileBuyBar";
 import { getCurrentUser } from "@/lib/auth";
 import { config } from "@/lib/config";
 import { getGatewayBalance } from "@/lib/gateway-credits";
@@ -28,10 +29,10 @@ import { isEasyPayConfigured } from "@/lib/payments/easypay";
 import { USDT_NETWORKS } from "@/lib/payments/networks";
 import { getManualAlipaySettings } from "@/lib/payments/settings";
 import { configuredUsdtNetworks } from "@/lib/payments/usdt";
-import { getPublicProduct } from "@/lib/shop/catalog";
+import { getPublicProduct, startingPriceMicros } from "@/lib/shop/catalog";
 import { applyMemberPricing } from "@/lib/shop/member-pricing";
 import { createShopCaptcha } from "@/lib/shop/captcha";
-import { SHOP_COPY } from "@/lib/shop/copy";
+import { SHOP_COPY, isPurchasable, productPriceLabel } from "@/lib/shop/copy";
 
 export const dynamic = "force-dynamic";
 
@@ -65,14 +66,16 @@ export default async function ShopProductPage({
   if (!catalogProduct) notFound();
   const [product] = await applyMemberPricing([catalogProduct], user);
 
-  const balance = user
-    ? await getGatewayBalance(user.id).catch(() => ({
-        balance: user.balance_micros / 1_000_000,
-      }))
-    : { balance: 0 };
-  const helpArticles = await getVisibleHelpArticlesByIds(
-    getProductHelpArticleIds(product),
-  );
+  // These three are independent of each other: start them together instead of
+  // paying for three round trips in a row on a page buyers hit constantly.
+  const [balance, helpArticles] = await Promise.all([
+    user
+      ? getGatewayBalance(user.id).catch(() => ({
+          balance: user.balance_micros / 1_000_000,
+        }))
+      : Promise.resolve({ balance: 0 }),
+    getVisibleHelpArticlesByIds(getProductHelpArticleIds(product)),
+  ]);
   const tutorial = getShopTutorial(product.slug);
   // Render the first captcha with the page so opening the payment step never
   // waits on a round trip. Refreshes still go through /api/shop/captcha. A
@@ -246,6 +249,12 @@ export default async function ShopProductPage({
           </div>
         </div>
       </main>
+      <MobileBuyBar
+        priceLabel={productPriceLabel(startingPriceMicros(product))}
+        soldOutLabel={product.sales.soldOut ? "已售罄" : null}
+        available={isPurchasable(product.availability) && !product.sales.soldOut}
+        variantNote={product.variants.length > 0 ? `${product.variants.length} 个档位可选` : undefined}
+      />
       <SiteFooter />
     </>
   );

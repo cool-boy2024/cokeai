@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { query } from "@/lib/db";
 import { parseInputFields, parseStringList, type ShopInputField } from "./copy";
 import { salesDisplay, type ShopSalesDisplay } from "./display-sales";
@@ -408,7 +409,7 @@ export async function listPublicProducts(filter?: {
   });
 }
 
-export async function getPublicProduct(slug: string): Promise<PublicShopProduct | null> {
+async function loadPublicProduct(slug: string): Promise<PublicShopProduct | null> {
   const rows = await query<RawProduct>(
     `SELECT ${DETAIL_COLUMNS}
        FROM shop_products
@@ -438,6 +439,15 @@ export async function getPublicProduct(slug: string): Promise<PublicShopProduct 
     description_images: mediaEntry.description_images,
   };
 }
+
+/**
+ * One product per request, shared between generateMetadata and the page body.
+ *
+ * Both call this for the same slug, and the read is four queries (product,
+ * supplier identity, images, variants). React's `cache` memoises per request,
+ * so the second call is free instead of doubling the page's database work.
+ */
+export const getPublicProduct = cache(loadPublicProduct);
 
 export type AdminShopProduct = PublicShopProduct & {
   status: string;
