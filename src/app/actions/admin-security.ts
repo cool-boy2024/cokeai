@@ -9,6 +9,7 @@ import {
   sendEmergencyDefenseNotice,
   sendSecuritySummaryAlert,
   sendSecurityTestAlert,
+  setIpLabel,
   setStrictMode,
 } from "@/lib/security";
 
@@ -37,6 +38,21 @@ export async function toggleStrictModeAction(formData: FormData): Promise<void> 
  * Revokes one session by its token hash. Used by the admin session list so an
  * operator can kick a device without redeploying or resetting the password.
  */
+/**
+ * 给一个 IP 起名字（「办公室」「家里」「我的手机」），只做展示，不影响限流。
+ *
+ * 不提供「加入白名单」按钮：家用宽带 IPv6 常是动态分配，放行一整段等于让
+ * 同网段的邻居一起绕过防护。真正需要放行时走 SECURITY_ADMIN_IPS 环境变量，
+ * 由运维显式配置并承担风险。
+ */
+export async function adminLabelIpAction(formData: FormData): Promise<void> {
+  await requireAdmin();
+  const ip = String(formData.get("ip") || "").trim();
+  const label = String(formData.get("label") || "").trim();
+  if (ip) await setIpLabel(ip, label);
+  revalidatePath("/admin/security");
+}
+
 export async function adminRevokeSessionAction(formData: FormData): Promise<void> {
   await requireAdmin();
   const tokenHash = String(formData.get("tokenHash") || "").trim();

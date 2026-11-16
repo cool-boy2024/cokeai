@@ -25,9 +25,20 @@ export type SecurityEvent = {
   method: string;
   detail?: string;
   ua?: string;
+  /** 运营给这个 IP 起的名字，只在后台展示时填充。 */
+  label?: string;
+  /** 这个 IP 是否为受信管理员出口。 */
+  trusted?: boolean;
 };
 
-export type SecurityIpCount = { ip: string; count: number };
+export type SecurityIpCount = {
+  ip: string;
+  count: number;
+  /** 运营给这个 IP 起的名字，例如「办公室」「家里」。只做展示。 */
+  label?: string;
+  /** 这个 IP 是否为受信管理员出口（白名单）。 */
+  trusted?: boolean;
+};
 
 export type DefenseMode = "normal" | "emergency";
 
@@ -325,6 +336,89 @@ function envAdminIps(): string[] {
 }
 
 const adminIpCache = new Map<string, { trusted: boolean; expiresAt: number }>();
+
+/* ---------------------------------------------------------------------------
+ * IP 备注
+ *
+ * 只用来在后台把「自己的 IP」和「陌生 IP」区分开，**不参与任何放行判断**。
+ * 这是有意的：把一段 IP 加白会让同网段的邻居一起绕过限流（家用宽带 IPv6
+ * 常常是动态分配），那等于开了一个洞。备注只是标签。
+ * ------------------------------------------------------------------------- */
+
+const IP_LABEL_KEY_PREFIX = "sec:iplabel:";
+const IP_LABEL_TTL_SECONDS = 365 * 24 * 60 * 60;
+
+export async function setIpLabel(ip: string, label: string): Promise<boolean> {
+  if (!ip || ip === "local") return false;
+  const client = getRedis();
+  if (!client) return false;
+  const clean = label.trim().slice(0, 40);
+  try {
+    await ensureConnected(client);
+    if (!clean) {
+      await client.del(`${IP_LABEL_KEY_PREFIX}${ip}`);
+      return true;
+    }
+    await client.set(
+      `${IP_LABEL_KEY_PREFIX}${ip}`,
+      clean,
+      "EX",
+      IP_LABEL_TTL_SECONDS,
+    );
+    return true;
+  } catch (error) {
+    console.warn(
+      "[security] ip label not saved",
+      error instanceof Error ? error.message : error,
+    );
+    return false;
+  }
+}
+
+export async function getIpLabels(ips: string[]): Promise<Map<string, string>> {
+  const labels = new Map<string, string>();
+  const unique = [...new Set(ips.filter((ip) => ip && ip !== "local"))];
+  if (unique.length === 0) return labels;
+  const client = getRedis();
+  if (!client) return labels;
+  try {
+    await ensureConnected(client);
+    const values = await client.mget(
+      unique.map((ip) => `${IP_LABEL_KEY_PREFIX}${ip}`),
+    );
+    unique.forEach((ip, index) => {
+      const value = values[index];
+      if (value) labels.set(ip, value);
+    });
+  } catch (error) {
+    console.warn(
+      "[security] ip labels not read",
+      error instanceof Error ? error.message : error,
+    );
+  }
+  return labels;
+}
+
+/**
+ * 给一组 IP 记录补上备注和受信标记。只读展示用，不改任何判定。
+ */
+async function attachIpMeta<T extends { ip: string }>(items: T[]): Promise<Array<T & { label?: string; trusted?: boolean }>> {
+  if (items.length === 0) return items;
+  const ips = items.map((item) => item.ip);
+  const [labels, trustedFlags] = await Promise.all([
+    getIpLabels(ips),
+    Promise.all(items.map((item) => isTrustedAdminIp(item.ip).catch(() => false))),
+  ]);
+  return items.map((item, index) => {
+    const label = labels.get(item.ip);
+    const trusted = trustedFlags[index];
+    return {
+      ...item,
+      ...(label ? { label } : {}),
+      ...(trusted ? { trusted: true } : {}),
+    };
+  });
+}
 
 /**
  * True for an operator IP that must stay reachable while rate limits are on.
@@ -949,8 +1043,9 @@ export async function getSecuritySnapshot(
       byType,
       byTypeLast7d,
       hourly,
-      topIps,
-      recent,
+      // 给榜单和最近事件里的 IP 补上运营起的名字，方便一眼认出「这是自己」。
+      topIps: await attachIpMeta(topIps),
+      recent: await attachIpMeta(recent),
       lastEventAt: numericValue(lastEventRaw) ?? recent[0]?.at ?? null,
       lastAttackAt: numericValue(lastAttackRaw),
       alertCooldownSeconds: Number.isFinite(cooldown) && cooldown > 0 ? cooldown : 0,
