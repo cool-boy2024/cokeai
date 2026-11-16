@@ -17,7 +17,11 @@ import { fixedWindowLimit } from "@/lib/rate-limit";
 import { recordSecurityEventOnce } from "@/lib/security";
 import { verifyShopCaptcha } from "@/lib/shop/captcha";
 import { createShopEasyPayCheckout } from "@/lib/shop/payments";
-import { createShopOrder, revealShopDelivery } from "@/lib/shop/orders";
+import {
+  cancelShopOrder,
+  createShopOrder,
+  revealShopDelivery,
+} from "@/lib/shop/orders";
 import { sanitizeSupplierCopy } from "@/lib/shop/sanitize";
 import {
   settleShopBalanceOrder,
@@ -314,16 +318,30 @@ export async function retryShopBalancePaymentAction(formData: FormData): Promise
 }
 
 async function cancelPendingShopOrder(orderId: string, userId: string): Promise<void> {
-  await query(
-    `UPDATE shop_orders SET status = 'cancelled', updated_at = now()
-      WHERE id = $1 AND user_id = $2 AND status = 'pending_payment'`,
-    [orderId, userId],
-  );
-  await query(
-    `INSERT INTO shop_order_events (order_id, actor_type, actor_id, event, note)
-     VALUES ($1, 'system', $2, 'cancelled', '支付通道初始化失败')`,
-    [orderId, userId],
-  );
+  // 支付通道初始化失败时的自动取消，和客户手动取消走同一条路径。
+  await cancelShopOrder({ orderId, userId, reason: "支付通道初始化失败" }).catch(() => {
+    // 这里失败不该盖住真正要返回的错误信息（限额、通道不可用等）。
+  });
+}
+
+/**
+ * 客户自己取消待支付订单。
+ *
+ * 之前客户下错单、改主意时没有任何出口——订单页只有一个「去支付」，后台也没有
+ * 取消按钮，只能干等过期。现在客户可以直接取消。
+ */
+export async function cancelShopOrderAction(
+  orderId: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const user = await requireUser();
+  try {
+    await cancelShopOrder({ orderId, userId: user.id, reason: "客户取消" });
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "取消失败" };
+  }
+  revalidatePath("/shop/orders/[orderNo]", "page");
+  revalidatePath("/dashboard/shop");
+  return { ok: true };
 }
 
 export async function revealShopDeliveryAction(

@@ -692,9 +692,27 @@ async function persistProduct(
              help_article_ids = EXCLUDED.help_article_ids,
              display_category = EXCLUDED.display_category,
              availability = EXCLUDED.availability,
-             -- 货源库存与已售：页面直接展示这两个数，以货源为准。
-             supplier_sold = EXCLUDED.supplier_sold,
-             supplier_stock = EXCLUDED.supplier_stock,
+             -- 货源库存与已售：以货源为准，但要扣掉「已经卖给客户、我们还没去
+             -- 上游下单」的那部分。否则客户买完、运营还没采购时，下一次同步会
+             -- 把库存刷回原来的数字，页面看起来「货又回来了」，继续引导下单。
+             --
+             -- 判据是 procurement_status 而不是订单状态：运营一旦去上游买了
+             -- （bought/delivered），上游的 order_sold/stock 就已经算进了这一单，
+             -- 再减一次就是双重计数。
+             supplier_sold = EXCLUDED.supplier_sold + COALESCE((
+               SELECT SUM(i.qty) FROM shop_order_items i
+                WHERE i.product_id = shop_products.id
+                  AND i.procurement_status IN ('pending', 'to_buy')
+             ), 0),
+             supplier_stock = CASE
+               WHEN EXCLUDED.supplier_stock > 0 THEN GREATEST(0,
+                 EXCLUDED.supplier_stock - COALESCE((
+                   SELECT SUM(i.qty) FROM shop_order_items i
+                    WHERE i.product_id = shop_products.id
+                      AND i.procurement_status IN ('pending', 'to_buy')
+                 ), 0))
+               ELSE EXCLUDED.supplier_stock
+             END,
              supplier_synced_at = now(),
              -- Refresh the preorder marker every sync. Do not clobber an
              -- operator's pricing-review reason with NULL; only clear the

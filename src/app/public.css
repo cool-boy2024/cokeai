@@ -6767,3 +6767,29 @@ body {
 .public-main .shop-variant-option.is-active i {
   color: rgba(244, 239, 229, 0.6);
 }
+
+/* 取消订单的二次确认块：和主操作按钮保持同样的宽度与间距。 */
+.shop-cancel-order {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md, 10px);
+  background: var(--paper-deep, #f7f6f3);
+}
+
+.shop-cancel-order p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.shop-cancel-order-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.shop-cancel-order-actions .btn {
+  flex: 1;
+}
