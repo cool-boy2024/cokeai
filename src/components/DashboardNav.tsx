@@ -16,6 +16,7 @@ import {
   ShieldCheck,
   ShoppingBag,
   Store,
+  ScanSearch,
   UserPlus,
   UserRound,
   Users,
@@ -46,6 +47,7 @@ const adminItems = [
   // nav scrolls horizontally, so trailing items are effectively hidden).
   { href: "/admin/security", label: "安全", icon: ShieldCheck },
   { href: "/admin/shop/orders", label: "订单", icon: ReceiptText },
+  { href: "/admin/shop/reconcile", label: "到账核对", icon: ScanSearch },
   { href: "/admin/support", label: "工单", icon: Headphones },
   { href: "/admin/payments", label: "收款设置", icon: CreditCard },
   { href: "/admin/shop/queue", label: "采购队列", icon: ClipboardList },

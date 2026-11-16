@@ -41,6 +41,13 @@ export default async function AdminLayout({
        FROM shop_orders`,
   );
   const shopCounts = counts.rows[0];
+  // 导入账单后还没确认到账的流水，是运营当天最该处理的一批。
+  const statementCounts = await query<{ open: string }>(
+    `SELECT COUNT(*)::text AS open
+       FROM alipay_statement_rows
+      WHERE settled_at IS NULL`,
+  );
+  const openStatements = Number(statementCounts.rows[0]?.open || 0);
   const [unreadTickets, newSignups] = await Promise.all([
     countUnreadMessagesForAdmin(),
     countNewSignups24h(),
@@ -53,6 +60,7 @@ export default async function AdminLayout({
         admin
         badges={{
           "/admin/shop/orders": Number(shopCounts?.reported || 0),
+          "/admin/shop/reconcile": openStatements,
           "/admin/shop": Number(shopCounts?.pending || 0),
           "/admin/shop/queue": Number(shopCounts?.to_buy || 0),
           "/admin/support": unreadTickets,

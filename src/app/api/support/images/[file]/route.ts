@@ -33,7 +33,7 @@ export async function GET(
     return new Response("Unauthorized", { status: 401 });
   }
 
-  // 管理员看全部；客户只看自己工单里的图。
+  // 管理员看全部；客户只看自己的图——工单里的图，或自己订单的付款截图。
   if (user.role !== "admin") {
     const owned = await query<{ ok: boolean }>(
       `SELECT TRUE AS ok
@@ -41,6 +41,11 @@ export async function GET(
          JOIN support_ticket_messages m ON m.id = mi.message_id
          JOIN support_tickets t ON t.id = m.ticket_id
         WHERE mi.image_hash = $1 AND t.user_id = $2
+        UNION ALL
+       SELECT TRUE AS ok
+         FROM manual_payment_images pi
+         JOIN shop_orders o ON o.id = pi.order_id
+        WHERE pi.image_hash = $1 AND o.user_id = $2
         LIMIT 1`,
       [hash, user.id],
     );

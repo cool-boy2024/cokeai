@@ -21,6 +21,7 @@ import { USDT_NETWORKS, networkForProvider } from "@/lib/payments/networks";
 import { USDT_FEE_NOTICE } from "@/lib/payments/usdt-copy";
 import { formatCny } from "@/lib/money";
 import { findShopOrderByNo } from "@/lib/shop/orders";
+import { loadPaymentImages } from "@/lib/shop/payment-images";
 import { createShopEasyPayCheckout } from "@/lib/shop/payments";
 import {
   expireShopUsdtOrderForUser,
@@ -68,6 +69,8 @@ export default async function ShopCheckoutPage({
     redirect(`/shop/orders/${orderNo}`);
   }
   const personal = order.payment_provider === "alipay_manual" ? (await query<{ qr_data_url: string; payee: string; reported_reference: string | null; payer_note: string | null; reported_at: string | null }>("SELECT qr_data_url,payee,reported_reference,payer_note,reported_at FROM manual_alipay_payments WHERE order_id=$1 AND order_kind='shop'", [order.id])).rows[0] : null;
+  // 客户已经传过的付款截图，刷新后还能看到。
+  const paymentScreenshots = personal ? await loadPaymentImages(order.id) : [];
   // An admin can send a claim back; while no new claim is reported, show why.
   const rejectedClaim =
     personal && !personal.reported_at
@@ -203,8 +206,44 @@ export default async function ShopCheckoutPage({
                 ) : null}
                 {personal.reported_at ? <div className="notice">已提交付款信息，等待核实。请勿重复付款。</div> : null}
                 <img className="payment-qr" src={personal.qr_data_url} alt="支付宝收款二维码" />
-                <p className="small muted">请核对收款人和金额。付款备注填写订单号 {order.order_no}，商家核实到账后安排交付，非即时到账。</p>
+                {/* 备注里的订单号是唯一能 100% 精确对账的线索，所以不再写成一行灰字。 */}
+                <div className="notice notice-yellow">
+                  <Warning size={16} />
+                  <div>
+                    <strong>付款时请在备注里填订单号</strong>
+                    <div className="shop-copy-line">
+                      <code>{order.order_no}</code>
+                      <CopyButton value={order.order_no} label="复制订单号" className="copy-btn shop-copy-btn" />
+                    </div>
+                    <p>
+                      备注填了订单号，核对是自动的、发货最快；不填就只能等人工按金额和时间比对，会慢一些。
+                      请核对收款人和应付金额 {formatCny(order.amount_micros)}。
+                    </p>
+                  </div>
+                </div>
                 <ManualPaymentClaimForm orderId={order.id} orderKind="shop" reference={personal.reported_reference || ""} note={personal.payer_note || ""} />
+                {paymentScreenshots.length > 0 ? (
+                  <div className="shop-copy-row">
+                    <span>已上传的付款截图</span>
+                    <div className="flex flex-wrap gap-8">
+                      {paymentScreenshots.map((image) => (
+                        <a
+                          key={image.hash}
+                          href={`/api/support/images/${image.hash}.${image.ext}`}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={`/api/support/images/${image.hash}.${image.ext}`}
+                            alt="付款截图"
+                            style={{ width: 88, height: 88, objectFit: "cover", borderRadius: 8 }}
+                          />
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
                 <AutoRefresh seconds={30} />
               </div> : null}
               {order.payment_provider === "alipay_manual" && !personal ? (

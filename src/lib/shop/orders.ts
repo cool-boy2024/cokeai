@@ -474,6 +474,8 @@ type AdminOrderFilter = {
   status?: string;
   /** Exact order number (CK…), never a pattern. */
   orderNo?: string;
+  /** Free-text search: order no, buyer email, trade no, or exact amount. */
+  q?: string;
   limit?: number;
   offset?: number;
 };
@@ -507,6 +509,32 @@ function adminOrderCondition(
   if (filter?.orderNo) {
     values.push(filter.orderNo);
     condition += ` AND o.order_no = $${values.length}`;
+  }
+  // The buyer pays a personal Alipay QR, then reports a trade number. When the
+  // operator has that number (or the amount Alipay shows), they need to land on
+  // the order instead of paging through every pending row.
+  const raw = (filter?.q || "").trim().slice(0, 64);
+  if (raw) {
+    const like = `%${raw.replace(/[\\%_]/g, (char) => `\\${char}`)}%`;
+    values.push(like);
+    const n = values.length;
+    const parts = [
+      `o.order_no ILIKE $${n}`,
+      `u.email ILIKE $${n}`,
+      `COALESCE(o.provider_ref, '') ILIKE $${n}`,
+      `EXISTS (
+         SELECT 1 FROM manual_alipay_payments p
+          WHERE p.order_id = o.id AND p.order_kind = 'shop'
+            AND COALESCE(p.reported_reference, '') ILIKE $${n}
+       )`,
+    ];
+    // Compare amounts at cent precision, the same way markShopOrderPaid does.
+    // Cap the integer digits so a long trade number is never parsed as a price.
+    if (/^\d{1,9}(\.\d{1,2})?$/.test(raw)) {
+      values.push(Math.round(Number(raw) * 100));
+      parts.push(`round(o.amount_micros / 10000.0) = $${values.length}`);
+    }
+    condition += ` AND (${parts.join(" OR ")})`;
   }
   return condition;
 }
@@ -548,6 +576,7 @@ export async function countAdminShopOrders(
     `SELECT COUNT(*)::text AS count
        FROM shop_orders o
        JOIN shop_order_items i ON i.order_id = o.id
+       JOIN users u ON u.id = o.user_id
       WHERE ${condition}`,
     values,
   );
