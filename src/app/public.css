@@ -6262,6 +6262,91 @@ body {
   }
 }
 
+/* ---------------------------------------------------------------------------
+ * 订单进度日志（客户视角）
+ *
+ * 只渲染白名单事件（见 lib/shop/customer-events.ts），运营备注与内部字段
+ * 不会进入这个列表。需要提醒客户的节点用 .is-warn 标黄。
+ * ------------------------------------------------------------------------- */
+.public-main .shop-progress {
+  margin-top: 18px;
+  padding: 18px 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: #fff;
+}
+
+.public-main .shop-progress h2 {
+  margin: 0 0 14px;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.public-main .shop-progress ol {
+  display: grid;
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.public-main .shop-progress li {
+  position: relative;
+  display: flex;
+  gap: 12px;
+  padding-left: 4px;
+}
+
+.public-main .shop-progress li > i {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: var(--green);
+}
+
+.public-main .shop-progress li.is-warn > i {
+  background: var(--yellow);
+}
+
+.public-main .shop-progress strong {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.public-main .shop-progress p {
+  margin: 2px 0 3px;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.public-main .shop-progress time {
+  color: var(--muted);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 相邻两个节点之间连一条细线，让时间线读起来是连续的。 */
+.public-main .shop-progress li + li::before {
+  content: "";
+  position: absolute;
+  top: -11px;
+  left: 7px;
+  width: 1px;
+  height: 8px;
+  background: var(--line);
+}
+
+@media (max-width: 680px) {
+  .public-main .shop-progress {
+    padding: 16px;
+  }
+}
+
 /* 销量与批次剩余：列表行内也要看得到，用蓝色区分于普通标签。 */
 .public-main .shop-row-tags .shop-row-sales {
   background: #edf3fb;

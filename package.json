@@ -43,6 +43,7 @@
     "test:site-guards": "tsx scripts/test-site-guards.ts",
     "test:redirects": "tsx scripts/test-redirects.ts",
     "test:shop:sales": "tsx scripts/test-shop-sales.ts",
+    "test:shop:events": "tsx scripts/test-customer-events.ts",
     "test:shop:copy": "tsx scripts/test-supplier-copy.ts",
     "test:visits": "tsx scripts/test-visits.ts"
   },

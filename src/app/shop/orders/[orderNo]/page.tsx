@@ -13,6 +13,7 @@ import { USDT_NETWORKS, networkForProvider } from "@/lib/payments/networks";
 import { formatCny } from "@/lib/money";
 import { decryptCustomerInput, findShopOrderByNo } from "@/lib/shop/orders";
 import { SHOP_COPY } from "@/lib/shop/copy";
+import { loadCustomerOrderEvents } from "@/lib/shop/customer-events";
 import { listTicketsForOrder } from "@/lib/support";
 
 function paymentLabel(provider: string): string {
@@ -47,6 +48,8 @@ export default async function ShopOrderPage({
   const delivered = order.procurement_status === "delivered";
   const input = decryptCustomerInput(order.customer_input_encrypted);
   const inputRows = Object.entries(input);
+  // 客户视角的进度日志：白名单过滤，运营备注与内部字段不会出现在这里。
+  const progress = await loadCustomerOrderEvents(order.id);
 
   return (
     <>
@@ -108,6 +111,29 @@ export default async function ShopOrderPage({
                   )}
                 </div>
               )}
+
+              {progress.length > 0 ? (
+                <section className="shop-progress" aria-labelledby="shop-progress-title">
+                  <h2 id="shop-progress-title">订单进度</h2>
+                  <ol>
+                    {progress.map((event, index) => (
+                      <li
+                        key={`${event.key}-${index}`}
+                        className={event.key === "payment_claim_rejected" || event.key === "alipay_unreported" || event.key === "out_of_stock" ? "is-warn" : ""}
+                      >
+                        <i />
+                        <div>
+                          <strong>{event.label}</strong>
+                          <p>{event.detail}</p>
+                          <time dateTime={event.created_at}>
+                            {new Date(event.created_at).toLocaleString("zh-CN")}
+                          </time>
+                        </div>
+                      </li>
+                    ))}
+                  </ol>
+                </section>
+              ) : null}
 
               {order.status === "refund_pending" ? (
                 <div className="shop-refund-notice">
