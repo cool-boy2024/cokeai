@@ -1,11 +1,6 @@
 import { query } from "@/lib/db";
 import { parseInputFields, parseStringList, type ShopInputField } from "./copy";
-import {
-  loadProductPaidUnits,
-  refillSoldOutBatches,
-  salesDisplay,
-  type ShopSalesDisplay,
-} from "./display-sales";
+import { salesDisplay, type ShopSalesDisplay } from "./display-sales";
 import { preorderSql } from "./preorder";
 import { sanitizeStoredRichHtml } from "./rich-description";
 import {
@@ -72,15 +67,11 @@ export type PublicShopProduct = {
   preorder: boolean;
   /** Selectable options. Empty means the product is sold as a single item. */
   variants: ShopVariant[];
-  /** 站外历史销量基数（运营按真实流水填写）。 */
-  sold_baseline: number;
-  /** 本批次放量；0 表示不启用批次限量。 */
-  batch_size: number;
-  /** 本批次卖完后自动补货的间隔（分钟）；0 = 不自动补货。 */
-  batch_refill_minutes: number;
-  /** 本站已付款件数，展示计算用，由订单实时统计。 */
-  paid_units: number;
-  /** 展示口径：已售 / 本批剩余 / 售罄。见 display-sales.ts。 */
+  /** 上游累计已售件数，每次货源同步刷新。 */
+  supplier_sold: number;
+  /** 上游当前库存；-1 表示充足，0 表示断货。 */
+  supplier_stock: number;
+  /** 展示口径：已售 / 剩余 / 售罄。见 sales-display.ts。 */
   sales: ShopSalesDisplay;
   featured: boolean;
   sort_order: number;
@@ -99,16 +90,14 @@ type RawProduct = Omit<
   | "image_url"
   | "description_images"
   | "variants"
-  | "paid_units"
   | "sales"
 > & {
   includes: unknown;
   usage_notes: unknown;
   input_fields: unknown;
   help_article_ids: unknown;
-  sold_baseline: number | string | null;
-  batch_size: number | string | null;
-  batch_refill_minutes: number | string | null;
+  supplier_sold: number | string | null;
+  supplier_stock: number | string | null;
 };
 
 /** JSONB may arrive parsed (pg) or as the raw string from a manual SQL edit. */
@@ -143,40 +132,16 @@ function hydrate(row: RawProduct): PublicShopProduct {
     help_article_ids: parseHelpArticleIds(row.help_article_ids),
     display_category: String(row.display_category || ""),
     description_html: String(row.description_html || ""),
-    sold_baseline: Number(row.sold_baseline || 0),
-    batch_size: Number(row.batch_size || 0),
-    batch_refill_minutes: Number(row.batch_refill_minutes || 0),
-    paid_units: 0,
+    supplier_sold: Number(row.supplier_sold || 0),
+    supplier_stock: Number(row.supplier_stock ?? -1),
     sales: salesDisplay({
-      soldBaseline: Number(row.sold_baseline || 0),
-      batchSize: Number(row.batch_size || 0),
-      paidUnits: 0,
+      supplierSold: Number(row.supplier_sold || 0),
+      supplierStock: Number(row.supplier_stock ?? -1),
     }),
     image_url: null,
     description_images: [],
     variants: [],
   };
-}
-
-/**
- * Attaches the live paid count to already-hydrated products. One query for the
- * whole page; products without orders keep a zero count.
- */
-async function withSales<T extends PublicShopProduct>(products: T[]): Promise<T[]> {
-  const paid = await loadProductPaidUnits(products.map((product) => product.id));
-  return products.map((product) => {
-    const counts = paid.get(product.id) || { total: 0, inBatch: 0 };
-    return {
-      ...product,
-      paid_units: counts.total,
-      sales: salesDisplay({
-        soldBaseline: product.sold_baseline,
-        batchSize: product.batch_size,
-        paidUnits: counts.total,
-        batchUnits: counts.inBatch,
-      }),
-    };
-  });
 }
 
 type VariantRow = {
@@ -382,7 +347,7 @@ const PUBLIC_COLUMNS = `
   cover_variant, price_micros, delivery_method, eta_min_minutes, eta_max_minutes,
   warranty_type, warranty_days, warranty_note, includes, usage_notes, customer_notice,
   refund_policy, input_fields, availability, featured, sort_order, help_article_ids,
-  display_category, sold_baseline, batch_size, batch_refill_minutes,
+  display_category, supplier_sold, supplier_stock,
   -- Preorder has three sources: the operator switch (preorder_manual), the
   -- supplier marker in availability_reason, and Muse's operating policy.
   -- Only the derived boolean reaches public types.
@@ -410,10 +375,6 @@ export async function listPublicProducts(filter?: {
     conditions.push("availability IN ('in_stock', 'low_stock')");
   }
 
-  // A sold-out batch whose refill interval elapsed reopens before we read, so
-  // the page renders the new batch rather than 补货中 for one more cycle.
-  await refillSoldOutBatches();
-
   // List cards never render the article, so skip the (potentially large)
   // rich text here and only load it on the detail page.
   const rows = await query<RawProduct>(
@@ -423,13 +384,12 @@ export async function listPublicProducts(filter?: {
       ORDER BY featured DESC, sort_order ASC, created_at ASC`,
     values,
   );
-  const hydrated = rows.rows.map(hydrate);
-  const productIds = hydrated.map((product) => product.id);
-  const [identities, media, variants, products] = await Promise.all([
+  const products = rows.rows.map(hydrate);
+  const productIds = products.map((product) => product.id);
+  const [identities, media, variants] = await Promise.all([
     loadProductIdentities(productIds),
     loadProductMedia(productIds),
     loadProductVariants(productIds),
-    withSales(hydrated),
   ]);
   return products.map((product) => {
     const productIdentities = identities.get(product.id) || [];
@@ -449,7 +409,6 @@ export async function listPublicProducts(filter?: {
 }
 
 export async function getPublicProduct(slug: string): Promise<PublicShopProduct | null> {
-  await refillSoldOutBatches();
   const rows = await query<RawProduct>(
     `SELECT ${DETAIL_COLUMNS}
        FROM shop_products
@@ -459,7 +418,7 @@ export async function getPublicProduct(slug: string): Promise<PublicShopProduct 
   );
   const row = rows.rows[0];
   if (!row) return null;
-  const [product] = await withSales([hydrate(row)]);
+  const product = hydrate(row);
   const [identities, media, variants] = await Promise.all([
     loadProductIdentities([product.id]),
     loadProductMedia([product.id]),

@@ -3,56 +3,74 @@
  *
  * 放在这个文件里是因为客户端组件（BuyForm）也要用它：这里不能 import
  * 任何数据库代码，否则 `pg` 会被打进浏览器包。
+ *
+ * 两个数字都来自上游货源公开数据，不做人工编造：
+ *   已售   = 上游累计已售件数
+ *   剩余   = 上游当前库存；-1 表示「充足」，不展示具体件数
  */
 
 export type ShopSalesDisplay = {
-  /** 已售总件数：历史基数 + 本站已付款件数。 */
+  /** 上游累计已售件数。 */
   sold: number;
-  /** 本批次剩余件数；null 表示未启用批次限量。 */
+  /**
+   * 上游当前库存；null 表示货源标注为「充足/无限」，没有具体件数。
+   * 0 表示真的没货了——此时商品不可售。
+   */
   remaining: number | null;
-  /** 批次已售罄（remaining === 0）。 */
+  /** 货源确实没货（remaining === 0）。 */
   soldOut: boolean;
 };
 
+/**
+ * 把上游的库存字段收敛成一个数字。
+ *
+ * 上游 `stock` 可能是数字，也可能是「充足 / 非常多 / 一般 / 即将售罄」这类
+ * 文字。文字档位不代表具体件数，只有正整数才当作真实库存。
+ */
+export function normalizeSupplierStock(stock: unknown): number {
+  if (typeof stock === "number" && Number.isFinite(stock)) {
+    return Math.trunc(stock);
+  }
+  const text = String(stock ?? "").trim();
+  if (/^\d+$/.test(text)) return Number(text);
+  // 「充足 / 无限 / 非常多」——有货，但没有具体上限。
+  if (/充足|无限|非常多|爆棚|大量|有货|一般/.test(text)) return -1;
+  // 「售罄 / 缺货 / 无货 / 下架」——真的没货。
+  if (/售罄|缺货|无货|下架|即将售罄|少量|紧张/.test(text)) return 0;
+  return -1;
+}
+
 export function salesDisplay(input: {
-  soldBaseline: number;
-  batchSize: number;
-  paidUnits: number;
-  batchUnits?: number;
+  /** 上游累计已售。 */
+  supplierSold: number;
+  /** 上游当前库存；-1 = 充足。 */
+  supplierStock: number;
 }): ShopSalesDisplay {
-  const baseline = Number.isFinite(input.soldBaseline)
-    ? Math.max(0, Math.trunc(input.soldBaseline))
+  const sold = Number.isFinite(input.supplierSold)
+    ? Math.max(0, Math.trunc(input.supplierSold))
     : 0;
-  const batch = Number.isFinite(input.batchSize)
-    ? Math.max(0, Math.trunc(input.batchSize))
-    : 0;
-  const paid = Number.isFinite(input.paidUnits) ? Math.max(0, Math.trunc(input.paidUnits)) : 0;
-  const inBatch = Number.isFinite(input.batchUnits)
-    ? Math.max(0, Math.trunc(input.batchUnits as number))
-    : paid;
+  const stock = Number.isFinite(input.supplierStock)
+    ? Math.trunc(input.supplierStock)
+    : -1;
   return {
-    sold: baseline + paid,
-    // Never show a negative remainder: once the batch is gone it stays at 0
-    // (补货中) until the operator opens a new batch or auto-refill fires.
-    remaining: batch > 0 ? Math.max(0, batch - inBatch) : null,
-    soldOut: batch > 0 && batch - inBatch <= 0,
+    sold,
+    // 负数（含 -1）表示「充足」，没有具体剩余件数可展示。
+    remaining: stock >= 0 ? stock : null,
+    soldOut: stock === 0,
   };
 }
 
 /**
- * One-line storefront label, e.g. 「已售 85 · 库存还剩 7」.
+ * One-line storefront label, e.g. 「已售 88 · 库存 9」.
  *
- * Nothing sold and no baseline → nothing to say. 「已售 0」 on every row reads
- * worse than no counter at all, and a fresh batch only earns a mention once
- * it has either sold something or has a real history behind it.
+ * 上游没给数字的时候（已售 0、库存充足），只显示有的那个；两个都没有就
+ * 什么都不显示，避免满屏「已售 0」。
  */
 export function salesLabel(display: ShopSalesDisplay): string {
-  if (display.sold <= 0) return "";
-  const parts = [`已售 ${display.sold}`];
+  const parts: string[] = [];
+  if (display.sold > 0) parts.push(`已售 ${display.sold}`);
   if (display.remaining !== null) {
-    parts.push(
-      display.remaining > 0 ? `库存还剩 ${display.remaining}` : "本批次已售完",
-    );
+    parts.push(display.remaining > 0 ? `库存 ${display.remaining}` : "已售罄");
   }
   return parts.join(" · ");
 }

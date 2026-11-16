@@ -2,6 +2,7 @@ import { query, withTransaction } from "@/lib/db";
 import { autoRetailPrice } from "@/lib/shop/auto-pricing";
 import { normalizeDisplayCategory } from "@/lib/shop/categories";
 import { getShopTargetMarginBps } from "@/lib/shop/settings";
+import { normalizeSupplierStock } from "@/lib/shop/sales-display";
 import { replaceProductImages } from "@/lib/shop/images";
 import {
   PREORDER_MARKER,
@@ -59,6 +60,8 @@ export type ZyanaiItem = {
   status?: number;
   hide?: number;
   cover?: string;
+  /** 上游累计已售件数（含我们自己的采购，不会重复计数）。 */
+  order_sold?: number | string;
   category_id?: number;
   category?: { id?: number; name?: string } | null;
   delivery_way?: number;
@@ -91,6 +94,10 @@ export type ZyanaiProduct = {
   coverUrl: string | null;
   imageUrls: { url: string; alt: string }[];
   helpArticleIds: string[];
+  /** 上游累计已售，直接展示。 */
+  supplierSold: number;
+  /** 上游当前库存；-1 = 充足，0 = 断货。 */
+  supplierStock: number;
 };
 
 export type ZyanaiSyncResult = {
@@ -463,6 +470,9 @@ export function toProduct(
     coverUrl: item.cover ? absoluteHttpUrl(item.cover, source.base) : null,
     imageUrls,
     helpArticleIds: extras?.helpArticleIds ?? [],
+    // 展示用：上游公开的已售与库存，每次同步刷新。
+    supplierSold: Math.max(0, Math.trunc(Number(item.order_sold ?? 0)) || 0),
+    supplierStock: normalizeSupplierStock(item.stock),
     ...detectWarranty(text),
   };
 }
@@ -645,9 +655,11 @@ async function persistProduct(
           price_micros, delivery_method, eta_min_minutes, eta_max_minutes,
           warranty_type, warranty_days, warranty_note, help_article_ids,
           display_category, status, availability, availability_reason,
-          copy_ready, sort_order, published_at)
+          copy_ready, sort_order, published_at,
+          supplier_sold, supplier_stock, supplier_synced_at)
        VALUES ($1,$2,$3,$3,$4,$5,$6,$2,$7,'manual',15,60,$8,$9,$10,$13::jsonb,$14,'active',$11,$15,
-               TRUE,$12, CASE WHEN $11 = 'out_of_stock' THEN NULL ELSE now() END)
+               TRUE,$12, CASE WHEN $11 = 'out_of_stock' THEN NULL ELSE now() END,
+               $16, $17, now())
        ON CONFLICT (slug) DO UPDATE
          SET name = EXCLUDED.name, subtitle = EXCLUDED.subtitle,
              description = EXCLUDED.description,
@@ -663,6 +675,10 @@ async function persistProduct(
              help_article_ids = EXCLUDED.help_article_ids,
              display_category = EXCLUDED.display_category,
              availability = EXCLUDED.availability,
+             -- 货源库存与已售：页面直接展示这两个数，以货源为准。
+             supplier_sold = EXCLUDED.supplier_sold,
+             supplier_stock = EXCLUDED.supplier_stock,
+             supplier_synced_at = now(),
              -- Refresh the preorder marker every sync. Do not clobber an
              -- operator's pricing-review reason with NULL; only clear the
              -- marker itself when the supplier is back in stock.
@@ -695,6 +711,8 @@ async function persistProduct(
         JSON.stringify(product.helpArticleIds),
         product.displayCategory,
         product.preorder ? PREORDER_MARKER : null,
+        product.supplierSold,
+        product.supplierStock,
       ],
     );
     const productId = shopProduct.rows[0].id;

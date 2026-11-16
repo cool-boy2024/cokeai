@@ -1,103 +1,39 @@
-import { query, toNumber } from "@/lib/db";
+import { query } from "@/lib/db";
 
 /**
- * Storefront sales / remaining-stock counters.
+ * 商品页的货源库存 / 已售。
  *
- * Two numbers on every product card and product page:
- *   已售 N     = sold_baseline（站外历史销量，运营按真实流水填） + 本站已付款件数
- *   库存还剩 M = batch_size（本批次放量） − 本批次开始后的已付款件数
+ * 两个数字直接存在商品行上（`supplier_sold` / `supplier_stock`），由每次货源
+ * 同步刷新。页面读取时不查询订单、不做任何推算，所以页面上看到的数字永远
+ * 和上游一致：上游没货，我们就不卖。
  *
- * The paid count is the only live input: a real order moves both numbers on the
- * next page load, no counter row to keep in sync and nothing to double-count.
- * `batch_size = 0` means the operator has not set a batch, so only 已售 shows.
- *
- * When a batch sells out and `batch_refill_minutes > 0`, the next batch opens
- * automatically once that interval has passed — see `refillSoldOutBatches`.
- *
- * These are display figures. Fulfilment, procurement and the real supplier
- * stock state stay on their own fields; nothing here feeds the order flow
- * except the sold-out label.
+ * 纯计算在 sales-display.ts，那是客户端组件也能引用的无数据库版本。
  */
 
 export type { ShopSalesDisplay } from "./sales-display";
-export { salesDisplay, salesLabel } from "./sales-display";
+export { salesDisplay, salesLabel, normalizeSupplierStock } from "./sales-display";
 
-type SalesRow = {
-  product_id: string;
+type StockRow = {
   units: string | number;
   batch_units: string | number;
 };
 
-const PAID_STATUSES = `('paid', 'procuring', 'delivered')`;
-
 /**
- * Sold-out batches whose auto-refill interval has elapsed get a fresh start.
+ * 货源断货的商品不能被售出。
  *
- * Runs before each catalogue read: it is a single UPDATE that only touches
- * rows that are actually exhausted, so the common case scans and writes
- * nothing. Two shop loads racing on the same product both push the start to
- * `now()`, which is the same outcome as one of them doing it.
+ * 放在下单入口而不是只是个页面提示：库存可能是同步之后才降到 0 的，
+ * 页面还停在旧数据上。返回 true 表示「货源已无货」。
  */
-export async function refillSoldOutBatches(): Promise<void> {
+export async function isSupplierOutOfStock(productId: string): Promise<boolean> {
   try {
-    await query(
-      `UPDATE shop_products p
-          SET batch_started_at = now(), updated_at = now()
-        WHERE p.batch_size > 0
-          AND p.batch_refill_minutes > 0
-          AND p.batch_started_at + make_interval(mins => p.batch_refill_minutes) <= now()
-          AND (
-            SELECT COALESCE(SUM(i.qty), 0)
-              FROM shop_order_items i
-              JOIN shop_orders o ON o.id = i.order_id
-             WHERE i.product_id = p.id
-               AND o.status IN ${PAID_STATUSES}
-               AND o.paid_at IS NOT NULL
-               AND o.paid_at >= p.batch_started_at
-          ) >= p.batch_size`,
+    const rows = await query<{ supplier_stock: number }>(
+      "SELECT supplier_stock FROM shop_products WHERE id = $1 LIMIT 1",
+      [productId],
     );
-  } catch (error) {
-    // A missing table/migration must not take the catalogue down.
-    console.warn("shop batch refill unavailable:", error);
+    const stock = rows.rows[0]?.supplier_stock;
+    return typeof stock === "number" && stock === 0;
+  } catch {
+    // 读不到就按「有货」处理：供应商库存缺失不该把整个下单流程堵死。
+    return false;
   }
 }
-
-export type ProductPaidUnits = { total: number; inBatch: number };
-
-/**
- * Paid unit counts per product: lifetime (for 已售) and since the current
- * batch started (for 库存还剩). Same status rule as the admin analytics and
- * the hot strip — the order must be paid and not cancelled/refunded.
- */
-export async function loadProductPaidUnits(
-  productIds: string[],
-): Promise<Map<string, ProductPaidUnits>> {
-  const units = new Map<string, ProductPaidUnits>();
-  if (productIds.length === 0) return units;
-  try {
-    const rows = await query<SalesRow>(
-      `SELECT i.product_id,
-              SUM(i.qty)::text AS units,
-              SUM(i.qty) FILTER (WHERE o.paid_at >= p.batch_started_at)::text AS batch_units
-         FROM shop_order_items i
-         JOIN shop_orders o ON o.id = i.order_id
-         JOIN shop_products p ON p.id = i.product_id
-        WHERE i.product_id = ANY($1::uuid[])
-          AND o.status IN ${PAID_STATUSES}
-          AND o.paid_at IS NOT NULL
-        GROUP BY i.product_id`,
-      [productIds],
-    );
-    for (const row of rows.rows) {
-      units.set(row.product_id, {
-        total: toNumber(row.units),
-        inBatch: toNumber(row.batch_units),
-      });
-    }
-  } catch (error) {
-    console.warn("shop display sales unavailable:", error);
-  }
-  return units;
-}
-
-

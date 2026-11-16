@@ -703,9 +703,10 @@ ALTER TABLE shop_suppliers ADD COLUMN IF NOT EXISTS last_success_at TIMESTAMPTZ;
 ALTER TABLE shop_suppliers ADD COLUMN IF NOT EXISTS last_feed_hash TEXT;
 
 -- 2026-11-13: zyanai.cc mirror (manual procurement, public list + item pages).
+-- 2026-11-16: ai-buy.vip runs the same storefront software.
 ALTER TABLE shop_suppliers DROP CONSTRAINT IF EXISTS shop_suppliers_kind_check;
 ALTER TABLE shop_suppliers ADD CONSTRAINT shop_suppliers_kind_check
-  CHECK (kind IN ('aibijia', 'manual', 'zyanai'));
+  CHECK (kind IN ('aibijia', 'manual', 'zyanai', 'aibuy'));
 
 INSERT INTO schema_migrations (version) VALUES ('003_shop') ON CONFLICT (version) DO NOTHING;
 
@@ -976,29 +977,20 @@ CREATE INDEX IF NOT EXISTS site_visits_user_idx
 INSERT INTO schema_migrations (version) VALUES ('007_site_visits') ON CONFLICT (version) DO NOTHING;
 
 -- ============================================================================
--- 008_shop_display_sales：商品页展示销量与批次剩余
+-- 008_shop_display_sales：商品页展示货源的真实库存与已售
 --
--- 两个展示口径字段，与真实履约数据分开存：
---   sold_baseline  站外历史销量基数（运营按真实渠道流水填写）
---   batch_size     本批次放量；0 表示不启用批次限量
--- 页面上的「已售 = sold_baseline + 本站已付款件数」，
--- 「库存还剩 = batch_size − 本站已付款件数」，真实订单自动增减。
+-- 两个数字全部来自上游公开数据，不做任何人工编造：
+--   supplier_sold   上游累计已售（含我们自己的采购，不会重复计数）
+--   supplier_stock  上游当前库存；-1 表示"充足/无限"，不代表具体件数
+--   supplier_synced_at 最近一次从货源刷新这两个数的时间
+--
+-- 页面显示「已售 N · 库存还剩 M」。库存以货源为准：上游没货我们就卖不了，
+-- 所以 stock 归零时商品页转缺货、下单被拒。每次货源同步刷新这两个数。
 -- 纯加法迁移：只加列，不改既有数据。
 -- ============================================================================
-ALTER TABLE shop_products ADD COLUMN IF NOT EXISTS sold_baseline INTEGER NOT NULL DEFAULT 0
-  CHECK (sold_baseline >= 0);
-ALTER TABLE shop_products ADD COLUMN IF NOT EXISTS batch_size INTEGER NOT NULL DEFAULT 0
-  CHECK (batch_size >= 0);
--- 批次起点：剩余 = batch_size − 本批次开始后的已付款件数。
-ALTER TABLE shop_products ADD COLUMN IF NOT EXISTS batch_started_at TIMESTAMPTZ
-  NOT NULL DEFAULT now();
--- 自动补货间隔（分钟）。0 = 不自动补货；卖完后隔这么久自动开新批次。
-ALTER TABLE shop_products ADD COLUMN IF NOT EXISTS batch_refill_minutes INTEGER NOT NULL DEFAULT 0
-  CHECK (batch_refill_minutes >= 0);
-
--- 2026-11-16: ai-buy.vip 货源（tokyo 主题，与 zyanai 同构）。
-ALTER TABLE shop_suppliers DROP CONSTRAINT IF EXISTS shop_suppliers_kind_check;
-ALTER TABLE shop_suppliers ADD CONSTRAINT shop_suppliers_kind_check
-  CHECK (kind IN ('aibijia', 'manual', 'zyanai', 'aibuy'));
+ALTER TABLE shop_products ADD COLUMN IF NOT EXISTS supplier_sold INTEGER NOT NULL DEFAULT 0
+  CHECK (supplier_sold >= 0);
+ALTER TABLE shop_products ADD COLUMN IF NOT EXISTS supplier_stock INTEGER NOT NULL DEFAULT -1;
+ALTER TABLE shop_products ADD COLUMN IF NOT EXISTS supplier_synced_at TIMESTAMPTZ;
 
 INSERT INTO schema_migrations (version) VALUES ('008_shop_display_sales') ON CONFLICT (version) DO NOTHING;

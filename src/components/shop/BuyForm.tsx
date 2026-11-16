@@ -92,8 +92,7 @@ export function BuyForm({
   const [captchaVersion, setCaptchaVersion] = useState(0);
   const [captchaRefreshing, setCaptchaRefreshing] = useState(false);
   const captchaPending = useRef(false);
-  // 批次售罄的商品视为缺货，即使供应商那边还有货：批次是运营定的售卖上限，
-  // 卖完就停下等补货，页面和下单入口保持一致。
+  // 货源库存是唯一的售卖上限：上游没货，页面和下单入口都停。
   const soldOut = product.sales.soldOut;
   const salesHint = salesLabel(product.sales);
   const available = isPurchasable(effectiveAvailability) && !soldOut;

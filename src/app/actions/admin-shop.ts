@@ -562,17 +562,6 @@ export async function adminSaveShopProductAction(formData: FormData): Promise<vo
   // the catalog; sort order breaks ties within the same placement.
   const featured = formData.get("featured") === "1";
   const sortOrder = Math.trunc(Number(formData.get("sortOrder") || 0)) || 0;
-  // 展示口径：站外历史销量基数与本批次放量。负数按 0 处理，非数字也按 0。
-  const soldBaseline = Math.max(
-    0,
-    Math.trunc(Number(formData.get("soldBaseline") || 0)) || 0,
-  );
-  const batchSize = Math.max(0, Math.trunc(Number(formData.get("batchSize") || 0)) || 0);
-  // 卖完后的自动补货间隔（分钟）；0 = 不自动补货。
-  const batchRefillMinutes = Math.max(
-    0,
-    Math.trunc(Number(formData.get("batchRefillMinutes") || 0)) || 0,
-  );
   // The lock checkbox is authoritative only when the operator actually toggles
   // it. Leaving it untouched keeps the old rule: an explicit price change is a
   // decision and locks the price against the next supply sync.
@@ -621,15 +610,6 @@ export async function adminSaveShopProductAction(formData: FormData): Promise<vo
             preorder_manual = $20,
             featured = $21,
             sort_order = $22,
-            -- 展示口径：历史销量基数 + 本批次放量；真实订单在读取时自动加减。
-            sold_baseline = $24,
-            batch_size = $25,
-            batch_refill_minutes = $26,
-            -- 每次保存放量视为开一个新批次；不重置的话改小放量会立刻显示售罄。
-            batch_started_at = CASE
-              WHEN $25 IS DISTINCT FROM batch_size THEN now()
-              ELSE batch_started_at
-            END,
             status = $16,
             compliance_ack_at = CASE
               WHEN $16 = 'active' AND $17 = TRUE THEN COALESCE(compliance_ack_at, now())
@@ -669,9 +649,6 @@ export async function adminSaveShopProductAction(formData: FormData): Promise<vo
       featured,
       sortOrder,
       lockMode,
-      soldBaseline,
-      batchSize,
-      batchRefillMinutes,
     ],
   );
   revalidatePath("/admin/shop/products");

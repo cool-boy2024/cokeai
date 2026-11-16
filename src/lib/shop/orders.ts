@@ -205,12 +205,11 @@ export async function createShopOrder(input: {
       input_fields: unknown;
       eta_max_minutes: number;
       qty_max: number;
-      batch_size: string | number;
-      batch_started_at: string;
+      supplier_stock: number;
     }>(
       `SELECT id, slug, name, brand, price_micros, status, availability,
               pricing_review_required, input_fields, eta_max_minutes,
-              batch_size, batch_started_at, $2::int AS qty_max
+              supplier_stock, $2::int AS qty_max
          FROM shop_products
         WHERE id = $1
         FOR UPDATE`,
@@ -252,26 +251,14 @@ export async function createShopOrder(input: {
       throw new Error("商品暂时缺货");
     }
 
-    // 批次限量：运营设定的售卖上限，卖完就停，等运营开新批次。商品行已经
+    // 货源库存是唯一的售卖上限：上游没货我们就卖不了。商品行已经
     // FOR UPDATE，同一时刻的并发下单会在这里排队，不会超卖。
-    const batchSize = Math.max(0, Math.trunc(Number(product.batch_size || 0)));
-    if (batchSize > 0) {
-      // Count only the current batch: orders older than batch_started_at were
-      // settled by a previous batch and already had their own refill.
-      const paid = await client.query<{ units: string }>(
-        `SELECT COALESCE(SUM(i.qty), 0)::text AS units
-           FROM shop_order_items i
-           JOIN shop_orders o ON o.id = i.order_id
-          WHERE i.product_id = $1
-            AND o.status IN ('paid', 'procuring', 'delivered')
-            AND o.paid_at IS NOT NULL
-            AND o.paid_at >= $2`,
-        [product.id, product.batch_started_at],
-      );
-      const paidUnits = Math.trunc(Number(paid.rows[0]?.units || 0));
-      if (paidUnits + (input.qty || 1) > batchSize) {
-        throw new Error("本批次已售完，正在补货，请稍后再来");
-      }
+    const supplierStock = Number(product.supplier_stock ?? -1);
+    if (supplierStock === 0) {
+      throw new Error("货源已售罄，正在补货，请稍后再来");
+    }
+    if (supplierStock > 0 && (input.qty || 1) > supplierStock) {
+      throw new Error(`货源仅剩 ${supplierStock} 件，请调整购买数量`);
     }
 
     const membershipResult = await client.query<{
