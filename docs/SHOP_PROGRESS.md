@@ -171,6 +171,43 @@
   （≤60MB，magic bytes 校验），改写为 `/api/shop/media/<hash>.<ext>`；
   视频路由支持 Range/206、ETag/304，文章页不再热链货源 CDN。
 
+## 2026-11-16：商品页显示货源真实已售 / 库存 + 移动端吸底购买栏
+
+### 展示口径（全部取自货源，不编数字）
+
+- 商品卡与详情页显示「已售 N · 库存 M」。两个数直接来自上游公开数据：
+  `supplier_sold` = 上游 `order_sold`，`supplier_stock` = 上游 `stock`，
+  由每次货源同步写入 `shop_products`，页面读取时不再查订单、不做推算。
+- `normalizeSupplierStock`（`src/lib/shop/sales-display.ts`）把上游文字档位
+  收敛为数字：「充足 / 非常多 / 无限」→ `-1`（有好货但无具体件数，只显示已售）；
+  「售罄 / 缺货 / 无货」→ `0`（真断货）。
+- 库存 `0`：徽章转「补货中」、显示「已售 N · 已售罄」，`createShopOrder` 在
+  商品行 `FOR UPDATE` 之后拒绝下单；库存 `> 0` 时按件数校验购买数量。
+- 没有任何已售、库存又充足的商品不显示计数，避免满屏「已售 0」。
+
+### ai-buy.vip 货源
+
+- 与 zyanai 同一套 tokyo 主题商城软件，适配器参数化为 `TokyoSource`。
+  ai-buy：slug 前缀 `q-`、外部键 `aibuy:{id}`、`shop_suppliers.kind = 'aibuy'`。
+- 命令行 `npm run shop:aibuy`（`--ids=36` / `--limit=N` / `--dry`），内部路由
+  `POST /api/internal/shop/aibuy-sync`，生产镜像额外打包 `aibuy-sync.cjs`。
+- 定时：`n8n/workflows/11-aibuy-sync.json`，cron `47 */6 * * *`（与 zyanai 的
+  `:41` 错开）。
+- 品牌识别优先看上游分类（`Plus 12个月卡密` 标题里没有品牌词）；标题含
+  「教程」的条目跳过，不当作可售商品。
+
+### 移动端吸底购买栏
+
+- 390px 下购买面板在 1537px，买家要滚近两屏才看得见价格和「购买」。
+  `MobileBuyBar` 把价格与「购买」固定在底部，`IntersectionObserver` 在购买
+  面板进入视口后收起；≤680px 才显示，桌面端 `display:none`。
+
+### 商品页查询优化
+
+- `getPublicProduct` 用 React `cache()` 包了一层：`generateMetadata` 与页面体
+  读同一 slug 时只查一次库（原本一次访问 8 条查询）。
+- 会员定价之后的余额查询与帮助文章查询并入 `Promise.all`，少一轮串行等待。
+
 ## 2026-11-14：zyanai 商品定时同步（每 6 小时）
 
 - 接口：`POST /api/internal/shop/zyanai-sync`，`x-internal-secret` 校验与帮助中心

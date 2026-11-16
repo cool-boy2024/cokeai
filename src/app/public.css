@@ -6189,6 +6189,79 @@ body {
   font-size: 11px;
 }
 
+/* ---------------------------------------------------------------------------
+ * 移动端吸底购买栏
+ *
+ * 手机商品页里购买面板排在封面、标题、介绍、帮助链接、注意事项之后，实测
+ * 390px 下要滚到 1537px 才看得见。这条底栏把价格和「购买」固定在视线内，
+ * 滚到购买面板后由 IntersectionObserver 收起。
+ * ------------------------------------------------------------------------- */
+.shop-mobile-buy {
+  display: none;
+}
+
+@media (max-width: 680px) {
+  .shop-mobile-buy {
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 40;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.96);
+    backdrop-filter: blur(12px);
+    transition: transform 0.22s ease, opacity 0.22s ease;
+  }
+
+  .shop-mobile-buy.is-hidden {
+    transform: translateY(110%);
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .shop-mobile-buy-price {
+    display: grid;
+    gap: 1px;
+    min-width: 0;
+  }
+
+  .shop-mobile-buy-price strong {
+    font-size: 19px;
+    line-height: 1.15;
+    letter-spacing: -0.01em;
+  }
+
+  .shop-mobile-buy-price span {
+    overflow: hidden;
+    color: var(--muted);
+    font-size: 11px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .shop-mobile-buy .btn {
+    flex: none;
+    min-width: 120px;
+    padding: 11px 22px;
+  }
+
+  /* 底栏会盖住页脚最后一段，留出等高的空白。 */
+  .public-main.shop-page {
+    padding-bottom: 72px;
+  }
+}
+
+@media (max-width: 680px) and (prefers-reduced-motion: reduce) {
+  .shop-mobile-buy {
+    transition: none;
+  }
+}
+
 /* 销量与批次剩余：列表行内也要看得到，用蓝色区分于普通标签。 */
 .public-main .shop-row-tags .shop-row-sales {
   background: #edf3fb;
