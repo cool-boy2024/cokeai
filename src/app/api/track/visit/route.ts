@@ -7,6 +7,7 @@ import { fixedWindowLimit } from "@/lib/rate-limit";
 import {
   isBotUserAgent,
   isVisitorId,
+  normalizeGeoText,
   normalizeLandingPath,
   sanitizeReferrer,
   VISITOR_COOKIE,
@@ -84,6 +85,11 @@ export async function POST(request: Request) {
   if (!limit.allowed) return reply(visitorId);
 
   const siteHost = new URL(config.appUrl).host;
+  // 所在地来自 Cloudflare 请求头（cf-connecting-ip 已在用，说明这些头能到源站）。
+  // 国家所有套餐都有；省份/城市需要后台开启「添加访客位置标头」托管转换。
+  const country = normalizeGeoText(request.headers.get("cf-ipcountry"));
+  const region = normalizeGeoText(request.headers.get("cf-region"));
+  const city = normalizeGeoText(request.headers.get("cf-ipcity") || request.headers.get("cf-city"));
   try {
     await recordFirstVisit({
       visitorId,
@@ -91,6 +97,9 @@ export async function POST(request: Request) {
       userAgent,
       referrer: sanitizeReferrer(String(payload.referrer || ""), siteHost),
       landingPath: normalizeLandingPath(String(payload.landingPath || "")),
+      country,
+      region,
+      city,
     });
     await purgeSiteVisits();
   } catch (error) {

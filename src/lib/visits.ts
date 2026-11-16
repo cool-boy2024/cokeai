@@ -31,6 +31,9 @@ export type RecentSignup = {
   referrer: string;
   landing_path: string;
   user_agent: string;
+  country: string;
+  region: string;
+  city: string;
 };
 
 export type AnonymousVisitor = {
@@ -40,6 +43,9 @@ export type AnonymousVisitor = {
   user_agent: string;
   referrer: string;
   landing_path: string;
+  country: string;
+  region: string;
+  city: string;
 };
 
 export async function recordFirstVisit(input: {
@@ -48,12 +54,25 @@ export async function recordFirstVisit(input: {
   userAgent: string;
   referrer: string;
   landingPath: string;
+  country: string;
+  region: string;
+  city: string;
 }): Promise<void> {
   await query(
-    `INSERT INTO site_visits (visitor_id, ip, user_agent, referrer, landing_path)
-     VALUES ($1, $2, $3, $4, $5)
+    `INSERT INTO site_visits
+       (visitor_id, ip, user_agent, referrer, landing_path, country, region, city)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
      ON CONFLICT (visitor_id) DO NOTHING`,
-    [input.visitorId, input.ip, input.userAgent, input.referrer, input.landingPath],
+    [
+      input.visitorId,
+      input.ip,
+      input.userAgent,
+      input.referrer,
+      input.landingPath,
+      input.country,
+      input.region,
+      input.city,
+    ],
   );
 }
 
@@ -117,10 +136,13 @@ export async function listRecentSignups(
             COALESCE(NULLIF(v.ip, ''), NULLIF(s.ip, ''), '') AS ip,
             COALESCE(v.referrer, '') AS referrer,
             COALESCE(v.landing_path, '') AS landing_path,
-            COALESCE(NULLIF(v.user_agent, ''), NULLIF(s.user_agent, ''), '') AS user_agent
+            COALESCE(NULLIF(v.user_agent, ''), NULLIF(s.user_agent, ''), '') AS user_agent,
+            COALESCE(v.country, '') AS country,
+            COALESCE(v.region, '') AS region,
+            COALESCE(v.city, '') AS city
        FROM users u
        LEFT JOIN LATERAL (
-         SELECT ip, referrer, landing_path, user_agent
+         SELECT ip, referrer, landing_path, user_agent, country, region, city
            FROM site_visits
           WHERE user_id = u.id
           ORDER BY created_at ASC
@@ -148,7 +170,8 @@ export async function listAnonymousVisitors(
 ): Promise<AnonymousVisitor[]> {
   const { rows } = await query<AnonymousVisitor>(
     `${BOUNDS_CTE}
-     SELECT visitor_id, created_at, ip, user_agent, referrer, landing_path
+     SELECT visitor_id, created_at, ip, user_agent, referrer, landing_path,
+            country, region, city
        FROM site_visits, bounds
       WHERE created_at >= bounds.start
         AND user_id IS NULL

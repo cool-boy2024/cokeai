@@ -11,7 +11,7 @@ import {
   purgeSiteVisits,
   type VisitRange,
 } from "@/lib/visits";
-import { describeUserAgent, maskIp } from "@/lib/visits-format";
+import { describeUserAgent, formatLocation, maskIp } from "@/lib/visits-format";
 
 export const metadata: Metadata = {
   title: "访客",
@@ -62,7 +62,8 @@ export default async function AdminVisitorsPage({
           <h1>访客</h1>
           <p>
             匿名访客的首次到访与新注册账号，按 Asia/Shanghai 自然日统计。
-            IP 完整入库，这里只显示脱敏值；记录保留 30 天后自动清理。
+            IP 完整入库，这里只显示脱敏值；所在地读取 Cloudflare 请求头（省份/城市需要在
+            Cloudflare 后台开启「添加访客位置标头」），记录保留 30 天后自动清理。
           </p>
         </div>
         <span className="badge">24 小时新注册 {newToday}</span>
@@ -151,6 +152,7 @@ export default async function AdminVisitorsPage({
                   <th>用户</th>
                   <th>注册时间</th>
                   <th>来源</th>
+                  <th>所在地</th>
                   <th>落地页</th>
                   <th>IP</th>
                   <th>设备</th>
@@ -167,6 +169,7 @@ export default async function AdminVisitorsPage({
                     </td>
                     <td className="nowrap">{formatDateTime(row.created_at)}</td>
                     <td className="mono">{source(row.referrer)}</td>
+                    <td className="nowrap">{formatLocation(row.country, row.region, row.city)}</td>
                     <td className="mono">{row.landing_path || "—"}</td>
                     <td className="mono nowrap">{maskIp(row.ip)}</td>
                     <td className="nowrap">{describeUserAgent(row.user_agent)}</td>
@@ -195,6 +198,7 @@ export default async function AdminVisitorsPage({
                   <th>访客</th>
                   <th>首次到访</th>
                   <th>来源</th>
+                  <th>所在地</th>
                   <th>落地页</th>
                   <th>IP</th>
                   <th>设备</th>
@@ -206,6 +210,7 @@ export default async function AdminVisitorsPage({
                     <td className="mono nowrap">{row.visitor_id.slice(0, 8)}</td>
                     <td className="nowrap">{formatDateTime(row.created_at)}</td>
                     <td className="mono">{source(row.referrer)}</td>
+                    <td className="nowrap">{formatLocation(row.country, row.region, row.city)}</td>
                     <td className="mono">{row.landing_path || "—"}</td>
                     <td className="mono nowrap">{maskIp(row.ip)}</td>
                     <td className="nowrap">{describeUserAgent(row.user_agent)}</td>

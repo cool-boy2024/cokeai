@@ -1,9 +1,12 @@
 import {
+  countryLabel,
   createVisitorId,
   describeUserAgent,
+  formatLocation,
   isBotUserAgent,
   isVisitorId,
   maskIp,
+  normalizeGeoText,
   normalizeLandingPath,
   sanitizeReferrer,
 } from "../src/lib/visits-format";
@@ -105,5 +108,38 @@ assertEqual(
 // Client-generated ids must pass the server-side UUID check.
 assertEqual(isVisitorId(createVisitorId()), true, "generated visitor id is a UUID");
 assertEqual(isVisitorId("not-a-uuid"), false, "rejects malformed id");
+
+// Location: Cloudflare headers are untrusted text, so they get normalized.
+assertEqual(normalizeGeoText("  Henan  "), "Henan", "trims whitespace");
+assertEqual(normalizeGeoText("Henan%20Sheng"), "Henan Sheng", "decodes percent-encoding");
+assertEqual(normalizeGeoText("%E6%B2%B3%E5%8D%97"), "河南", "decodes UTF-8 location names");
+assertEqual(normalizeGeoText("A%ZZ"), "A%ZZ", "malformed escape is kept verbatim");
+assertEqual(normalizeGeoText("A\tB"), "A B", "control chars become a space");
+assertEqual(
+  normalizeGeoText("a\u0000b\u001fc"),
+  "a b c",
+  "control chars never glue words",
+);
+assertEqual(normalizeGeoText(null), "", "missing header");
+assertEqual(normalizeGeoText("x".repeat(200)).length, 60, "caps long values");
+assertEqual(Array.from(normalizeGeoText("🀄".repeat(80))).length, 60, "caps by code point");
+
+assertEqual(countryLabel("CN"), "中国", "mainland China");
+assertEqual(countryLabel("cn"), "中国", "country codes are case-insensitive");
+assertEqual(countryLabel("HK"), "中国香港", "Hong Kong");
+assertEqual(countryLabel("TW"), "中国台湾", "Taiwan");
+assertEqual(countryLabel("XX"), "", "XX means undeterminable");
+assertEqual(countryLabel("T1"), "", "T1 means Tor");
+assertEqual(countryLabel("ZZ"), "ZZ", "unknown codes stay readable");
+assertEqual(countryLabel(""), "", "empty country");
+
+assertEqual(
+  formatLocation("CN", "Henan", "Zhengzhou"),
+  "中国 · Henan · Zhengzhou",
+  "country, region and city",
+);
+assertEqual(formatLocation("CN", "", ""), "中国", "country only");
+assertEqual(formatLocation("", "", ""), "—", "nothing known");
+assertEqual(formatLocation("XX", "Henan", ""), "Henan", "undeterminable country is dropped");
 
 console.log("visits tests ok");

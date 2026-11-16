@@ -974,3 +974,17 @@ CREATE INDEX IF NOT EXISTS site_visits_user_idx
   WHERE user_id IS NOT NULL;
 
 INSERT INTO schema_migrations (version) VALUES ('007_site_visits') ON CONFLICT (version) DO NOTHING;
+
+-- ============================================================================
+-- 008_visit_geo：访客首次到访的所在地
+--
+-- Cloudflare 在隧道前面，源站能拿到 cf-ipcountry / cf-region / cf-city 标头
+-- （城市级需要在 Cloudflare 后台开启「添加访客位置标头」托管转换，未开启时只有
+-- 国家）。打点接口在写入首访时把这些值一起落库，缺失时为空字符串，后台显示「—」。
+-- 纯加法迁移：只加带默认值的列，回滚为 DROP COLUMN，不影响既有统计。
+-- ============================================================================
+ALTER TABLE site_visits ADD COLUMN IF NOT EXISTS country TEXT NOT NULL DEFAULT '';
+ALTER TABLE site_visits ADD COLUMN IF NOT EXISTS region TEXT NOT NULL DEFAULT '';
+ALTER TABLE site_visits ADD COLUMN IF NOT EXISTS city TEXT NOT NULL DEFAULT '';
+
+INSERT INTO schema_migrations (version) VALUES ('008_visit_geo') ON CONFLICT (version) DO NOTHING;
