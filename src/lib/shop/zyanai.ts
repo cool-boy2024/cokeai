@@ -105,6 +105,8 @@ export type ZyanaiSyncResult = {
   itemsSeen: number;
   imported: number;
   skipped: { id: number; reason: string }[];
+  /** 这次同步里发现已从上游消失、因而下架的商品数。 */
+  delisted?: number;
 };
 
 async function fetchText(url: string): Promise<string> {
@@ -568,6 +570,52 @@ export async function syncTokyoProducts(
       await new Promise((resolve) => setTimeout(resolve, 350));
     }
 
+    // 上游下架 → 我们也下架。
+    //
+    // 之前只有「同步到了就更新」，商品从上游列表消失时我们什么都不做，继续
+    // 挂着卖——客户下单后我们才发现没货。
+    //
+    // 用「连续 2 次缺失」而不是一次：上游列表偶尔会抖动（分页、限流、临时
+    // 报错），一次缺失就下架会把还在卖的商品误伤掉。第一次缺失只标记，
+    // 第二次才真正下架。
+    // 只有「同步了完整目录」时才做下架判断。用 --limit / --ids 只同步几款时，
+    // 其他商品本来就不在 selected 里，按缺失处理会把它们全部误下架。
+    const fullCatalog = !options?.limit && !(options?.ids && options.ids.length > 0);
+    const seenKeys = catalog.map((item) => `${source.kind}:${item.id}`);
+    if (fullCatalog && seenKeys.length > 0) {
+      await query(
+        `UPDATE shop_offers
+            SET missing_count = missing_count + 1,
+                availability = CASE
+                  WHEN missing_count + 1 >= 2 THEN 'missing'
+                  ELSE availability
+                END
+          WHERE supplier_id = $1 AND NOT (external_key = ANY($2::text[]))`,
+        [supplierId, seenKeys],
+      );
+      // 只下架「货源已确认缺失」且当前在售的商品；运营手动暂停/归档的
+      // 状态不动（那是他们的决定）。
+      const delisted = await query<{ count: string }>(
+        `WITH gone AS (
+           UPDATE shop_products p
+              SET status = 'paused',
+                  availability = 'out_of_stock',
+                  availability_reason = '货源已下架',
+                  updated_at = now()
+             FROM shop_product_sources s
+             JOIN shop_offers o ON o.id = s.offer_id
+            WHERE s.product_id = p.id
+              AND o.supplier_id = $1
+              AND o.availability = 'missing'
+              AND p.status = 'active'
+            RETURNING p.id
+         )
+         SELECT COUNT(*)::text AS count FROM gone`,
+        [supplierId],
+      );
+      result.delisted = Number(delisted.rows[0]?.count || 0);
+    }
+
     await query(
       `UPDATE shop_sync_runs
           SET status = $2, finished_at = now(), offers_seen = $3, mapped_offers = $4,
@@ -578,7 +626,7 @@ export async function syncTokyoProducts(
         result.skipped.length === 0 ? "success" : "partial",
         result.itemsSeen,
         result.imported,
-        JSON.stringify({ skipped: result.skipped }),
+        JSON.stringify({ skipped: result.skipped, delisted: result.delisted ?? 0 }),
       ],
     );
     await query(
