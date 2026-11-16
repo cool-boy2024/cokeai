@@ -21,6 +21,7 @@
     "shop:price": "node scripts/shop-price-adjust.mjs",
     "shop:sync": "tsx scripts/shop-sync.ts",
     "shop:zyanai": "tsx scripts/sync-zyanai.ts",
+    "check:layout": "node scripts/check-layout.mjs",
     "shop:aibuy": "tsx scripts/sync-aibuy.ts",
     "shop:dedupe": "tsx scripts/cleanup-duplicate-products.ts",
     "test:shop": "tsx scripts/test-shop.ts",

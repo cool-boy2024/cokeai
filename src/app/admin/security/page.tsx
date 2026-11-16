@@ -12,6 +12,7 @@ import {
   Users,
 } from "lucide-react";
 import {
+  adminLabelIpAction,
   sendSecuritySummaryAlertAction,
   sendSecurityTestAlertAction,
   toggleEmergencyDefenseAction,
@@ -441,13 +442,37 @@ export default async function AdminSecurityPage({
               <thead>
                 <tr>
                   <th>IP</th>
+                  <th>备注</th>
                   <th>次数</th>
                 </tr>
               </thead>
               <tbody>
                 {snapshot.topIps.map((item) => (
                   <tr key={item.ip}>
-                    <td className="mono small">{item.ip}</td>
+                    <td className="mono small">
+                      {item.ip}
+                      {item.trusted ? (
+                        <span className="badge badge-green" style={{ marginLeft: 6 }}>
+                          受信
+                        </span>
+                      ) : null}
+                    </td>
+                    <td>
+                      <form action={adminLabelIpAction} className="ip-label-form">
+                        <input type="hidden" name="ip" value={item.ip} />
+                        <input
+                          type="text"
+                          name="label"
+                          defaultValue={item.label || ""}
+                          placeholder="如：办公室 / 家里"
+                          maxLength={40}
+                          aria-label={`给 ${item.ip} 起名字`}
+                        />
+                        <button type="submit" className="btn btn-sm btn-ghost">
+                          保存
+                        </button>
+                      </form>
+                    </td>
                     <td className="mono small">{item.count}</td>
                   </tr>
                 ))}
@@ -489,7 +514,14 @@ export default async function AdminSecurityPage({
                     <td>
                       <span className="badge badge-yellow">{typeLabel(event.type)}</span>
                     </td>
-                    <td className="mono small">{event.ip}</td>
+                    <td className="mono small">
+                      {event.ip}
+                      {event.label ? (
+                        <span className="badge badge-blue" style={{ marginLeft: 6 }}>
+                          {event.label}
+                        </span>
+                      ) : null}
+                    </td>
                     <td>
                       <div className="mono small">
                         {event.method} {event.path}
