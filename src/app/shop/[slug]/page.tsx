@@ -22,6 +22,7 @@ import {
 } from "@/components/shop/ShopBadges";
 import { ShareButton } from "@/components/shop/ShareButton";
 import { MobileBuyBar } from "@/components/shop/MobileBuyBar";
+import { productAvailabilityState } from "@/lib/shop/sales-display";
 import { getCurrentUser } from "@/lib/auth";
 import { config } from "@/lib/config";
 import { getGatewayBalance } from "@/lib/gateway-credits";
@@ -152,7 +153,16 @@ export default async function ShopProductPage({
                     days={product.warranty_days}
                     note={product.warranty_note}
                   />
-                  <SalesBadge sales={product.sales} />
+                  <SalesBadge
+                    sales={product.sales}
+                    available={
+                      productAvailabilityState({
+                        availability: product.availability,
+                        preorder: product.preorder,
+                        soldOut: product.sales.soldOut,
+                      }) === "available"
+                    }
+                  />
                   <ShareButton title={product.name} path={`/shop/${product.slug}`} />
                 </div>
               </div>

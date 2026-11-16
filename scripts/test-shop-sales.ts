@@ -1,5 +1,6 @@
 import {
   normalizeSupplierStock,
+  productAvailabilityState,
   salesDisplay,
   salesLabel,
 } from "../src/lib/shop/sales-display";
@@ -82,5 +83,47 @@ assertEqual(dirty.soldOut, false, "NaN stock is not treated as sold out");
 const negative = salesDisplay({ supplierSold: -5, supplierStock: -3 });
 assertEqual(negative.sold, 0, "negative sold count is clamped");
 assertEqual(negative.remaining, null, "any negative stock means 充足");
+
+// --- 「补货中」绝不能跟着「现货充足」 -------------------------------------
+
+// 商品被停售/补货中，但货源标了「充足」：只保留已售，不写库存。
+assertEqual(
+  salesLabel(abundant, { available: false }),
+  "已售 10673",
+  "unavailable product must not advertise 现货充足",
+);
+assertEqual(
+  salesLabel(inStock, { available: false }),
+  "已售 88",
+  "unavailable product must not advertise 库存 N",
+);
+// 售罄是事实，停售时仍然要说。
+assertEqual(
+  salesLabel(soldOut, { available: false }),
+  "已售 88 · 已售罄",
+  "sold out is still reported when unavailable",
+);
+
+// 可售判断与徽标必须同源。
+assertEqual(
+  productAvailabilityState({ availability: "in_stock" }),
+  "available",
+  "in_stock is buyable",
+);
+assertEqual(
+  productAvailabilityState({ availability: "out_of_stock" }),
+  "unavailable",
+  "out_of_stock is not buyable",
+);
+assertEqual(
+  productAvailabilityState({ availability: "out_of_stock", preorder: true }),
+  "available",
+  "preorder stays buyable",
+);
+assertEqual(
+  productAvailabilityState({ availability: "in_stock", soldOut: true }),
+  "unavailable",
+  "supplier zero stock overrides in_stock",
+);
 
 console.log("shop sales: ok");

@@ -7,7 +7,7 @@ import {
   productPriceLabel,
   warrantyShortLabel,
 } from "@/lib/shop/copy";
-import { salesLabel } from "@/lib/shop/sales-display";
+import { productAvailabilityState, salesLabel } from "@/lib/shop/sales-display";
 import { ProductCover } from "./ProductCover";
 import { AvailabilityBadge } from "./ShopBadges";
 
@@ -19,7 +19,13 @@ import { AvailabilityBadge } from "./ShopBadges";
 export function ProductRow({ product }: { product: PublicShopProduct }) {
   const price = startingPriceMicros(product);
   const hasVariants = product.variants.length > 0;
-  const sales = salesLabel(product.sales);
+  const available =
+    productAvailabilityState({
+      availability: product.availability,
+      preorder: product.preorder,
+      soldOut: product.sales.soldOut,
+    }) === "available";
+  const sales = salesLabel(product.sales, { available });
   return (
     <Link href={`/shop/${product.slug}`} className="shop-row">
       <div className="shop-row-cover">

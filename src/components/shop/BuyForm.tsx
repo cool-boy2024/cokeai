@@ -9,7 +9,7 @@ import { authHref } from "@/lib/redirects";
 import type { PublicShopProduct } from "@/lib/shop/catalog";
 import { formatCny } from "@/lib/money";
 import { isPurchasable, productPriceLabel, SHOP_COPY } from "@/lib/shop/copy";
-import { salesLabel } from "@/lib/shop/sales-display";
+import { productAvailabilityState, salesLabel } from "@/lib/shop/sales-display";
 
 const initial: ShopCheckoutState = {};
 
@@ -94,8 +94,15 @@ export function BuyForm({
   const captchaPending = useRef(false);
   // 货源库存是唯一的售卖上限：上游没货，页面和下单入口都停。
   const soldOut = product.sales.soldOut;
-  const salesHint = salesLabel(product.sales);
   const available = isPurchasable(effectiveAvailability) && !soldOut;
+  const salesHint = salesLabel(product.sales, {
+    available:
+      productAvailabilityState({
+        availability: effectiveAvailability,
+        preorder: effectivePreorder,
+        soldOut,
+      }) === "available",
+  });
   const maxQty = Math.max(1, Math.trunc(qtyMax));
   const totalMicros = unitMicros * qty;
 

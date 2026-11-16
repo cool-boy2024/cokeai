@@ -386,6 +386,33 @@ export async function listPublicProducts(filter?: {
     values,
   );
   const products = rows.rows.map(hydrate);
+  return decoratePublicProducts(products);
+}
+
+/**
+ * 最近上新的公开商品。
+ *
+ * 「新」以 published_at 为准（没有就退回 created_at），只算真正可售的：
+ * active、文案就绪、有价格。前台「最近上新」栏目用它。
+ */
+export async function listRecentPublicProducts(
+  limit = 6,
+): Promise<PublicShopProduct[]> {
+  const rows = await query<RawProduct>(
+    `SELECT ${PUBLIC_COLUMNS}, '' AS description_html
+       FROM shop_products
+      WHERE status = 'active' AND copy_ready = TRUE AND price_micros > 0
+      ORDER BY COALESCE(published_at, created_at) DESC
+      LIMIT $1`,
+    [Math.min(Math.max(limit, 1), 24)],
+  );
+  return decoratePublicProducts(rows.rows.map(hydrate));
+}
+
+/** 补齐身份、图片与规格，并做公开文案清洗。列表和「最近上新」共用。 */
+async function decoratePublicProducts(
+  products: PublicShopProduct[],
+): Promise<PublicShopProduct[]> {
   const productIds = products.map((product) => product.id);
   const [identities, media, variants] = await Promise.all([
     loadProductIdentities(productIds),
