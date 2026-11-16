@@ -77,6 +77,21 @@ export default async function ShopProductPage({
     getVisibleHelpArticlesByIds(getProductHelpArticleIds(product)),
   ]);
   const tutorial = getShopTutorial(product.slug);
+  // 交付流程第一步要写清楚现在实际能用的付款方式。USDT 未开放时不能提它，
+  // 否则客户找不到对应选项。支付方式由配置决定，这里跟着一起变。
+  const payChannelLabel = (() => {
+    const names: string[] = [];
+    if (config.shopEasypayEnabled && isEasyPayConfigured()) names.push("支付宝");
+    if (
+      manualAlipay.enabled &&
+      Boolean(manualAlipay.qrDataUrl && manualAlipay.payee)
+    ) {
+      names.push("支付宝（人工核实）");
+    }
+    if (usdtNetworkIds.length > 0) names.push("USDT");
+    if (names.length === 0) return "联系客服确认付款方式";
+    return `选择 ${names.join(" 或 ")} 付款`;
+  })();
   // Render the first captcha with the page so opening the payment step never
   // waits on a round trip. Refreshes still go through /api/shop/captcha. A
   // misconfigured key must not take the product page down.
@@ -176,7 +191,7 @@ export default async function ShopProductPage({
                   <div className="shop-step">
                     <span>01</span>
                     <strong>下单付款</strong>
-                    <p>确认商品信息，选择 USDT 或支付宝付款。</p>
+                    <p>确认商品信息，{payChannelLabel}。</p>
                   </div>
                   <div className="shop-step">
                     <span>02</span>

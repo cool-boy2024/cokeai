@@ -1,11 +1,13 @@
 import { randomBytes } from "node:crypto";
 import { config } from "@/lib/config";
+import { formatCny } from "@/lib/money";
 import { getManualAlipaySettings } from "@/lib/payments/settings";
 import { claimPersonalAlipayReceipt } from "@/lib/payments/receipts";
 import { decryptSecret, encryptSecret } from "@/lib/crypto";
 import { query, toNumber, withTransaction } from "@/lib/db";
 import { isPurchasable, type ShopInputField } from "./copy";
 import { getMembershipInfo, memberPriceMicros } from "./membership";
+import { notifyShopOpsOnce } from "./ops-alert";
 import { sanitizeSupplierCopy } from "./sanitize";
 
 export type ShopOrderStatus =
@@ -977,13 +979,14 @@ export async function expireShopOrders(): Promise<number> {
         )
         -- The buyer says they paid: wait for the operator instead of expiring
         -- an order whose money may already be in the merchant account.
-        AND NOT (
-          o.payment_provider = 'alipay_manual'
-          AND EXISTS (
-            SELECT 1 FROM manual_alipay_payments m
-             WHERE m.order_id = o.id AND m.reported_at IS NOT NULL
-          )
-        )
+        --
+        -- A manual Alipay buyer who transfers but never taps 已提交付款信息 used
+        -- to have their order expired out from under them — money in, order
+        -- closed, nobody looking. The QR is the merchant's own account, so any
+        -- unreported manual order is a maybe-paid until a human checks it.
+        -- Hold those open (see holdUnreportedManualAlipayOrders) rather than
+        -- letting the expiry sweep close them.
+        AND NOT (o.payment_provider = 'alipay_manual')
         -- Cancel a USDT order only after the scanner explicitly found no
         -- funds. A TronGrid outage must leave it pending for the next scan.
         AND (
@@ -1019,6 +1022,64 @@ export async function expireShopOrders(): Promise<number> {
         AND o.status IN ('expired', 'cancelled')`,
   );
   return result.rowCount || 0;
+}
+
+/**
+ * 人工支付宝订单过期后不会自动关闭（见 expireShopOrders），但也不能一直挂着
+ * 不提醒。这里把「已经过了付款时限、客户又没上报」的订单挑出来，记一条事件
+ * 并通知运营核对：如果钱确实到了就确认到账，没到就手动取消。
+ *
+ * 只通知一次：事件表里已有 alipay_unreported 就不再重复记。
+ */
+export async function flagUnreportedManualAlipayOrders(): Promise<
+  Array<{ order_no: string; amount_micros: number }>
+> {
+  const result = await query<{
+    id: string;
+    order_no: string;
+    amount_micros: string | number;
+  }>(
+    `SELECT o.id, o.order_no, o.amount_micros
+       FROM shop_orders o
+      WHERE o.status = 'pending_payment'
+        AND o.payment_provider = 'alipay_manual'
+        AND o.expires_at < now()
+        AND NOT EXISTS (
+          SELECT 1 FROM shop_order_events e
+           WHERE e.order_id = o.id AND e.event = 'alipay_unreported'
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM manual_alipay_payments m
+           WHERE m.order_id = o.id AND m.reported_at IS NOT NULL
+        )
+      ORDER BY o.expires_at ASC
+      LIMIT 50`,
+  );
+
+  const flagged: Array<{ order_no: string; amount_micros: number }> = [];
+  for (const row of result.rows) {
+    await query(
+      `INSERT INTO shop_order_events (order_id, actor_type, event, note)
+       VALUES ($1, 'system', 'alipay_unreported', '超时未上报付款，等待运营核对')`,
+      [row.id],
+    );
+    flagged.push({ order_no: row.order_no, amount_micros: toNumber(row.amount_micros) });
+  }
+
+  if (flagged.length > 0) {
+    const lines = flagged
+      .slice(0, 10)
+      .map((row) => `${row.order_no} ${formatCny(row.amount_micros)}`)
+      .join("\n");
+    await notifyShopOpsOnce(
+      "shop:alipay-unreported",
+      `【CokeAI 小店】${flagged.length} 笔人工支付宝订单超时未上报，请核对是否到账：\n${lines}` +
+        (flagged.length > 10 ? `\n…另有 ${flagged.length - 10} 笔` : ""),
+      30 * 60_000,
+    );
+  }
+
+  return flagged;
 }
 
 export async function purgeDeliveredCustomerInputs(): Promise<number> {

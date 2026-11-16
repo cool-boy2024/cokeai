@@ -1,5 +1,9 @@
 import { config } from "@/lib/config";
-import { expireShopOrders, purgeDeliveredCustomerInputs } from "@/lib/shop/orders";
+import {
+  expireShopOrders,
+  flagUnreportedManualAlipayOrders,
+  purgeDeliveredCustomerInputs,
+} from "@/lib/shop/orders";
 import { notifyShopOpsOnce } from "@/lib/shop/ops-alert";
 import { unauthorized, verifyInternalSecret } from "@/lib/internal";
 
@@ -11,9 +15,13 @@ export async function POST(request: Request): Promise<Response> {
 
   try {
     const expired = await expireShopOrders();
+    // Manual Alipay orders are never auto-expired (the money may already be in
+    // the merchant account), so they need a human. Flag the ones past their
+    // deadline without a buyer report and alert the operator once.
+    const flagged = await flagUnreportedManualAlipayOrders();
     const purged = await purgeDeliveredCustomerInputs();
     return Response.json(
-      { ok: true, expired, purged },
+      { ok: true, expired, flagged: flagged.length, purged },
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {
