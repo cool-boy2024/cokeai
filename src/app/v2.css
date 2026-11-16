@@ -3227,6 +3227,15 @@ tbody tr:hover {
   margin-top: 1px;
 }
 
+.shop-buy-login {
+  margin-left: 2px;
+  color: var(--ink);
+  font-weight: 550;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  white-space: nowrap;
+}
+
 .shop-form-error {
   padding: 9px 11px;
   border: 1px solid #f0cfcc;

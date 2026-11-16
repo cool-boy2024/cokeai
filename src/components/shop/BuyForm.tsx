@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useActionState, useCallback, useEffect, useRef, useState } from "react";
 import { LockSimple, ShieldCheck } from "@phosphor-icons/react";
 import { createShopCheckoutAction, type ShopCheckoutState } from "@/app/actions/shop";
+import { authHref } from "@/lib/redirects";
 import type { PublicShopProduct } from "@/lib/shop/catalog";
 import { formatCny } from "@/lib/money";
 import { isPurchasable, productPriceLabel, SHOP_COPY } from "@/lib/shop/copy";
@@ -240,6 +241,11 @@ export function BuyForm({
     ) : null;
 
   if (!loggedIn) {
+    // Orders are per-account: the delivery, the order history and the refund
+    // path all hang off a user row, so an email alone cannot own an order.
+    // Guests land on 注册 first (that is the common case) and the link carries
+    // `next` so they come straight back here to finish buying.
+    const next = `/shop/${product.slug}`;
     return (
       <div className="shop-buy-panel">
         <div className="shop-buy-price">
@@ -254,10 +260,19 @@ export function BuyForm({
         </div>
         <MemberPriceNote listPriceMicros={listUnitMicros} />
         {variantSelector}
-        <Link className="btn btn-primary btn-block" href={`/login?next=/shop/${product.slug}`}>
-          登录后购买
+        <Link
+          className="btn btn-primary btn-block"
+          href={authHref("/register", { next })}
+        >
+          注册后购买
         </Link>
-        <p className="shop-buy-fine">登录后即可查看订单和交付内容。</p>
+        <p className="shop-buy-fine">
+          <ShieldCheck size={13} weight="fill" />
+          下单需要账户。已有账户？
+          <Link className="shop-buy-login" href={authHref("/login", { next })}>
+            直接登录
+          </Link>
+        </p>
       </div>
     );
   }

@@ -6,7 +6,7 @@ import { AuthForm } from "@/components/AuthForm";
 import { AuthGalaxy } from "@/components/auth/AuthGalaxy";
 import { Logo } from "@/components/Logo";
 import { getCurrentUser } from "@/lib/auth";
-import { safeNextPath } from "@/lib/redirects";
+import { authHref, safeNextPath } from "@/lib/redirects";
 import "../auth-galaxy.css";
 
 export const metadata: Metadata = {
@@ -19,12 +19,17 @@ export const dynamic = "force-dynamic";
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ next?: string }>;
+  searchParams: Promise<{ next?: string; ref?: string }>;
 }) {
   const user = await getCurrentUser();
-  if (user) redirect(user.role === "admin" ? "/admin" : "/dashboard");
-  const { next } = await searchParams;
+  const { next, ref } = await searchParams;
   const safeNext = next ? safeNextPath(next, "") || undefined : undefined;
+  // Carry `next` (and any referral code) across the switch so a buyer who
+  // started at 购买 → 登录 → 注册 still lands back on the product.
+  const registerHref = authHref("/register", { next: safeNext, ref });
+  if (user) {
+    redirect(safeNext || (user.role === "admin" ? "/admin" : "/dashboard"));
+  }
 
   return (
     <div className="auth-page auth-page-simple auth-space">
@@ -58,11 +63,15 @@ export default async function LoginPage({
               </p>
               <p className="auth-eyebrow">安全入口 · AUTH</p>
               <h1 id="auth-title">登录</h1>
-              <p className="auth-sub">继续查看余额和小店订单。</p>
+              <p className="auth-sub">
+                {safeNext?.startsWith("/shop/")
+                  ? "登录后自动回到刚才的商品页，继续完成下单。"
+                  : "继续查看余额和小店订单。"}
+              </p>
             </div>
             <AuthForm mode="login" next={safeNext} />
             <p className="auth-switch">
-              还没有账户？ <Link href="/register">注册</Link>
+              还没有账户？ <Link href={registerHref}>注册</Link>
             </p>
           </section>
         </div>
