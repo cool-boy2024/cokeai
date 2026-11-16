@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { ArrowLeft, Headset } from "@phosphor-icons/react/dist/ssr";
 import { SiteFooter } from "@/components/SiteFooter";
 import { SiteHeader } from "@/components/SiteHeader";
+import { AutoRefresh } from "@/components/shop/AutoRefresh";
 import { DeliveryReveal } from "@/components/shop/DeliveryReveal";
 import { OrderTimeline } from "@/components/shop/OrderTimeline";
 import { getCurrentUser } from "@/lib/auth";
@@ -82,11 +83,29 @@ export default async function ShopOrderPage({
                   <span>
                     {order.status === "pending_payment"
                       ? "等待支付"
-                      : order.status === "refund_pending" || order.status === "refunded"
-                        ? "正在处理退款"
-                        : "正在采购 / 处理中"}
+                      : order.status === "expired"
+                        ? "订单已过期"
+                        : order.status === "cancelled"
+                          ? "订单已取消"
+                          : order.status === "refund_pending" || order.status === "refunded"
+                            ? "正在处理退款"
+                            : "正在采购 / 处理中"}
                   </span>
-                  <small>完成后可在本页领取交付内容，页面会自动更新。</small>
+                  {order.status === "expired" || order.status === "cancelled" ? (
+                    <>
+                      <small>
+                        这个订单不会再处理了。如果已经付过款，请联系客服并提供订单号。
+                      </small>
+                      <Link className="btn btn-primary" href="/shop">
+                        重新选购
+                      </Link>
+                    </>
+                  ) : (
+                    <>
+                      <small>完成后可在本页领取交付内容，页面会自动更新。</small>
+                      <AutoRefresh seconds={25} />
+                    </>
+                  )}
                 </div>
               )}
 
