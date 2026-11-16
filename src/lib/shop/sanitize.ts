@@ -145,6 +145,31 @@ export function sanitizeFulfillmentCopy(input: string): string {
 }
 
 /**
+ * 货源文案里经常带着上游自己的标价（「2.5元/条」「30元一次」「总价 120 元」）。
+ * 客户读到的是本站的售价，两个数字对不上就是自相矛盾，也暴露了我们的拿货价。
+ *
+ * 这里只处理「金额 + 单价/次数」这种明确的价格表述，把数字去掉、保留句子
+ * 意思；纯规则清洗，不猜上游意图。运费、手续费这类也会一并中性化。
+ */
+export function stripSupplierPricing(input: string): string {
+  if (!input) return "";
+  return input
+    // 「2.5元/条」「30 元一次」「120 元/月」——金额连同计价单位一起换成中性说法。
+    .replace(
+      /¥?\s*\d+(?:\.\d+)?\s*元\s*(?:\/\s*(?:条|次|个|张|份|月|天|年)|一次|一个|一条|一份)/g,
+      "按商品页价格",
+    )
+    // 其余「N元」只去掉数字，句子结构和名词都保留：
+    //   「扣除40元手续费」→「扣除手续费」
+    //   「加收退费手续费 20 元」→「加收退费手续费」
+    //   「总价 120 元」→「总价」
+    // 这样既不会和本站售价冲突，也不会写出「相应费用手续费」这种病句。
+    .replace(/\s*¥?\s*\d+(?:\.\d+)?\s*元/g, "")
+    .replace(/\s{2,}/g, " ")
+    .replace(/\s+([，。；、！？])/g, "$1");
+}
+
+/**
  * Removes supplier identity from a block of text. Safe to call on already
  * clean copy: the shop's own name and URL are left untouched.
  */
@@ -255,6 +280,8 @@ export function sanitizeSupplierCopy(
   // Every order is fulfilled by hand; supplier auto-delivery wording is
   // replaced with the flow buyers actually get.
   text = sanitizeFulfillmentCopy(text);
+  // 上游标价不能出现在本站文案里：客户看到的售价必须和我们收的一致。
+  text = stripSupplierPricing(text);
 
   // Sourcing vocabulary. Longest phrases first so we do not produce
   // "本店本店".
