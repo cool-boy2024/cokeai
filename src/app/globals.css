@@ -118,6 +118,7 @@ svg {
   top: 0;
   border-bottom: 1px solid rgba(17, 19, 18, 0.08);
   background: rgba(244, 239, 229, 0.88);
+  -webkit-backdrop-filter: blur(18px);
   backdrop-filter: blur(18px);
 }
 
@@ -263,6 +264,7 @@ svg {
     linear-gradient(90deg, rgba(255, 255, 255, 0.042) 1px, transparent 1px);
   background-size: 58px 58px;
   content: "";
+  -webkit-mask-image: linear-gradient(to bottom, #000 35%, transparent 100%);
   mask-image: linear-gradient(to bottom, #000 35%, transparent 100%);
 }
 
@@ -1108,6 +1110,7 @@ tbody tr:hover {
 .auth-page {
   display: grid;
   min-height: 100vh;
+  min-height: 100dvh;
   grid-template-columns: 1fr 1fr;
   background: var(--paper);
 }
@@ -1304,6 +1307,7 @@ tbody tr:hover {
 .app-shell {
   display: grid;
   min-height: 100vh;
+  min-height: 100dvh;
   grid-template-columns: 248px minmax(0, 1fr);
   background: var(--paper);
 }
@@ -1313,6 +1317,7 @@ tbody tr:hover {
   top: 0;
   display: flex;
   height: 100vh;
+  height: 100dvh;
   flex-direction: column;
   padding: 24px 16px 18px;
   border-right: 1px solid var(--line);
@@ -1445,6 +1450,7 @@ tbody tr:hover {
   padding: 0 36px;
   border-bottom: 1px solid var(--line);
   background: rgba(244, 239, 229, 0.82);
+  -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
 }
 

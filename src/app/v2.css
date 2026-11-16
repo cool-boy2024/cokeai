@@ -87,6 +87,7 @@ pre {
 .site-header {
   border-bottom: 1px solid var(--line);
   background: rgba(247, 246, 243, 0.82);
+  -webkit-backdrop-filter: saturate(180%) blur(16px);
   backdrop-filter: saturate(180%) blur(16px);
 }
 
@@ -1244,6 +1245,7 @@ tbody tr:hover {
 .auth-page-simple {
   display: grid;
   min-height: 100vh;
+  min-height: 100dvh;
   place-items: center;
   padding: 40px 20px;
   background:
@@ -1308,6 +1310,7 @@ tbody tr:hover {
 .app-shell {
   display: grid;
   min-height: 100vh;
+  min-height: 100dvh;
   grid-template-columns: 232px minmax(0, 1fr);
 }
 
@@ -1597,6 +1600,7 @@ tbody tr:hover {
   padding: 0 32px;
   border-bottom: 1px solid var(--line);
   background: rgba(247, 246, 243, 0.86);
+  -webkit-backdrop-filter: saturate(180%) blur(16px);
   backdrop-filter: saturate(180%) blur(16px);
 }
 
@@ -2153,6 +2157,7 @@ tbody tr:hover {
 .auth-page-simple {
   grid-template-columns: 1fr !important;
   min-height: 100vh;
+  min-height: 100dvh;
   background:
     radial-gradient(circle at 50% 0%, rgba(31, 111, 92, 0.07), transparent 42%),
     var(--paper);
@@ -2419,6 +2424,7 @@ tbody tr:hover {
   font-size: 10px;
   font-weight: 550;
   animation: shop-float 6s ease-in-out infinite;
+  -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
 }
 
@@ -2516,6 +2522,7 @@ tbody tr:hover {
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   background: rgba(255, 255, 255, 0.72);
+  -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
 }
 
@@ -2644,6 +2651,7 @@ tbody tr:hover {
     linear-gradient(rgba(22, 22, 21, 0.045) 1px, transparent 1px),
     linear-gradient(90deg, rgba(22, 22, 21, 0.045) 1px, transparent 1px);
   background-size: 26px 26px;
+  -webkit-mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.9), transparent 92%);
   mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.9), transparent 92%);
   z-index: -1;
 }
