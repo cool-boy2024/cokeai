@@ -103,10 +103,14 @@ export function BuyForm({
     if (captchaPending.current) return;
     captchaPending.current = true;
     setCaptchaRefreshing(true);
+    // AbortSignal.timeout 只有 Safari 16 起才有；更早的 Safari 会在打开支付
+    // 步骤时直接抛错，验证码永远刷不出来。用 AbortController + setTimeout 兜底。
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), 8_000);
     try {
       const response = await fetch("/api/shop/captcha", {
         cache: "no-store",
-        signal: AbortSignal.timeout(8_000),
+        signal: controller.signal,
       });
       if (!response.ok) throw new Error("captcha unavailable");
       const data = (await response.json()) as Captcha;
@@ -114,6 +118,7 @@ export function BuyForm({
     } catch {
       setCaptcha(null);
     } finally {
+      window.clearTimeout(timer);
       captchaPending.current = false;
       setCaptchaRefreshing(false);
     }

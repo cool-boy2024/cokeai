@@ -12,6 +12,8 @@
   min-height: 100svh;
   flex-direction: column;
   padding: 0;
+  /* clip 只有 iOS 16+ 才支持；旧 Safari 退回 hidden，否则登录页会横向滚动。 */
+  overflow-x: hidden;
   overflow-x: clip;
   background:
     radial-gradient(

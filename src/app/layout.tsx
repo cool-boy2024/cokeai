@@ -56,6 +56,9 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   themeColor: "#f7f6f3",
+  // 刘海屏 / 灵动岛机型：没有这一项，env(safe-area-inset-*) 永远是 0，
+  // 底部的购买栏和客服按钮会压在 Home 指示条下面。
+  viewportFit: "cover",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
