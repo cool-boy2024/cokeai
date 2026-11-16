@@ -77,11 +77,13 @@ function countMarker(text, marker) {
 }
 
 async function cleanupByEmail(email) {
-  await pool.query(
-    "DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE email = $1)",
-    [email],
-  );
-  await pool.query("DELETE FROM users WHERE email = $1", [email]);
+  const user = await pool.query("SELECT id FROM users WHERE email = $1", [email]);
+  const userId = user.rows[0]?.id;
+  if (!userId) return;
+  // shop_orders.user_id is ON DELETE RESTRICT, so orders have to go first.
+  await pool.query("DELETE FROM shop_orders WHERE user_id = $1", [userId]);
+  await pool.query("DELETE FROM sessions WHERE user_id = $1", [userId]);
+  await pool.query("DELETE FROM users WHERE id = $1", [userId]);
 }
 
 /**
