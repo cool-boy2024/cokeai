@@ -12,6 +12,7 @@ export const dynamic = "force-dynamic";
 const FILTERS = [
   { key: "all", label: "全部" },
   { key: "reported", label: "待确认到账" },
+  { key: "unreported", label: "超时待核对" },
   { key: "pending_payment", label: "待支付" },
   { key: "paid", label: "待采购" },
   { key: "procuring", label: "采购中" },
@@ -35,7 +36,11 @@ export default async function AdminShopOrdersPage({
       <div className="page-head">
         <div>
           <h1>小店订单</h1>
-          <p>客户上报付款后先核对收款账单确认到账，再去供货商下单并上传交付。</p>
+          <p>
+            客户上报付款后先核对收款账单确认到账，再去供货商下单并上传交付。
+            「超时待核对」是人工支付宝里已过付款时限、客户又没提交付款信息的订单——
+            这类订单不会自动过期（钱可能已到账），需要人工确认或取消。
+          </p>
         </div>
       </div>
 

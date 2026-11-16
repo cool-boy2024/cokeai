@@ -476,7 +476,18 @@ export async function listAdminShopOrders(filter?: {
 }): Promise<ShopOrderDetail[]> {
   const values: unknown[] = [];
   let condition = "TRUE";
-  if (filter?.status === "reported") {
+  if (filter?.status === "unreported") {
+    // Manual Alipay orders past their deadline with no buyer report. These are
+    // never auto-expired (the money may already be in the merchant account),
+    // so they need an operator to confirm or cancel them by hand.
+    condition += ` AND o.status = 'pending_payment'
+      AND o.payment_provider = 'alipay_manual'
+      AND o.expires_at < now()
+      AND NOT EXISTS (
+        SELECT 1 FROM manual_alipay_payments p
+         WHERE p.order_id = o.id AND p.order_kind = 'shop' AND p.reported_at IS NOT NULL
+      )`;
+  } else if (filter?.status === "reported") {
     condition += ` AND o.status = 'pending_payment'
       AND EXISTS (
         SELECT 1 FROM manual_alipay_payments p
