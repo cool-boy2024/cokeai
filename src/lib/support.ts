@@ -1,4 +1,5 @@
 import { query } from "@/lib/db";
+import { attachImagesToMessage, loadMessageImages } from "@/lib/support/images";
 
 export type TicketStatus = "open" | "closed";
 
@@ -24,6 +25,8 @@ export type SupportTicketMessage = {
   author: "customer" | "admin";
   body: string;
   createdAt: string;
+  /** 这条消息附带的图片 hash，读取走 /api/support/images/<hash>。 */
+  imageHashes?: string[];
 };
 
 type TicketRow = {
@@ -132,11 +135,14 @@ export async function listTicketMessages(
       ORDER BY created_at ASC`,
     [ticketId],
   );
+  // 一次取完所有图片，避免每条消息单独查一次。
+  const images = await loadMessageImages(result.rows.map((row) => row.id));
   return result.rows.map((row) => ({
     id: row.id,
     author: row.author as "customer" | "admin",
     body: row.body,
     createdAt: row.created_at,
+    imageHashes: images.get(row.id) || [],
   }));
 }
 
@@ -183,12 +189,16 @@ export async function addCustomerReply(input: {
   ticketId: string;
   userId: string;
   message: string;
+  imageHashes?: string[];
 }): Promise<void> {
-  await query(
+  const inserted = await query<{ id: string }>(
     `INSERT INTO support_ticket_messages (ticket_id, author, body)
-     VALUES ($1, 'customer', $2)`,
+     VALUES ($1, 'customer', $2) RETURNING id`,
     [input.ticketId, input.message],
   );
+  if (input.imageHashes?.length) {
+    await attachImagesToMessage(inserted.rows[0].id, input.imageHashes);
+  }
   // A customer reply reopens a closed ticket.
   await query(
     `UPDATE support_tickets SET status = 'open', updated_at = now()
@@ -200,12 +210,16 @@ export async function addCustomerReply(input: {
 export async function addAdminReply(input: {
   ticketId: string;
   message: string;
+  imageHashes?: string[];
 }): Promise<void> {
-  await query(
+  const inserted = await query<{ id: string }>(
     `INSERT INTO support_ticket_messages (ticket_id, author, body)
-     VALUES ($1, 'admin', $2)`,
+     VALUES ($1, 'admin', $2) RETURNING id`,
     [input.ticketId, input.message],
   );
+  if (input.imageHashes?.length) {
+    await attachImagesToMessage(inserted.rows[0].id, input.imageHashes);
+  }
   await query(
     `UPDATE support_tickets SET updated_at = now() WHERE id = $1`,
     [input.ticketId],

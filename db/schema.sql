@@ -877,6 +877,33 @@ CREATE TABLE IF NOT EXISTS support_ticket_messages (
 CREATE INDEX IF NOT EXISTS support_ticket_messages_ticket_idx
   ON support_ticket_messages(ticket_id, created_at ASC);
 
+-- ============================================================================
+-- 工单图片：客户需要发收款码、报错截图给运营，纯文字说不清。
+--
+-- 图片存独立表（不进 shop_images，那是商品图，生命周期和访问控制都不一样）。
+-- 只允许图片 MIME、限制大小，字节存 BYTEA；按 sha256 去重，同一张图多次上传
+-- 只存一份。读取走带鉴权的路由，不做公开静态资源。
+-- 纯加法迁移：新表，不改既有表。
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS support_images (
+  hash TEXT PRIMARY KEY,
+  mime TEXT NOT NULL,
+  ext TEXT NOT NULL,
+  bytes BYTEA NOT NULL,
+  byte_size INTEGER NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- 消息与图片是多对多：一条消息可以带多张图，同一张图也可以出现在多条消息里。
+CREATE TABLE IF NOT EXISTS support_message_images (
+  message_id UUID NOT NULL REFERENCES support_ticket_messages(id) ON DELETE CASCADE,
+  image_hash TEXT NOT NULL REFERENCES support_images(hash) ON DELETE CASCADE,
+  position INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (message_id, image_hash)
+);
+CREATE INDEX IF NOT EXISTS support_message_images_hash_idx
+  ON support_message_images(image_hash);
+
 -- Per-side read timestamps: unread messages are derived by counting the other
 -- party's messages newer than this timestamp.
 ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS customer_read_at TIMESTAMPTZ;

@@ -6793,3 +6793,62 @@ body {
 .shop-cancel-order-actions .btn {
   flex: 1;
 }
+
+/* 工单图片：缩略图并排，点开看原图。 */
+.support-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.support-images a {
+  display: block;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  line-height: 0;
+}
+
+.support-images img {
+  width: 96px;
+  height: 96px;
+  object-fit: cover;
+  display: block;
+}
+
+/* 上传控件：原生 file input 在各家浏览器里样式差别大，统一一下外框。 */
+.support-upload {
+  display: grid;
+  gap: 6px;
+}
+
+.support-upload > span {
+  font-size: 13px;
+  font-weight: 550;
+}
+
+.support-upload input[type="file"] {
+  font-size: 12.5px;
+}
+
+.support-upload small {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+/* 退款协商的步骤清单：比一大段文字好读。 */
+.shop-refund-steps {
+  margin: 8px 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.7;
+}
+
+.shop-refund-hint {
+  margin: 6px 0 10px;
+  color: var(--yellow);
+  font-size: 12px;
+  font-weight: 550;
+}

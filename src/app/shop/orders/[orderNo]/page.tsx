@@ -140,11 +140,23 @@ export default async function ShopOrderPage({
                 <div className="shop-refund-notice">
                   <strong>退款协商中</strong>
                   <p>
-                    请在客服会话中发送你的支付宝收款码（需与实名一致）和收款姓名。运营核对订单与金额后按协商结果退款，
-                    退款后可退款金额为 {formatCny(order.amount_micros)}，完成前请不要重复申请。
+                    退款可退金额为 {formatCny(order.amount_micros)}，完成前请不要重复申请。
                   </p>
-                  <Link className="text-link" href={supportHref}>
-                    {activeTicket ? "打开站内售后工单" : "提交站内售后工单"}
+                  <ol className="shop-refund-steps">
+                    <li>
+                      打开下方的<strong>售后工单</strong>（没有就先提交一个）。
+                    </li>
+                    <li>
+                      在工单回复框里<strong>上传你的支付宝收款码截图</strong>，
+                      收款码需与实名一致。
+                    </li>
+                    <li>一并告诉我们收款姓名，运营核对订单与金额后按协商结果退款。</li>
+                  </ol>
+                  <p className="shop-refund-hint">
+                    只发文字我们收不到收款码，一定要用「上传图片」发截图。
+                  </p>
+                  <Link className="btn btn-primary btn-block" href={supportHref}>
+                    {activeTicket ? "打开售后工单，上传收款码" : "提交售后工单，上传收款码"}
                   </Link>
                 </div>
               ) : null}
