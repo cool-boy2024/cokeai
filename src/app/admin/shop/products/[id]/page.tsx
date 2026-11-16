@@ -382,36 +382,47 @@ export default async function AdminShopProductEditPage({
             <div className="panel-head">
               <div>
                 <h2>供货来源</h2>
+                <p>
+                  上架前必须能打开货源并确认有货。货源无货或打不开的商品，
+                  保存为「上架」会被自动拦回草稿。
+                </p>
               </div>
               <span className="badge">{sources.rows.length}</span>
             </div>
             {sources.rows.length === 0 ? (
-              <div className="empty">未绑定货源。</div>
+              <div className="empty">未绑定货源。没有货源的不能上架。</div>
             ) : (
               <ul className="shop-source-list">
-                {sources.rows.map((source) => (
-                  <li key={source.id}>
-                    <div>
-                      <strong>{source.source_store}</strong>
-                      <span className={`badge ${source.active ? "badge-green" : ""}`}>
-                        {source.active ? source.role : "停用"}
-                      </span>
-                    </div>
-                    <p>{source.source_title}</p>
-                    <small>
-                      {formatCny(source.supplier_cost_micros)} ·{" "}
-                      {offerAvailabilityLabel(source.supplier_availability)} ·{" "}
-                      {source.last_synced_at ? formatDateTime(source.last_synced_at) : "—"}
-                    </small>
-                    {source.url ? (
-                      <a href={source.url} target="_blank" rel="noreferrer" className="shop-muted">
-                        打开供货商页面
-                      </a>
-                    ) : (
-                      <span className="shop-muted">线下货源，无采购链接</span>
-                    )}
-                  </li>
-                ))}
+                {sources.rows.map((source) => {
+                  const sourceAvailable =
+                    source.supplier_availability === "in_stock" ||
+                    source.supplier_availability === "low_stock";
+                  return (
+                    <li key={source.id}>
+                      <div>
+                        <strong>{source.source_store}</strong>
+                        <span className={`badge ${source.active ? "badge-green" : ""}`}>
+                          {source.active ? source.role : "停用"}
+                        </span>
+                        <span className={`badge ${sourceAvailable ? "badge-green" : ""}`}>
+                          {offerAvailabilityLabel(source.supplier_availability)}
+                        </span>
+                      </div>
+                      <p>{source.source_title}</p>
+                      <small>
+                        {formatCny(source.supplier_cost_micros)} ·{" "}
+                        {source.last_synced_at ? formatDateTime(source.last_synced_at) : "—"}
+                      </small>
+                      {source.url ? (
+                        <a href={source.url} target="_blank" rel="noreferrer" className="shop-muted">
+                          打开货源核对库存 →
+                        </a>
+                      ) : (
+                        <span className="shop-muted">线下货源，无采购链接</span>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             )}
             {margin !== null ? (
