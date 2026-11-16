@@ -6,6 +6,7 @@ import { AuthForm } from "@/components/AuthForm";
 import { AuthGalaxy } from "@/components/auth/AuthGalaxy";
 import { Logo } from "@/components/Logo";
 import { getCurrentUser } from "@/lib/auth";
+import { authHref, safeNextPath } from "@/lib/redirects";
 import "../auth-galaxy.css";
 
 export const metadata: Metadata = {
@@ -18,12 +19,18 @@ export const dynamic = "force-dynamic";
 export default async function RegisterPage({
   searchParams,
 }: {
-  searchParams: Promise<{ ref?: string }>;
+  searchParams: Promise<{ ref?: string; next?: string }>;
 }) {
   const user = await getCurrentUser();
-  if (user) redirect(user.role === "admin" ? "/admin" : "/dashboard");
-  const { ref } = await searchParams;
+  const { ref, next } = await searchParams;
   const refCode = (ref || "").trim().toUpperCase().slice(0, 32) || undefined;
+  const safeNext = next ? safeNextPath(next, "") || undefined : undefined;
+  if (user) {
+    redirect(safeNext || (user.role === "admin" ? "/admin" : "/dashboard"));
+  }
+  // Signing up mid-purchase should not lose the product page the buyer came
+  // from; keep the login link symmetric with the one on /login.
+  const loginHref = authHref("/login", { next: safeNext, ref: refCode });
 
   return (
     <div className="auth-page auth-page-simple auth-space">
@@ -57,11 +64,15 @@ export default async function RegisterPage({
               </p>
               <p className="auth-eyebrow">安全入口 · AUTH</p>
               <h1 id="auth-title">创建账户</h1>
-              <p className="auth-sub">注册后充值即可在小店下单，余额不过期。</p>
+              <p className="auth-sub">
+                {safeNext?.startsWith("/shop/")
+                  ? "注册后自动回到刚才的商品页，继续完成下单。"
+                  : "注册后充值即可在小店下单，余额不过期。"}
+              </p>
             </div>
-            <AuthForm mode="register" refCode={refCode} />
+            <AuthForm mode="register" next={safeNext} refCode={refCode} />
             <p className="auth-switch">
-              已有账户？ <Link href="/login">登录</Link>
+              已有账户？ <Link href={loginHref}>登录</Link>
             </p>
           </section>
         </div>

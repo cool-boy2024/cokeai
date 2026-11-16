@@ -25,3 +25,26 @@ export function safeNextPath(value: string | undefined, fallback = "/dashboard")
     return fallback;
   }
 }
+
+/**
+ * Builds a /login or /register link that survives the login ⇄ register switch.
+ *
+ * Without this, a guest who clicks 购买 on a product lands on
+ * /login?next=/shop/x, then taps 注册 and loses `next`, so they finish signup
+ * at the dashboard instead of back on the product they wanted to buy.
+ *
+ * `next` is re-validated here rather than trusted from the caller, so the auth
+ * pages can never be used to launder an open redirect.
+ */
+export function authHref(
+  path: "/login" | "/register",
+  options: { next?: string; ref?: string } = {},
+): string {
+  const params = new URLSearchParams();
+  const next = options.next ? safeNextPath(options.next, "") : "";
+  if (next) params.set("next", next);
+  const ref = (options.ref || "").trim().toUpperCase().slice(0, 32);
+  if (ref) params.set("ref", ref);
+  const query = params.toString();
+  return query ? `${path}?${query}` : path;
+}

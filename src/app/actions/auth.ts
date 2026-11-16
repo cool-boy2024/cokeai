@@ -33,6 +33,7 @@ const registerSchema = z.object({
   email: z.string().trim().toLowerCase().email("请输入有效邮箱"),
   password: z.string().min(8, "密码至少 8 位").max(72, "密码不能超过 72 位"),
   ref: z.string().trim().max(32).optional(),
+  next: z.string().optional(),
 });
 
 function safeNext(value: string | undefined): string {
@@ -165,6 +166,7 @@ export async function registerAction(
     email: formData.get("email"),
     password: formData.get("password"),
     ref: formData.get("ref") || undefined,
+    next: formData.get("next") || undefined,
   });
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message || "注册信息不完整" };
@@ -218,7 +220,10 @@ export async function registerAction(
     return { error: "注册失败，请稍后重试" };
   }
 
-  redirect("/dashboard/billing?welcome=1");
+  // A buyer who signed up mid-purchase returns to the product page; everyone
+  // else keeps the original welcome screen.
+  const next = parsed.data.next ? safeNextPath(parsed.data.next, "") : "";
+  redirect(next || "/dashboard/billing?welcome=1");
 }
 
 export async function logoutAction(): Promise<void> {
