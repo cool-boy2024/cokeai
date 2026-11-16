@@ -403,9 +403,13 @@ export default async function AdminShopProductEditPage({
                       {offerAvailabilityLabel(source.supplier_availability)} ·{" "}
                       {source.last_synced_at ? formatDateTime(source.last_synced_at) : "—"}
                     </small>
-                    <a href={source.url} target="_blank" rel="noreferrer" className="shop-muted">
-                      打开供货商页面
-                    </a>
+                    {source.url ? (
+                      <a href={source.url} target="_blank" rel="noreferrer" className="shop-muted">
+                        打开供货商页面
+                      </a>
+                    ) : (
+                      <span className="shop-muted">线下货源，无采购链接</span>
+                    )}
                   </li>
                 ))}
               </ul>

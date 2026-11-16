@@ -33,6 +33,7 @@
     "test:shop:usdt": "tsx scripts/test-shop-usdt.ts",
     "test:shop:sync": "tsx scripts/test-shop-sync.ts",
     "test:shop:manual": "tsx scripts/test-shop-manual-alipay.ts",
+    "test:shop:manual-source": "tsx scripts/test-shop-manual-source.ts",
     "test:shop:categories": "tsx scripts/test-shop-categories.ts",
     "test:shop:preorder": "tsx scripts/test-shop-preorder.ts",
     "test:shop:sanitize": "tsx scripts/test-shop-sanitize.ts",

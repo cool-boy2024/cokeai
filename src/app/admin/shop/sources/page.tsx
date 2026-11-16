@@ -43,6 +43,7 @@ type SearchParams = Record<string, string | undefined>;
 
 type OfferRow = {
   id: string;
+  order_only: boolean;
   source_title: string;
   source_store: string;
   price_micros: string;
@@ -109,6 +110,7 @@ export default async function AdminShopSourcesPage({
     ),
     query<OfferRow>(
       `SELECT o.id, o.source_title, o.source_store, o.price_micros, o.availability,
+              (COALESCE(o.raw->>'origin', '') = 'admin_order' AND o.raw->>'scope' = 'order') AS order_only,
               o.url, o.last_seen_at,
               p.slug AS product_slug, p.name AS product_name, p.id AS product_id,
               p.status AS product_status, p.price_micros AS retail_micros,
@@ -193,6 +195,7 @@ export default async function AdminShopSourcesPage({
 
   const quoteFor = (offer: (typeof visibleOffers)[number]) => {
     const cost = Number(offer.price_micros);
+    if (offer.order_only) return { cost, listed: 0, retail: 0, margin: null, profit: 0 };
     const listed = offer.retail_micros ? Number(offer.retail_micros) : 0;
     const retail =
       listed > 0 ? listed : autoRetailPrice(cost, targetMarginBps);
@@ -218,6 +221,7 @@ export default async function AdminShopSourcesPage({
     .filter(
       (offer) =>
         !offer.product_id &&
+        !offer.order_only &&
         offer.import_status !== "queued" &&
         offer.import_status !== "running",
     )
@@ -685,6 +689,8 @@ export default async function AdminShopSourcesPage({
                             <span className="badge badge-yellow"> 待审核</span>
                           ) : null}
                         </>
+                      ) : offer.order_only ? (
+                        <span className="badge">仅用于订单</span>
                       ) : (
                         <span className="muted">未上架到小店</span>
                       )}
@@ -708,7 +714,7 @@ export default async function AdminShopSourcesPage({
                     <td className="nowrap muted">{formatDateTime(offer.last_seen_at)}</td>
                     <td className="text-right">
                       <div className="shop-inline-actions">
-                        {!offer.product_id ? (
+                        {!offer.product_id && !offer.order_only ? (
                           <>
                             {offer.import_status === "queued" ||
                             offer.import_status === "running" ? (
@@ -740,14 +746,16 @@ export default async function AdminShopSourcesPage({
                             </form>
                           </>
                         ) : null}
-                        <a
-                          className="btn btn-ghost btn-sm"
-                          href={offer.url}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          打开
-                        </a>
+                        {offer.url ? (
+                          <a
+                            className="btn btn-ghost btn-sm"
+                            href={offer.url}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            打开
+                          </a>
+                        ) : null}
                       </div>
                     </td>
                   </tr>

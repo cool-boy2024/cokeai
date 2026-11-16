@@ -9,6 +9,7 @@ import { query, withTransaction } from "@/lib/db";
 import { autoRetailPrice } from "@/lib/shop/auto-pricing";
 import { SHOP_PRODUCT_CATEGORIES } from "@/lib/shop/categories";
 import { createImportJob, drainQueuedJobs, runImportJob } from "@/lib/shop/import";
+import { addManualShopSource } from "@/lib/shop/manual-source";
 import { notifyShopOrderDelivered } from "@/lib/shop/notify";
 import {
   cancelShopOrder,
@@ -211,6 +212,42 @@ export async function adminStartProcurementAction(formData: FormData): Promise<v
   redirect(`/admin/shop/orders/${orderId}?saved=1`);
 }
 
+export async function adminAddManualShopSourceAction(formData: FormData): Promise<void> {
+  const admin = await requireAdmin();
+  const orderId = text(formData, "orderId");
+  let boundProduct: { id: string; slug: string } | null = null;
+  try {
+    const result = await addManualShopSource({
+      orderId,
+      adminId: admin.id,
+      sourceStore: text(formData, "sourceStore"),
+      sourceTitle: text(formData, "sourceTitle"),
+      sourceUrl: text(formData, "sourceUrl"),
+      costYuan: text(formData, "costYuan"),
+      availability: text(formData, "availability"),
+      scope: text(formData, "scope"),
+    });
+    if (result.scope === "product") {
+      boundProduct = { id: result.productId, slug: result.productSlug };
+    }
+  } catch (error) {
+    redirect(
+      `/admin/shop/orders/${orderId}?sourceError=${encodeURIComponent(
+        error instanceof Error ? error.message : "添加货源失败",
+      )}#procurement`,
+    );
+  }
+  revalidatePath(`/admin/shop/orders/${orderId}`);
+  revalidatePath("/admin/shop/queue");
+  revalidatePath("/admin/shop/sources");
+  if (boundProduct) {
+    revalidatePath(`/admin/shop/products/${boundProduct.id}`);
+    revalidatePath("/shop");
+    revalidatePath(`/shop/${boundProduct.slug}`);
+  }
+  redirect(`/admin/shop/orders/${orderId}?sourceAdded=1#procurement`);
+}
+
 export async function adminDeliverShopAction(formData: FormData): Promise<void> {
   const admin = await requireAdmin();
   const orderId = text(formData, "orderId");
@@ -369,7 +406,9 @@ export async function adminCreateShopProductFromOfferAction(formData: FormData):
   }>(
     `SELECT id, external_key, source_title, source_store, supplier_product_slug,
             price_micros, availability
-       FROM shop_offers WHERE id = $1 LIMIT 1`,
+       FROM shop_offers
+      WHERE id = $1 AND NOT (COALESCE(raw->>'origin', '') = 'admin_order' AND raw->>'scope' = 'order')
+      LIMIT 1`,
     [offerId],
   );
   const row = offer.rows[0];
@@ -425,7 +464,9 @@ export async function adminStartShopOfferImportAction(formData: FormData): Promi
   }
 
   const offer = await query<{ id: string }>(
-    "SELECT id FROM shop_offers WHERE id = $1 LIMIT 1",
+    `SELECT id FROM shop_offers
+      WHERE id = $1 AND NOT (COALESCE(raw->>'origin', '') = 'admin_order' AND raw->>'scope' = 'order')
+      LIMIT 1`,
     [offerId],
   );
   if (!offer.rows[0]) redirect("/admin/shop/sources?import=offer_not_found");
@@ -524,6 +565,7 @@ export async function adminBulkShopOfferImportAction(formData: FormData): Promis
        LEFT JOIN shop_product_sources s ON s.offer_id = o.id AND s.active = TRUE
       WHERE o.id = ANY($1::uuid[])
         AND s.id IS NULL
+        AND NOT (COALESCE(o.raw->>'origin', '') = 'admin_order' AND o.raw->>'scope' = 'order')
         AND NOT EXISTS (
           SELECT 1 FROM shop_import_jobs j
            WHERE j.offer_id = o.id AND j.status IN ('queued', 'running')
