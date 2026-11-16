@@ -4721,7 +4721,7 @@ body {
 .announcement-modal-foot {
   display: flex;
   flex: none;
-  justify-content: flex-end;
+  flex-direction: column;
   gap: 10px;
   padding: 16px 24px;
   border-top: 1px solid var(--line);
@@ -4730,6 +4730,34 @@ body {
 
 .announcement-modal-foot .btn {
   min-width: 120px;
+}
+
+/* 强制阅读：按钮分组靠右，提示文字单独一行在左边。 */
+.announcement-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.announcement-modal-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: right;
+}
+
+@media (max-width: 480px) {
+  .announcement-modal-actions {
+    flex-direction: column-reverse;
+  }
+
+  .announcement-modal-actions .btn {
+    width: 100%;
+  }
+
+  .announcement-modal-hint {
+    text-align: center;
+  }
 }
 
 @keyframes announcement-modal-fade {

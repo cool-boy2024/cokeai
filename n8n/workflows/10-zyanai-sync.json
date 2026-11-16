@@ -1,9 +1,9 @@
 {
-  "name": "CokeAI｜zyanai 商品镜像同步（每 6 小时）",
+  "name": "CokeAI｜zyanai 商品镜像同步（每小时）",
   "nodes": [
     {
       "parameters": {
-        "content": "## zyanai 商品镜像同步\n\n每 6 小时拉取 zyanai.cc 公开商品列表与详情，更新小店的商品标题、介绍、价格和库存状态。\n\n- 缺货商品自动隐藏，补货自动恢复上架\n- 售价按拿货价 ÷ 0.7 重算，价格变动写入历史\n- 只同步商品，订单仍由人工采购，不触发任何下单\n- 单款抓取失败保留旧内容，结果写入 shop_sync_runs\n\n手动：后台脚本 `docker compose exec app node zyanai-sync.cjs`，或带 secret 调 `POST /api/internal/shop/zyanai-sync`。",
+        "content": "## zyanai 商品镜像同步\n\n每小时拉取 zyanai.cc 公开商品列表与详情，更新小店的商品标题、介绍、价格和库存状态。\n\n- 缺货商品自动隐藏，补货自动恢复上架\n- 售价按拿货价 ÷ 0.7 重算，价格变动写入历史\n- 只同步商品，订单仍由人工采购，不触发任何下单\n- 单款抓取失败保留旧内容，结果写入 shop_sync_runs\n\n手动：后台脚本 `docker compose exec app node zyanai-sync.cjs`，或带 secret 调 `POST /api/internal/shop/zyanai-sync`。",
         "height": 260,
         "width": 400,
         "color": 6
@@ -23,13 +23,13 @@
           "interval": [
             {
               "field": "cronExpression",
-              "expression": "41 */6 * * *"
+              "expression": "41 * * * *"
             }
           ]
         }
       },
       "id": "e2b1c3d4-5f60-4a71-8b82-a3c4d5e6f002",
-      "name": "每 6 小时 :41",
+      "name": "每小时 :41",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
       "position": [
@@ -74,7 +74,7 @@
   ],
   "pinData": {},
   "connections": {
-    "每 6 小时 :41": {
+    "每小时 :41": {
       "main": [
         [
           {

@@ -30,6 +30,14 @@ export function AnnouncementModal({ item }: Props) {
   const [open, setOpen] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
   const readRef = useRef<HTMLButtonElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  // 「我已阅读」只有在正文滚到底之后才能点。
+  //
+  // 公告里写的是付款后必须提交交易订单号这类会影响钱的事，客户一进来就点
+  // 关闭等于没看过。这里把按钮锁住，滚到底才放行。
+  //
+  // 正文短到不需要滚动时，直接算已读——否则按钮永远点不了。
+  const [readComplete, setReadComplete] = useState(false);
   const storageKey = `cokeai:announcement-modal:${item.id}:${item.updated_at}`;
 
   useEffect(() => {
@@ -57,6 +65,25 @@ export function AnnouncementModal({ item }: Props) {
 
   useEffect(() => {
     if (!open) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    const check = () => {
+      // 留 24px 容差：不同浏览器的行高取整会让 scrollTop 差一两个像素。
+      const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 24;
+      if (atBottom) setReadComplete(true);
+    };
+    check();
+    el.addEventListener("scroll", check, { passive: true });
+    // 窗口尺寸变化会让可视高度变，需要重算一次。
+    window.addEventListener("resize", check);
+    return () => {
+      el.removeEventListener("scroll", check);
+      window.removeEventListener("resize", check);
+    };
+  }, [open, item.id]);
+
+  useEffect(() => {
+    if (!open) return;
     const previousFocus = document.activeElement as HTMLElement | null;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -64,8 +91,10 @@ export function AnnouncementModal({ item }: Props) {
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        // 没读完就不许用 Esc 溜走——但也不能把键盘用户困死，所以只是
+        // 不关闭；读完以后 Esc 照常可用。
         event.preventDefault();
-        close(false);
+        if (readComplete) close(false);
         return;
       }
       if (event.key !== "Tab") return;
@@ -90,7 +119,7 @@ export function AnnouncementModal({ item }: Props) {
       document.body.style.overflow = previousOverflow;
       previousFocus?.focus();
     };
-  }, [open, close]);
+  }, [open, close, readComplete]);
 
   if (!open) return null;
 
@@ -98,7 +127,8 @@ export function AnnouncementModal({ item }: Props) {
     <div
       className="announcement-modal-overlay"
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget) close(false);
+        // 点遮罩等于「跳过」，没读完不生效。
+        if (event.target === event.currentTarget && readComplete) close(false);
       }}
     >
       <div
@@ -115,14 +145,14 @@ export function AnnouncementModal({ item }: Props) {
           <button
             type="button"
             className="announcement-modal-close"
-            aria-label="关闭公告"
+            aria-label="关闭公告（本次不再显示）"
             onClick={() => close(false)}
           >
             <X size={18} weight="bold" />
           </button>
         </header>
 
-        <div className="announcement-modal-scroll">
+        <div className="announcement-modal-scroll" ref={scrollRef}>
           <h2 id="announcement-modal-title">{item.title}</h2>
           {item.body ? <p className="announcement-modal-body">{item.body}</p> : null}
           <Link
@@ -135,17 +165,25 @@ export function AnnouncementModal({ item }: Props) {
         </div>
 
         <footer className="announcement-modal-foot">
-          <button type="button" className="btn btn-light" onClick={() => close(false)}>
-            取消
-          </button>
-          <button
-            ref={readRef}
-            type="button"
-            className="btn btn-primary"
-            onClick={() => close(true)}
-          >
-            我已阅读
-          </button>
+          {readComplete ? null : (
+            <p className="announcement-modal-hint" aria-live="polite">
+              请向下滚动阅读完整内容
+            </p>
+          )}
+          <div className="announcement-modal-actions">
+            <button type="button" className="btn btn-light" onClick={() => close(false)}>
+              稍后再看
+            </button>
+            <button
+              ref={readRef}
+              type="button"
+              className="btn btn-primary"
+              disabled={!readComplete}
+              onClick={() => close(true)}
+            >
+              我已阅读
+            </button>
+          </div>
         </footer>
       </div>
     </div>
