@@ -35,10 +35,28 @@ jobs:
         run: npm run typecheck
       - name: Validate n8n workflows
         run: |
-          for f in n8n/workflows/*.json; do
-            node -e "JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8'))" "$f"
-            echo "valid: $f"
-          done
+          # Parse each workflow AND check that every connection points at a node
+          # that actually exists. n8n rejects the whole import batch otherwise,
+          # and the failure only showed up in compose-smoke.
+          node -e '
+            const fs = require("fs"), path = require("path");
+            let bad = 0;
+            for (const file of fs.readdirSync("n8n/workflows").filter(f => f.endsWith(".json"))) {
+              const full = path.join("n8n/workflows", file);
+              const wf = JSON.parse(fs.readFileSync(full, "utf8"));
+              const names = new Set((wf.nodes || []).map(n => n.name));
+              for (const [src, spec] of Object.entries(wf.connections || {})) {
+                if (!names.has(src)) { console.error(`${file}: connection source "${src}" is not a node`); bad++; }
+                for (const branch of spec.main || []) {
+                  for (const item of branch) {
+                    if (!names.has(item.node)) { console.error(`${file}: connection target "${item.node}" is not a node`); bad++; }
+                  }
+                }
+              }
+              console.log("valid: " + file);
+            }
+            if (bad) { console.error(`${bad} broken workflow connection(s)`); process.exit(1); }
+          '
       - name: Validate Docker Compose
         run: |
           cp .env.example .env

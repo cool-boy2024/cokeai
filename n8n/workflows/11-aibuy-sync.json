@@ -78,7 +78,7 @@
       "main": [
         [
           {
-            "node": "同步 zyanai 商品",
+            "node": "同步 ai-buy 商品",
             "type": "main",
             "index": 0
           }
