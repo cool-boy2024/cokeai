@@ -58,6 +58,10 @@ type OfferRow = {
   import_status: string | null;
   import_note: string | null;
   import_error: string | null;
+  import_engine: string | null;
+  agent_calls: string | null;
+  agent_input_tokens: string | null;
+  agent_output_tokens: string | null;
 };
 
 export default async function AdminShopSourcesPage({
@@ -114,7 +118,10 @@ export default async function AdminShopSourcesPage({
               o.url, o.last_seen_at,
               p.slug AS product_slug, p.name AS product_name, p.id AS product_id,
               p.status AS product_status, p.price_micros AS retail_micros,
-              j.status AS import_status, j.note AS import_note, j.error AS import_error
+              j.status AS import_status, j.note AS import_note, j.error AS import_error,
+              j.engine AS import_engine, j.agent_calls::text AS agent_calls,
+              j.agent_input_tokens::text AS agent_input_tokens,
+              j.agent_output_tokens::text AS agent_output_tokens
          FROM shop_offers o
          LEFT JOIN LATERAL (
            SELECT sp.slug, sp.name, sp.id, sp.status, sp.price_micros
@@ -125,7 +132,7 @@ export default async function AdminShopSourcesPage({
             LIMIT 1
          ) p ON TRUE
          LEFT JOIN LATERAL (
-           SELECT status, note, error
+           SELECT status, note, error, engine, agent_calls, agent_input_tokens, agent_output_tokens
              FROM shop_import_jobs
             WHERE offer_id = o.id
             ORDER BY created_at DESC
@@ -687,6 +694,17 @@ export default async function AdminShopSourcesPage({
                           </Link>
                           {offer.product_status === "draft" ? (
                             <span className="badge badge-yellow"> 待审核</span>
+                          ) : null}
+                          {offer.import_engine === "agent" ? (
+                            <span
+                              className="badge"
+                              title={`受控 Agent 生成：${Number(offer.agent_calls || 0)} 轮模型调用，输入 ${Number(
+                                offer.agent_input_tokens || 0,
+                              )} / 输出 ${Number(offer.agent_output_tokens || 0)} tokens`}
+                            >
+                              {" "}
+                              Agent {Number(offer.agent_calls || 0)} 轮
+                            </span>
                           ) : null}
                         </>
                       ) : offer.order_only ? (

@@ -31,6 +31,7 @@
     "test:redirects": "tsx scripts/test-redirects.ts",
     "test:security": "tsx scripts/test-security-status.ts",
     "test:shop": "tsx scripts/test-shop.ts",
+    "test:shop:agent": "tsx scripts/test-shop-import-agent.ts",
     "test:shop:analytics": "tsx scripts/test-shop-analytics.ts",
     "test:shop:balance": "tsx scripts/test-shop-balance.ts",
     "test:shop:categories": "tsx scripts/test-shop-categories.ts",

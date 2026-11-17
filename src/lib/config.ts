@@ -143,6 +143,15 @@ export const config = {
   shopImportAiModel: process.env.SHOP_IMPORT_AI_MODEL || "",
   shopImportWebhookUrl: process.env.SHOP_IMPORT_WEBHOOK_URL || "",
   shopImportTargetMarginBps: intEnv("SHOP_IMPORT_TARGET_MARGIN_BPS", 3_000),
+  // 受控 Agent 上架：开关默认关；模型走网关通道（model_prices_current 里的
+  // id），品类白名单留空表示全部类目。SHOP_IMPORT_AI_* 仍是单轮方案的
+  // 显式覆盖，Agent 关闭时行为与现在完全一致。
+  shopImportAgentEnabled: boolEnv("SHOP_IMPORT_AGENT_ENABLED", false),
+  shopImportAgentModel: process.env.SHOP_IMPORT_AGENT_MODEL || "deepseek-chat",
+  shopImportAgentCategories: (process.env.SHOP_IMPORT_AGENT_CATEGORIES || "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean),
   shopSupportEmail:
     process.env.SHOP_SUPPORT_EMAIL ||
     process.env.SUPPORT_EMAIL ||
