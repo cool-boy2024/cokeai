@@ -181,7 +181,7 @@ async function fetchSupplierHtml(rawUrl: string): Promise<string> {
   throw new Error("货源页面跳转过多");
 }
 
-async function fetchSupplierText(url: string): Promise<string> {
+export async function fetchSupplierText(url: string): Promise<string> {
   const html = await fetchSupplierHtml(url);
   const text = extractReadableText(html);
   if (text.length < 40) throw new Error("货源页面没有可读文本，可能需登录或由 JS 渲染");
@@ -240,7 +240,7 @@ function inferBrand(title: string): string {
   return "other";
 }
 
-function categoryFor(title: string): {
+export function categoryFor(title: string): {
   category: string;
   productType: string;
   displayCategory: string;
@@ -286,7 +286,7 @@ function firstMeaningfulLines(text: string, count: number, title: string): strin
     .slice(0, count);
 }
 
-function heuristicCopy(offer: OfferRow, sourceText: string | null): DraftCopy {
+export function heuristicCopy(offer: OfferRow, sourceText: string | null): DraftCopy {
   const title = offer.source_title.trim().slice(0, 120);
   const { category } = categoryFor(offer.source_title);
   const lifted = sourceText

@@ -128,4 +128,14 @@ assert(!lines.join("").includes("AI补给站"), "line scrubber applies the brand
 const once = clean("AI补给站 和 子砚的AI店铺 均按预定顺序采购。");
 assert(clean(once) === once, "scrubber is idempotent on its own output");
 
+// --- Settlement arithmetic -------------------------------------------------
+
+// 上游分账话术必须整句消失：买家不该知道"卡台"扣多少手续费。
+const settlement = clean(
+  "收到退款后，卡台会扣除退款金额的 20% 作为手续费，剩余金额退还给买家。\n正常说明：交付后请及时改密。",
+);
+assert(!settlement.includes("卡台"), "bare 卡台 settlement wording is removed");
+assert(!settlement.includes("20%"), "settlement percentage is removed");
+assert(settlement.includes("正常说明"), "ordinary lines survive settlement scrubbing");
+
 console.log("test-shop-sanitize: ok");
