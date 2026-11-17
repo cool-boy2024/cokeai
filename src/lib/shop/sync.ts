@@ -157,24 +157,116 @@ type FetchResult = {
   notModified: boolean;
 };
 
+const SYNC_USER_AGENT = "CokeAI-ShopSync/1.0 (+https://cokeai.cc.cd)";
+// The supplier allowlists our egress and accepts a browser-shaped request; use
+// it only as a fallback when the honest UA gets a challenge page back.
+const BROWSER_USER_AGENT =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+const BROWSER_ACCEPT =
+  "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8";
+
+type UpstreamResponse = {
+  response: Response;
+  status: number;
+  contentType: string;
+  bytes: Buffer;
+};
+
+async function requestUpstream(
+  url: string,
+  timeoutMs: number,
+  etag: string | null,
+  browserLike: boolean,
+): Promise<UpstreamResponse> {
+  // The browser-like retry drops If-None-Match so a stale ETag cannot make a
+  // challenge look like a cache hit.
+  const headers: Record<string, string> = browserLike
+    ? { accept: BROWSER_ACCEPT, "user-agent": BROWSER_USER_AGENT }
+    : {
+        accept: "application/json",
+        "user-agent": SYNC_USER_AGENT,
+        ...(etag ? { "if-none-match": etag } : {}),
+      };
+  const response = await fetch(url, {
+    headers,
+    cache: "no-store",
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  const bytes =
+    response.status === 304 ? Buffer.alloc(0) : Buffer.from(await response.arrayBuffer());
+  return {
+    response,
+    status: response.status,
+    contentType: (response.headers.get("content-type") || "").toLowerCase(),
+    bytes,
+  };
+}
+
+// The feed must be JSON. WAF challenge and error pages arrive as HTML, often
+// with HTTP 200, so classify the body before JSON.parse instead of letting it
+// throw an "Unexpected token '<'" error.
+function classifyBody(contentType: string, bytes: Buffer): "json" | "webpage" | "unknown" {
+  if (contentType.includes("html")) return "webpage";
+  if (contentType.includes("json")) return "json";
+  const head = bytes
+    .toString("utf8", 0, Math.min(bytes.length, 200))
+    .trimStart()
+    .toLowerCase();
+  if (head.startsWith("<")) return "webpage";
+  return "unknown";
+}
+
+function mediaType(contentType: string): string {
+  return contentType.split(";")[0].trim() || "未知类型";
+}
+
+function bodySnippet(bytes: Buffer): string {
+  return bytes
+    .toString("utf8", 0, Math.min(bytes.length, 600))
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 200);
+}
+
+// Logs are useful to operators, but the source address must never be readable
+// from them. Strip the configured hosts and this call's own host.
+function redactForLog(text: string, url: string): string {
+  let out = redactSourceText(text);
+  try {
+    out = out.split(new URL(url).host).join("数据源");
+  } catch {
+    // A malformed URL still gets the generic URL redaction above.
+  }
+  return out;
+}
+
 async function fetchJson(
   url: string,
   etag: string | null,
+  label: string,
   timeoutMs = 20_000,
 ): Promise<FetchResult> {
   let lastError: unknown;
   for (let attempt = 1; attempt <= 3; attempt += 1) {
+    let retried = false;
     try {
-      const response = await fetch(url, {
-        headers: {
-          accept: "application/json",
-          "user-agent": "CokeAI-ShopSync/1.0 (+https://cokeai.cc.cd)",
-          ...(etag ? { "if-none-match": etag } : {}),
-        },
-        cache: "no-store",
-        signal: AbortSignal.timeout(timeoutMs),
-      });
-      if (response.status === 304) {
+      let upstream = await requestUpstream(url, timeoutMs, etag, false);
+
+      // A webpage in place of data usually means a WAF challenge or an upstream
+      // error page. The supplier accepts a browser-shaped request, so retry once
+      // that way (without the stale ETag) before reporting a failure.
+      if (
+        upstream.status !== 304 &&
+        classifyBody(upstream.contentType, upstream.bytes) === "webpage"
+      ) {
+        retried = true;
+        console.warn(
+          `[shop-sync] ${label}: 上游返回网页（HTTP ${upstream.status}，${mediaType(upstream.contentType)}），改用浏览器请求头重试。响应片段: ${redactForLog(bodySnippet(upstream.bytes), url)}`,
+        );
+        upstream = await requestUpstream(url, timeoutMs, null, true);
+      }
+
+      if (upstream.status === 304) {
         return {
           json: null,
           bytes: Buffer.alloc(0),
@@ -183,13 +275,39 @@ async function fetchJson(
           notModified: true,
         };
       }
-      if (!response.ok) throw new Error(`HTTP ${response.status} for ${url}`);
-      const bytes = Buffer.from(await response.arrayBuffer());
+
+      const kind = classifyBody(upstream.contentType, upstream.bytes);
+      if (kind === "webpage") {
+        console.warn(
+          `[shop-sync] ${label}: 上游仍返回网页（HTTP ${upstream.status}，${mediaType(upstream.contentType)}，重试=${retried ? "是" : "否"}）。响应片段: ${redactForLog(bodySnippet(upstream.bytes), url)}`,
+        );
+        throw new Error(
+          `货源接口返回网页而不是数据（HTTP ${upstream.status}，${mediaType(upstream.contentType)}），可能被上游限制访问，已自动重试`,
+        );
+      }
+
+      if (!upstream.response.ok) {
+        console.warn(
+          `[shop-sync] ${label}: 上游返回 HTTP ${upstream.status}（${mediaType(upstream.contentType)}，重试=${retried ? "是" : "否"}）。响应片段: ${redactForLog(bodySnippet(upstream.bytes), url)}`,
+        );
+        throw new Error(`货源接口暂不可用（HTTP ${upstream.status}），稍后会自动重试`);
+      }
+
+      let json: unknown;
+      try {
+        json = JSON.parse(upstream.bytes.toString("utf8"));
+      } catch (parseError) {
+        console.warn(
+          `[shop-sync] ${label}: JSON 解析失败（HTTP ${upstream.status}，${mediaType(upstream.contentType)}，重试=${retried ? "是" : "否"}）：${parseError instanceof Error ? parseError.message : String(parseError)}。响应片段: ${redactForLog(bodySnippet(upstream.bytes), url)}`,
+        );
+        throw new Error("货源接口返回的内容不是有效 JSON，已保留上次数据");
+      }
+
       return {
-        json: JSON.parse(bytes.toString("utf8")),
-        bytes,
-        hash: sha256(bytes),
-        etag: response.headers.get("etag"),
+        json,
+        bytes: upstream.bytes,
+        hash: sha256(upstream.bytes),
+        etag: upstream.response.headers.get("etag"),
         notModified: false,
       };
     } catch (error) {
@@ -197,9 +315,8 @@ async function fetchJson(
       if (attempt < 3) await new Promise((resolve) => setTimeout(resolve, attempt * 1_500));
     }
   }
-  throw new Error(
-    `供货商数据拉取失败: ${lastError instanceof Error ? lastError.message : String(lastError)}`,
-  );
+  const reason = lastError instanceof Error ? lastError.message : String(lastError);
+  throw new Error(`供货商数据拉取失败: ${redactForLog(reason, url)}`);
 }
 
 type SupplierRow = {
@@ -256,8 +373,8 @@ export async function syncShopFeed(options?: {
 
   try {
     const [metaFetch, productsFetch] = await Promise.all([
-      fetchJson(metaUrl, options?.force ? null : supplier.meta_etag),
-      fetchJson(feedUrl, options?.force ? null : supplier.feed_etag),
+      fetchJson(metaUrl, options?.force ? null : supplier.meta_etag, "meta"),
+      fetchJson(feedUrl, options?.force ? null : supplier.feed_etag, "feed"),
     ]);
 
     if (productsFetch.notModified) {

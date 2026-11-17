@@ -674,7 +674,24 @@ export async function adminSaveShopProductAction(formData: FormData): Promise<vo
     etaMax > 0;
 
   // Publishing requires complete copy and a human compliance acknowledgement.
-  const finalStatus = status === "active" && (!copyReady || !complianceAck) ? "draft" : status;
+  // 还有一条硬规则：货源打不开或没货的商品一律不许上架——卖不了的东西不能
+  // 挂在店里让客户下单。
+  const sourceCheck = await query<{ available: string; total: string }>(
+    `SELECT COUNT(*) FILTER (WHERE o.availability IN ('in_stock', 'low_stock'))::text AS available,
+            COUNT(*)::text AS total
+       FROM shop_product_sources s
+       JOIN shop_offers o ON o.id = s.offer_id
+      WHERE s.product_id = $1 AND s.active = TRUE`,
+    [productId],
+  );
+  const availableSources = Number(sourceCheck.rows[0]?.available || 0);
+  const totalSources = Number(sourceCheck.rows[0]?.total || 0);
+  const sourceBlocked = status === "active" && availableSources === 0;
+
+  const finalStatus =
+    status === "active" && (!copyReady || !complianceAck || sourceBlocked)
+      ? "draft"
+      : status;
 
   await query(
     `UPDATE shop_products
@@ -749,6 +766,19 @@ export async function adminSaveShopProductAction(formData: FormData): Promise<vo
   revalidatePath("/admin/shop/products");
   revalidatePath(`/admin/shop/products/${productId}`);
   revalidatePath("/shop");
+  // 被拦下来要说清原因，否则运营只会看到「保存了但还是草稿」。
+  if (status === "active" && finalStatus !== "active") {
+    const reason = sourceBlocked
+      ? totalSources === 0
+        ? "这件商品没有绑定任何货源，不能上架"
+        : "货源当前无货或无法打开，不能上架；请先在「货源」里确认库存"
+      : !copyReady
+        ? "文案不完整，不能上架"
+        : "需要勾选合规确认才能上架";
+    redirect(
+      `/admin/shop/products/${productId}?error=${encodeURIComponent(`上架被拦下：${reason}`)}`,
+    );
+  }
   redirect(`/admin/shop/products/${productId}?saved=1`);
 }
 

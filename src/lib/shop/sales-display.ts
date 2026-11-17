@@ -64,17 +64,45 @@ export function salesDisplay(input: {
 }
 
 /**
+ * 商品此刻是否真的能买。
+ *
+ * **徽标和文案必须用同一个判断**，否则会出现「补货中 · 现货充足」这种
+ * 自相矛盾的展示：货源标了「充足」，但我们把这件商品停售了。
+ */
+export function productAvailabilityState(input: {
+  availability: string;
+  preorder?: boolean;
+  soldOut?: boolean;
+}): "available" | "unavailable" {
+  if (input.soldOut) return "unavailable";
+  if (input.preorder) return "available";
+  return input.availability === "in_stock" || input.availability === "low_stock"
+    ? "available"
+    : "unavailable";
+}
+
+/**
  * One-line storefront label, e.g. 「已售 88 · 库存 9」.
  *
- * 上游没给数字的时候（已售 0、库存充足），只显示有的那个；两个都没有就
- * 什么都不显示，避免满屏「已售 0」。
+ * 规则（全站唯一口径）：
+ * - 已售永远按上游累计件数显示，0 就不显示，避免满屏「已售 0」；
+ * - 能买的时候才写库存：有具体件数写「库存 N」，只有「充足」档位写「现货充足」；
+ * - 不能买时只写「已售罄」或不写库存——绝不能在「补货中」旁边挂「现货充足」。
  */
-export function salesLabel(display: ShopSalesDisplay): string {
+export function salesLabel(
+  display: ShopSalesDisplay,
+  options: { available?: boolean } = {},
+): string {
   const parts: string[] = [];
   if (display.sold > 0) parts.push(`已售 ${display.sold}`);
-  if (display.remaining !== null) {
-    parts.push(display.remaining > 0 ? `库存 ${display.remaining}` : "已售罄");
-  } else if (display.abundant) {
+  if (display.soldOut) {
+    parts.push("已售罄");
+    return parts.join(" · ");
+  }
+  if (options.available === false) return parts.join(" · ");
+  if (display.remaining !== null && display.remaining > 0) {
+    parts.push(`库存 ${display.remaining}`);
+  } else if (display.remaining === null && display.abundant) {
     // 货源说「充足」但没有件数。只写「有货」是事实，编一个数字就不是了。
     parts.push("现货充足");
   }

@@ -73,9 +73,16 @@ export function EtaBadge({
   );
 }
 
-export function SalesBadge({ sales }: { sales: ShopSalesDisplay }) {
+export function SalesBadge({
+  sales,
+  available,
+}: {
+  sales: ShopSalesDisplay;
+  /** 与 AvailabilityBadge 用同一个可售判断，避免「补货中 · 现货充足」。 */
+  available?: boolean;
+}) {
   // 没有基数也没有批次的商品不显示计数，避免满屏「已售 0」。
-  const label = salesLabel(sales);
+  const label = salesLabel(sales, { available });
   if (!label) return null;
   return (
     <span

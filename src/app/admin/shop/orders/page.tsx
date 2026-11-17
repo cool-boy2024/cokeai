@@ -33,11 +33,12 @@ export default async function AdminShopOrdersPage({
   const params = await searchParams;
   const requested = params.status || "all";
   const status = FILTERS.some((item) => item.key === requested) ? requested : "all";
-  // 订单号精确匹配：统一大写并去掉首尾空格，不做模糊匹配。
-  const orderNo = (params.q || "").trim().toUpperCase().slice(0, 40);
+  // 搜索既支持订单号，也支持客户邮箱、支付宝交易号和金额——客户报了交易号
+  // 之后运营要能直接落到那一单，而不是翻页。
+  const q = (params.q || "").trim().slice(0, 64);
   const requestedPage = Number.parseInt(params.page || "1", 10);
 
-  const filter = { status, orderNo: orderNo || undefined };
+  const filter = { status, q: q || undefined };
   const total = await countAdminShopOrders(filter);
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const page = Math.min(
@@ -56,7 +57,7 @@ export default async function AdminShopOrdersPage({
   ): string {
     const search = new URLSearchParams();
     const nextStatus = next.status ?? status;
-    const nextQuery = next.q ?? orderNo;
+    const nextQuery = next.q ?? q;
     if (nextStatus !== "all") search.set("status", nextStatus);
     if (nextQuery) search.set("q", nextQuery);
     if (next.page && next.page > 1) search.set("page", String(next.page));
@@ -82,22 +83,22 @@ export default async function AdminShopOrdersPage({
         action="/admin/shop/orders"
         method="get"
         role="search"
-        key={orderNo}
+        key={q}
       >
         {status !== "all" ? <input type="hidden" name="status" value={status} /> : null}
         <input
           className="input"
           type="search"
           name="q"
-          defaultValue={orderNo}
-          placeholder="输入完整订单号精确搜索，如 CK2026111610554DE9"
-          aria-label="按订单号精确搜索"
-          maxLength={40}
+          defaultValue={q}
+          placeholder="订单号 / 客户邮箱 / 支付宝交易号 / 金额"
+          aria-label="搜索订单"
+          maxLength={64}
         />
         <button className="btn btn-sm btn-dark" type="submit">
           搜索
         </button>
-        {orderNo ? (
+        {q ? (
           <Link className="btn btn-sm btn-ghost" href={listHref({ status, q: "", page: 1 })}>
             清除
           </Link>
@@ -125,13 +126,13 @@ export default async function AdminShopOrdersPage({
             <h2>订单列表</h2>
           </div>
           <span className="badge">
-            {orderNo ? `匹配 ${total} 条` : `${total} 条`}
+            {q ? `匹配 ${total} 条` : `${total} 条`}
           </span>
         </div>
         {orders.length === 0 ? (
           <div className="empty">
-            {orderNo
-              ? `没有找到订单号「${orderNo}」${status === "all" ? "" : "在当前状态下"}的订单。订单号需要完整输入。`
+            {q
+              ? `没有匹配「${q}」${status === "all" ? "" : "在当前状态下"}的订单。可试订单号 / 客户邮箱 / 支付宝交易号 / 金额。`
               : "当前筛选条件下没有订单。"}
           </div>
         ) : (
@@ -146,6 +147,7 @@ export default async function AdminShopOrdersPage({
                     <th>金额 / 成本</th>
                     <th>毛利</th>
                     <th>支付</th>
+                    <th>上报交易号</th>
                     <th>状态</th>
                     <th>时间</th>
                     <th />
@@ -188,6 +190,18 @@ export default async function AdminShopOrdersPage({
                                   ? "USDT"
                                   : "人工"}
                         </td>
+                        <td className="mono nowrap">
+                          {order.reported_reference ? (
+                            <>
+                              {order.reported_reference}
+                              <div className="muted small">
+                                {order.reported_at ? formatDateTime(order.reported_at) : ""}
+                              </div>
+                            </>
+                          ) : (
+                            <span className="muted">—</span>
+                          )}
+                        </td>
                         <td>
                           {order.status === "pending_payment" && order.reported_at ? (
                             <>
@@ -228,7 +242,7 @@ export default async function AdminShopOrdersPage({
               action="/admin/shop/orders"
               hidden={{
                 status: status === "all" ? undefined : status,
-                q: orderNo || undefined,
+                q: q || undefined,
               }}
             />
           </>

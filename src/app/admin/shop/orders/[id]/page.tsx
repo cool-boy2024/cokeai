@@ -24,6 +24,7 @@ import { formatDateTime } from "@/lib/format";
 import { formatCny } from "@/lib/money";
 import { offerAvailabilityLabel, SHOP_COPY } from "@/lib/shop/copy";
 import { decryptCustomerInput, getAdminShopOrder } from "@/lib/shop/orders";
+import { loadPaymentImages } from "@/lib/shop/payment-images";
 
 export const metadata: Metadata = { title: "小店订单详情" };
 export const dynamic = "force-dynamic";
@@ -114,6 +115,8 @@ export default async function AdminShopOrderDetailPage({
           )
         ).rows[0] ?? null
       : null;
+  // 客户上传的付款成功截图：上面有付款时间、金额和备注里的订单号。
+  const paymentScreenshots = await loadPaymentImages(order.id);
   const canProcure = order.status === "paid" || order.status === "procuring";
   const canAddSource =
     ["pending_payment", "paid", "procuring"].includes(order.status) &&
@@ -442,6 +445,32 @@ export default async function AdminShopOrderDetailPage({
                     </div>
                   ) : (
                     <p className="shop-muted">客户尚未上报交易号，请以支付宝账单实际到账为准。</p>
+                  )
+                ) : null}
+                {order.payment_provider === "alipay_manual" ? (
+                  paymentScreenshots.length > 0 ? (
+                    <div className="shop-field">
+                      <span>客户上传的付款截图（核对付款时间、金额与订单号）</span>
+                      <div className="flex flex-wrap gap-8">
+                        {paymentScreenshots.map((image) => (
+                          <a
+                            key={image.hash}
+                            href={`/api/support/images/${image.hash}.${image.ext}`}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={`/api/support/images/${image.hash}.${image.ext}`}
+                              alt="客户付款截图"
+                              style={{ width: 132, height: 132, objectFit: "cover", borderRadius: 8 }}
+                            />
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="shop-muted">客户没有上传付款截图，请直接以支付宝账单为准。</p>
                   )
                 ) : null}
                 {order.payment_provider === "alipay_manual" && manualClaim?.reported_at ? (

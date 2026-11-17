@@ -375,6 +375,11 @@ CREATE TABLE IF NOT EXISTS manual_alipay_payments (
   payer_note TEXT,
   reported_at TIMESTAMPTZ
 );
+-- The operator looks a shop order up by the Alipay transaction number the buyer
+-- reported, so that column gets its own index.
+CREATE INDEX IF NOT EXISTS manual_alipay_reported_ref_idx
+  ON manual_alipay_payments(reported_reference)
+  WHERE reported_reference IS NOT NULL;
 CREATE TABLE IF NOT EXISTS payment_receipts (
   order_id UUID PRIMARY KEY,
   order_kind TEXT NOT NULL DEFAULT 'credits' CHECK (order_kind IN ('credits','shop')),
@@ -903,6 +908,50 @@ CREATE TABLE IF NOT EXISTS support_message_images (
 );
 CREATE INDEX IF NOT EXISTS support_message_images_hash_idx
   ON support_message_images(image_hash);
+
+-- 客户付款凭证截图（支付宝付款成功页 / 账单详情）。图片本身仍然存在
+-- support_images 里，按内容寻址去重；这里只记录它挂在哪张订单上。
+--
+-- 截图是「人证」：上面通常有付款时间、金额，以及客户填的订单号备注。
+-- 运营拿它和支付宝账单（官方数据）交叉核对，两边对上才确认到账。
+CREATE TABLE IF NOT EXISTS manual_payment_images (
+  order_id UUID NOT NULL REFERENCES shop_orders(id) ON DELETE CASCADE,
+  image_hash TEXT NOT NULL REFERENCES support_images(hash) ON DELETE CASCADE,
+  position INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (order_id, image_hash)
+);
+CREATE INDEX IF NOT EXISTS manual_payment_images_hash_idx
+  ON manual_payment_images(image_hash);
+
+-- 支付宝账单（CSV / 交易流水证明）导入后的每一笔收支。
+--
+-- 个人支付宝没有能给第三方读账单的接口，只能运营手动导出再传进来。导入后
+-- 按「备注里的订单号」→「金额唯一匹配」的顺序自动归属，剩下的留给人工。
+-- trade_no 唯一，同一份账单重复导入不会产生重复流水。
+CREATE TABLE IF NOT EXISTS alipay_statement_rows (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  trade_no TEXT NOT NULL UNIQUE,
+  occurred_at TIMESTAMPTZ NOT NULL,
+  amount_micros BIGINT NOT NULL CHECK (amount_micros > 0),
+  direction TEXT NOT NULL DEFAULT 'income' CHECK (direction IN ('income', 'expense', 'other')),
+  trade_status TEXT NOT NULL DEFAULT '',
+  counterparty TEXT NOT NULL DEFAULT '',
+  counterparty_account TEXT NOT NULL DEFAULT '',
+  product_desc TEXT NOT NULL DEFAULT '',
+  remark TEXT NOT NULL DEFAULT '',
+  order_id UUID REFERENCES shop_orders(id) ON DELETE SET NULL,
+  order_no TEXT,
+  match_kind TEXT NOT NULL DEFAULT 'unmatched'
+    CHECK (match_kind IN ('order_no', 'amount_unique', 'amount_multi', 'unmatched', 'manual')),
+  settled_at TIMESTAMPTZ,
+  imported_by UUID REFERENCES users(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS alipay_statement_rows_pending_idx
+  ON alipay_statement_rows(settled_at, occurred_at DESC);
+CREATE INDEX IF NOT EXISTS alipay_statement_rows_order_idx
+  ON alipay_statement_rows(order_id);
 
 -- Per-side read timestamps: unread messages are derived by counting the other
 -- party's messages newer than this timestamp.

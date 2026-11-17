@@ -6,6 +6,8 @@ import { query } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { USDT_NETWORKS, isUsdtNetwork } from "@/lib/payments/networks";
 import { SHOP_COPY } from "@/lib/shop/copy";
+import { loadUsdtLive } from "@/lib/shop/usdt-live";
+import { UsdtLiveBoard } from "@/components/admin-shop/UsdtLiveBoard";
 
 export const metadata: Metadata = { title: "USDT 到账" };
 export const dynamic = "force-dynamic";
@@ -82,6 +84,8 @@ export default async function AdminShopDepositsPage() {
         </div>
         {attention > 0 ? <span className="badge text-red">{attention} 笔待处理</span> : null}
       </div>
+
+      <UsdtLiveBoard initial={await loadUsdtLive()} />
 
       <section className="panel">
         <div className="panel-head">

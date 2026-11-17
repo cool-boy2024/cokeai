@@ -19,6 +19,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { config } from "@/lib/config";
 import {
   listPublicProducts,
+  listRecentPublicProducts,
   startingPriceMicros,
   type PublicShopProduct,
 } from "@/lib/shop/catalog";
@@ -96,14 +97,17 @@ export default async function ShopPage({
   const query = (params.q || "").trim().slice(0, 60);
   const requestedPage = Number.parseInt(params.page || "1", 10);
 
-  const [catalog, user, trending] = await Promise.all([
+  const [catalog, user, trending, recentRaw] = await Promise.all([
     listPublicProducts(),
     getCurrentUser(),
     loadShopTrending(4),
+    listRecentPublicProducts(6),
   ]);
   // Members see their discounted price everywhere in the catalog; the order
   // action recomputes it server-side, so the displayed price is never trusted.
   const allProducts = await applyMemberPricing(catalog, user);
+  // 「最近上新」独立查询：商品列表可能是筛选后的子集，不能从里面推。
+  const recent = await applyMemberPricing(recentRaw, user);
   const searchPool = query
     ? allProducts.filter((product) => matchesSearch(product, query))
     : allProducts;
@@ -256,6 +260,20 @@ export default async function ShopPage({
               </p>
               <AvailabilityLegend />
             </div>
+
+            {!query && recent.length > 0 ? (
+              <section className="shop-recommend shop-recent" aria-label="最近上新">
+                <div className="shop-section-head">
+                  <h2>最近上新</h2>
+                  <span>按上架时间排序</span>
+                </div>
+                <div className="shop-recommend-grid">
+                  {recent.map((product) => (
+                    <ProductCard product={product} key={`recent-${product.id}`} />
+                  ))}
+                </div>
+              </section>
+            ) : null}
 
             {hot.length > 0 ? (
               <section className="shop-hot" aria-label={trending?.label || "热销"}>

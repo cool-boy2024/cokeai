@@ -13,6 +13,12 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   serverExternalPackages: ["pg", "ioredis"],
   experimental: {
+    // Server Actions cap request bodies at 1MB by default. Support tickets
+    // accept 3 images and payment claims 2, each up to 5MB — 20MB covers the
+    // larger form plus multipart overhead.
+    serverActions: {
+      bodySizeLimit: "20mb",
+    },
     // Keep recently visited console pages in the client router cache so
     // sidebar navigation does not wait on a slow round trip every time.
     staleTimes: { dynamic: 15 },

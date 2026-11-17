@@ -16,6 +16,7 @@ import {
   ShieldCheck,
   ShoppingBag,
   Store,
+  ScanSearch,
   UserPlus,
   UserRound,
   Users,
@@ -46,6 +47,8 @@ const adminItems = [
   // nav scrolls horizontally, so trailing items are effectively hidden).
   { href: "/admin/security", label: "安全", icon: ShieldCheck },
   { href: "/admin/shop/orders", label: "订单", icon: ReceiptText },
+  { href: "/admin/shop/reconcile", label: "到账核对", icon: ScanSearch },
+  { href: "/admin/shop/products", label: "商品", icon: Store },
   { href: "/admin/support", label: "工单", icon: Headphones },
   { href: "/admin/payments", label: "收款设置", icon: CreditCard },
   { href: "/admin/shop/queue", label: "采购队列", icon: ClipboardList },
@@ -59,11 +62,9 @@ const adminItems = [
 
 function isActive(href: string, pathname: string): boolean {
   if (href === "/admin" || href === "/dashboard") return pathname === href;
-  // The shop overview owns its product pages; queue and sources have their
-  // own nav items and must not light up the overview as well.
-  if (href === "/admin/shop") {
-    return pathname === href || pathname.startsWith("/admin/shop/products");
-  }
+  // Products, queue and sources each have their own nav item now, so the
+  // overview must not light up while the operator is inside them.
+  if (href === "/admin/shop") return pathname === href;
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 

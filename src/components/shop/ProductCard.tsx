@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ArrowUpRight } from "@phosphor-icons/react/dist/ssr";
 import { startingPriceMicros, type PublicShopProduct } from "@/lib/shop/catalog";
 import { etaLabel, productPriceLabel, warrantyShortLabel } from "@/lib/shop/copy";
-import { salesLabel } from "@/lib/shop/sales-display";
+import { productAvailabilityState, salesLabel } from "@/lib/shop/sales-display";
 import { ProductCover } from "./ProductCover";
 import { AvailabilityBadge } from "./ShopBadges";
 
@@ -15,7 +15,14 @@ export function ProductCard({
 }) {
   const price = startingPriceMicros(product);
   const hasVariants = product.variants.length > 0;
-  const sales = salesLabel(product.sales);
+  // 文案和徽标共用同一个可售判断，避免「补货中 · 现货充足」。
+  const available =
+    productAvailabilityState({
+      availability: product.availability,
+      preorder: product.preorder,
+      soldOut: product.sales.soldOut,
+    }) === "available";
+  const sales = salesLabel(product.sales, { available });
   return (
     <Link
       href={`/shop/${product.slug}`}

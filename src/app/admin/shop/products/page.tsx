@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { requireAdmin } from "@/lib/auth";
 import { query } from "@/lib/db";
+import { formatDateTime } from "@/lib/format";
 import { formatCny } from "@/lib/money";
 import { availabilityLabel, productStatusLabel } from "@/lib/shop/copy";
 import { preorderSql } from "@/lib/shop/preorder";
@@ -42,6 +43,30 @@ export default async function AdminShopProductsPage() {
       ORDER BY p.sort_order, p.created_at`,
   );
 
+  // 「最近上新」：按上架时间（没有就用创建时间）倒序，只看最近 14 天。
+  // 运营用它确认新同步进来的货有没有漏上架、有没有标错价。
+  const recent = await query<{
+    id: string;
+    slug: string;
+    name: string;
+    status: string;
+    availability: string;
+    price_micros: string;
+    published_at: string | null;
+    created_at: string;
+    sources: string;
+  }>(
+    `SELECT p.id, p.slug, p.name, p.status, p.availability, p.price_micros,
+            p.published_at, p.created_at,
+            COUNT(s.id)::text AS sources
+       FROM shop_products p
+       LEFT JOIN shop_product_sources s ON s.product_id = p.id AND s.active = TRUE
+      WHERE COALESCE(p.published_at, p.created_at) >= now() - interval '14 days'
+      GROUP BY p.id
+      ORDER BY COALESCE(p.published_at, p.created_at) DESC
+      LIMIT 8`,
+  );
+
   return (
     <>
       <div className="page-head">
@@ -53,6 +78,65 @@ export default async function AdminShopProductsPage() {
           从货源创建
         </Link>
       </div>
+
+      <section className="panel mb-16">
+        <div className="panel-head">
+          <div>
+            <h2>最近上新</h2>
+            <p>最近 14 天新增或上架的商品。还没上架的会标出状态，方便补文案和定价。</p>
+          </div>
+          <span className="badge">{recent.rows.length} 个</span>
+        </div>
+        {recent.rows.length === 0 ? (
+          <div className="empty">最近 14 天没有新商品。</div>
+        ) : (
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>商品</th>
+                  <th>上架时间</th>
+                  <th>售价</th>
+                  <th>库存</th>
+                  <th>货源</th>
+                  <th>状态</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {recent.rows.map((product) => (
+                  <tr key={`recent-${product.id}`}>
+                    <td>
+                      <div>{product.name || "未命名商品"}</div>
+                      <span className="muted mono">{product.slug}</span>
+                    </td>
+                    <td className="nowrap muted small">
+                      {formatDateTime(product.published_at || product.created_at)}
+                      {product.published_at ? "" : "（未上架）"}
+                    </td>
+                    <td className="nowrap">{formatCny(Number(product.price_micros))}</td>
+                    <td className="nowrap small">{availabilityLabel(product.availability)}</td>
+                    <td className="nowrap small">{product.sources} 个货源</td>
+                    <td className="nowrap">
+                      <span className={`shop-status shop-status-${product.status}`}>
+                        {productStatusLabel(product.status)}
+                      </span>
+                    </td>
+                    <td className="text-right">
+                      <Link
+                        className="btn btn-sm btn-ghost"
+                        href={`/admin/shop/products/${product.id}`}
+                      >
+                        编辑
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
 
       <section className="panel">
         <div className="panel-head">

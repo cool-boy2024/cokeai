@@ -1,0 +1,98 @@
+{
+  "name": "CokeAI｜USDT 到账扫描（每分钟）",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## USDT 到账扫描\n\n每分钟扫一次在途的 USDT 充值地址，把「到账时间 → 后台实时看板」压到一分钟以内。\n\n- 只扫 `shop_usdt_deposits` 里在途的记录，不碰已结算的订单\n- 确认数够了的会自动入账并发货，不用人工\n- 需要更快的时点：后台 USDT 到账页点「立即扫描」，直接打接口\n- 失败会走 `notifyShopOpsOnce` 告警，不会静默\n\n原来的 5 分钟一轮在 `04-gateway-maintenance`。",
+        "height": 260,
+        "width": 400,
+        "color": 6
+      },
+      "id": "f3c2d4e5-6071-4b82-9c93-b4d5e6f7a001",
+      "name": "使用说明",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -560,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "* * * * *"
+            }
+          ]
+        }
+      },
+      "id": "f3c2d4e5-6071-4b82-9c93-b4d5e6f7a002",
+      "name": "每分钟",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -40,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://app:3000/api/internal/shop/usdt/scan",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-internal-secret",
+              "value": "={{ $env.INTERNAL_API_SECRET }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{}",
+        "options": {
+          "timeout": 50000,
+          "response": {
+            "response": {
+              "fullResponse": true
+            }
+          }
+        }
+      },
+      "id": "f3c2d4e5-6071-4b82-9c93-b4d5e6f7a003",
+      "name": "扫描 USDT 充值",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        210,
+        80
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "每分钟": {
+      "main": [
+        [
+          {
+            "node": "扫描 USDT 充值",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Shanghai"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": []
+}
