@@ -140,6 +140,9 @@ export async function POST(request: Request): Promise<Response> {
   try {
     const quote = calculateUsageCost(estimatedPromptTokens, maxOutputTokens, gatewayModel);
     reservedMicros = Math.max(1_000, Math.ceil(quote.chargedMicros * 1.1));
+    // 先生成请求 ID 再预留用量：usage_events.request_id 让每一笔计量都能
+    // 对应到响应头 X-Request-Id，排查问题时可以双向查。
+    const requestId = randomUUID();
     const reservation = await reserveUsage({
       userId: user.userId,
       apiKeyId: user.apiKeyId,
@@ -148,6 +151,7 @@ export async function POST(request: Request): Promise<Response> {
       maxOutputTokens,
       model: gatewayModel,
       reserveMicros: reservedMicros,
+      requestId,
     });
 
     if (!reservation) {
@@ -155,7 +159,6 @@ export async function POST(request: Request): Promise<Response> {
     }
     usageId = reservation.usageId;
     reservedMicros = reservation.reservedMicros;
-    const requestId = randomUUID();
 
     let upstream: Response;
     try {
@@ -230,6 +233,8 @@ export async function POST(request: Request): Promise<Response> {
         {
           inputTokens: estimatedPromptTokens,
           outputTokens: estimateOutputTokens(JSON.stringify(payload)),
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
         };
 
       await settleUsage({
@@ -238,6 +243,8 @@ export async function POST(request: Request): Promise<Response> {
         reservedMicros,
         inputTokens: tokens.inputTokens,
         outputTokens: tokens.outputTokens,
+        cacheReadTokens: tokens.cacheReadTokens,
+        cacheWriteTokens: tokens.cacheWriteTokens,
         status: "succeeded",
         latencyMs: Date.now() - startedAt,
       });
@@ -274,7 +281,12 @@ export async function POST(request: Request): Promise<Response> {
     let streamSettled = false;
     let lineBuffer = "";
     let outputText = "";
-    let reportedTokens: { inputTokens: number; outputTokens: number } | null = null;
+    let reportedTokens: {
+      inputTokens: number;
+      outputTokens: number;
+      cacheReadTokens: number;
+      cacheWriteTokens: number;
+    } | null = null;
     const decoder = new TextDecoder();
 
     const finalize = async (
@@ -286,6 +298,8 @@ export async function POST(request: Request): Promise<Response> {
       const tokens = reportedTokens || {
         inputTokens: estimatedPromptTokens,
         outputTokens: estimateOutputTokens(outputText),
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
       };
       try {
         await settleUsage({
@@ -294,6 +308,8 @@ export async function POST(request: Request): Promise<Response> {
           reservedMicros,
           inputTokens: status === "failed" && !outputText ? 0 : tokens.inputTokens,
           outputTokens: status === "failed" && !outputText ? 0 : tokens.outputTokens,
+          cacheReadTokens: status === "failed" && !outputText ? 0 : tokens.cacheReadTokens,
+          cacheWriteTokens: status === "failed" && !outputText ? 0 : tokens.cacheWriteTokens,
           status,
           latencyMs: Date.now() - startedAt,
           errorCode,

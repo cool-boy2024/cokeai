@@ -144,6 +144,17 @@ CREATE TABLE IF NOT EXISTS usage_events (
 CREATE INDEX IF NOT EXISTS usage_user_idx ON usage_events(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS usage_model_idx ON usage_events(model_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS usage_status_idx ON usage_events(status, created_at);
+-- 关联到网关请求 ID，便于把一笔用量和一次 /v1 调用对上（响应头 X-Request-Id）。
+ALTER TABLE usage_events ADD COLUMN IF NOT EXISTS request_id UUID;
+-- 缓存命中 token 单独记账：prompt_tokens_details.cached_tokens（OpenAI 兼容）
+-- 与 cache_read_input_tokens / cache_creation_input_tokens（Anthropic 风格）都会解析进来。
+ALTER TABLE usage_events ADD COLUMN IF NOT EXISTS cache_read_tokens BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE usage_events ADD COLUMN IF NOT EXISTS cache_write_tokens BIGINT NOT NULL DEFAULT 0;
+-- 内部任务（小店 AI 上架 Agent 等）不向客户收费，但成本照记，指标页单独一节展示。
+ALTER TABLE usage_events ADD COLUMN IF NOT EXISTS internal BOOLEAN NOT NULL DEFAULT false;
+-- 指标页按时间窗扫描，需要一个纯时间索引。
+CREATE INDEX IF NOT EXISTS usage_created_idx ON usage_events(created_at);
+CREATE INDEX IF NOT EXISTS usage_internal_idx ON usage_events(internal) WHERE internal;
 
 CREATE TABLE IF NOT EXISTS balance_adjustments (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

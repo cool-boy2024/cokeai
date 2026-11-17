@@ -15,6 +15,7 @@ export async function reserveUsage(input: {
   maxOutputTokens: number;
   model: ModelPrice;
   reserveMicros: number;
+  requestId?: string;
 }): Promise<Reservation | null> {
   return withTransaction(async (client) => {
     const updated = await client.query<{ balance_micros: string }>(
@@ -33,10 +34,16 @@ export async function reserveUsage(input: {
 
     const usage = await client.query<{ id: string }>(
       `INSERT INTO usage_events
-        (user_id, api_key_id, model_id, reserved_micros, status)
-       VALUES ($1, $2, $3, $4, 'pending')
+        (user_id, api_key_id, model_id, reserved_micros, status, request_id)
+       VALUES ($1, $2, $3, $4, 'pending', $5)
        RETURNING id`,
-      [input.userId, input.apiKeyId, input.modelId, input.reserveMicros],
+      [
+        input.userId,
+        input.apiKeyId,
+        input.modelId,
+        input.reserveMicros,
+        input.requestId ?? null,
+      ],
     );
 
     return {
@@ -56,6 +63,8 @@ export type SettleInput = {
   status: "succeeded" | "failed";
   latencyMs?: number;
   errorCode?: string;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
 };
 
 export async function settleUsage(input: SettleInput): Promise<{
@@ -64,6 +73,8 @@ export async function settleUsage(input: SettleInput): Promise<{
 }> {
   const inputTokens = Math.max(0, Math.floor(input.inputTokens || 0));
   const outputTokens = Math.max(0, Math.floor(input.outputTokens || 0));
+  const cacheReadTokens = Math.max(0, Math.floor(input.cacheReadTokens || 0));
+  const cacheWriteTokens = Math.max(0, Math.floor(input.cacheWriteTokens || 0));
   const costs =
     input.status === "succeeded"
       ? calculateUsageCost(inputTokens, outputTokens, input.model)
@@ -80,6 +91,8 @@ export async function settleUsage(input: SettleInput): Promise<{
               status = $6,
               latency_ms = $7,
               error_code = $8,
+              cache_read_tokens = $9,
+              cache_write_tokens = $10,
               finished_at = now()
         WHERE id = $1
           AND status = 'pending'
@@ -93,6 +106,8 @@ export async function settleUsage(input: SettleInput): Promise<{
         input.status,
         input.latencyMs ?? null,
         input.errorCode ? input.errorCode.slice(0, 64) : null,
+        cacheReadTokens,
+        cacheWriteTokens,
       ],
     );
 
@@ -113,6 +128,8 @@ export async function settleUsage(input: SettleInput): Promise<{
 export function tokensFromUsage(payload: unknown): {
   inputTokens: number;
   outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
 } | null {
   if (!payload || typeof payload !== "object") return null;
   const usage = (payload as { usage?: Record<string, unknown> }).usage;
@@ -120,9 +137,19 @@ export function tokensFromUsage(payload: unknown): {
   const input = Number(usage.prompt_tokens ?? usage.input_tokens);
   const output = Number(usage.completion_tokens ?? usage.output_tokens);
   if (!Number.isFinite(input) && !Number.isFinite(output)) return null;
+  // 缓存命中 token：OpenAI 兼容上游放在 prompt_tokens_details.cached_tokens，
+  // Anthropic 风格则是 cache_read_input_tokens / cache_creation_input_tokens。
+  const details = usage.prompt_tokens_details as Record<string, unknown> | undefined;
+  const cacheRead = Math.max(
+    Number(details?.cached_tokens ?? 0),
+    Number(usage.cache_read_input_tokens ?? 0),
+  );
+  const cacheWrite = Number(usage.cache_creation_input_tokens ?? 0);
   return {
     inputTokens: Number.isFinite(input) ? input : 0,
     outputTokens: Number.isFinite(output) ? output : 0,
+    cacheReadTokens: Number.isFinite(cacheRead) ? Math.max(0, cacheRead) : 0,
+    cacheWriteTokens: Number.isFinite(cacheWrite) ? Math.max(0, cacheWrite) : 0,
   };
 }
 
