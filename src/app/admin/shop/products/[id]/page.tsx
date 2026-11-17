@@ -90,10 +90,22 @@ export default async function AdminShopProductEditPage({
       </div>
 
       {flags.saved === "1" ? (
-        <div className="notice notice-green">
-          <CheckCircle2 size={16} />
-          <div>商品已保存。</div>
-        </div>
+        product.status === "active" ? (
+          <div className="notice notice-green">
+            <CheckCircle2 size={16} />
+            <div>商品已保存，并已上架。</div>
+          </div>
+        ) : (
+          <div className="notice">
+            <AlertTriangle size={16} />
+            <div>
+              商品已保存，但当前是「{product.status === "paused" ? "暂停" : product.status === "archived" ? "归档" : "草稿"}」状态，
+              前台看不到。
+              {missing.length > 0 ? `还缺：${missing.join("、")}。` : ""}
+              需要在前台展示请把状态改为「上架」、勾选合规确认，并确保关联货源有货。
+            </div>
+          </div>
+        )
       ) : null}
       {flags.saved === "variants" ? (
         <div className="notice notice-green">
@@ -120,6 +132,19 @@ export default async function AdminShopProductEditPage({
         <div className="notice notice-red">
           <AlertTriangle size={16} />
           <div>{flags.error}</div>
+        </div>
+      ) : null}
+      {product.status !== "active" && !flags.saved && !flags.error ? (
+        <div className="notice">
+          <AlertTriangle size={16} />
+          <div>
+            该商品当前是「
+            {product.status === "paused" ? "暂停" : product.status === "archived" ? "归档" : "草稿"}
+            」状态，前台看不到，也无法下单。
+            {missing.length > 0 ? ` 文案还缺：${missing.join("、")}。` : ""}
+            {!product.compliance_ack_at ? " 尚未勾选合规确认。" : ""}
+            上架需同时满足：文案完整、勾选合规确认、关联货源有货。
+          </div>
         </div>
       ) : null}
       {product.pricing_review_required ? (
