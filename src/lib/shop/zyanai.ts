@@ -827,12 +827,23 @@ async function persistProduct(
       base: source.base,
       identities: [{ store: source.kind, url: source.base }],
     });
-    if (richHtml) {
-      await query("UPDATE shop_products SET description_html = $2 WHERE id = $1", [
-        productId,
-        richHtml,
-      ]);
+    // 上游把文章删掉或改成空的时候，这里必须跟着清空——否则本站会一直挂着
+    // 已经下线的旧文案。清空是有意的：下一次同步上游若又有内容，会重新写回。
+    if (!richHtml) {
+      const previous = await query<{ description_html: string }>(
+        "SELECT description_html FROM shop_products WHERE id = $1",
+        [productId],
+      );
+      if (previous.rows[0]?.description_html) {
+        console.warn(
+          `[shop/${source.kind}] 商品 ${product.externalId} 上游文章已清空，本站同步清空`,
+        );
+      }
     }
+    await query("UPDATE shop_products SET description_html = $2 WHERE id = $1", [
+      productId,
+      richHtml || "",
+    ]);
   } catch (error) {
     // The plain-text description remains the fallback; never fail the sync
     // because a formatting pass rejected one page.
