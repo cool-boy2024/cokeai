@@ -36,9 +36,11 @@ export async function GET(request: Request): Promise<Response> {
         COALESCE((SELECT SUM(amount_micros) FROM commissions WHERE status = 'available'), 0) AS commission_available`,
     );
 
-    // Usage is authoritative in Sub2API. Dashboard "today" values are used for
-    // the daily digest; the previous local usage_events table is legacy and is
-    // no longer written by the public gateway.
+    // Public /v1 traffic is served by Sub2API and reported through its
+    // dashboard stats. The local usage_events table covers the Next.js
+    // rollback gateway plus internal LLM tasks (shop import agent), and is
+    // the only place where failure counts and token splits exist, so those
+    // keys are aggregated locally instead of being hard-coded to zero.
     let gatewayStats: Awaited<ReturnType<typeof getAdminDashboardStats>> | null = null;
     let gatewayError: string | null = null;
     if (isSub2ApiConfigured()) {
@@ -49,10 +51,30 @@ export async function GET(request: Request): Promise<Response> {
       }
     }
 
+    const localUsage = await query<{
+      failures: string;
+      input_tokens: string;
+      output_tokens: string;
+      charged_micros: string;
+      upstream_cost_micros: string;
+    }>(
+      `SELECT
+        COUNT(*) FILTER (WHERE status = 'failed') AS failures,
+        COALESCE(SUM(input_tokens), 0) AS input_tokens,
+        COALESCE(SUM(output_tokens), 0) AS output_tokens,
+        COALESCE(SUM(charged_micros), 0) AS charged_micros,
+        COALESCE(SUM(upstream_cost_micros), 0) AS upstream_cost_micros
+       FROM usage_events
+       WHERE created_at >= now() - interval '24 hours'`,
+    );
+    const usage = localUsage.rows[0];
+
     const row = overview.rows[0];
     const todayCostMicros = Math.round(
       Number(gatewayStats?.today_actual_cost || 0) * 1_000_000,
     );
+    const localChargedMicros = toNumber(usage.charged_micros);
+    const localUpstreamMicros = toNumber(usage.upstream_cost_micros);
 
     return Response.json(
       {
@@ -62,14 +84,17 @@ export async function GET(request: Request): Promise<Response> {
         revenue: formatCny(row.revenue),
         paid_orders: toNumber(row.paid_orders),
         new_users: toNumber(row.new_users),
-        // Gateway usage (today, Sub2API timezone Asia/Shanghai).
+        // Public requests/tokens come from Sub2API (today, Asia/Shanghai);
+        // failure and token splits are local usage_events over 24h (rollback
+        // gateway + internal tasks). The two sources must not be mixed into
+        // one ratio.
         requests: toNumber(gatewayStats?.today_requests),
-        failures: 0,
-        input_tokens: 0,
-        output_tokens: 0,
+        failures: toNumber(usage.failures),
+        input_tokens: toNumber(usage.input_tokens),
+        output_tokens: toNumber(usage.output_tokens),
         charged_micros: todayCostMicros,
-        upstream_cost_micros: 0,
-        gross_margin_micros: 0,
+        upstream_cost_micros: localUpstreamMicros,
+        gross_margin_micros: localChargedMicros - localUpstreamMicros,
         today_tokens: toNumber(gatewayStats?.today_tokens),
         total_requests: toNumber(gatewayStats?.total_requests),
         total_actual_cost_micros: Math.round(

@@ -5430,6 +5430,28 @@ a.shop-kpi:hover {
   white-space: nowrap;
 }
 
+/* API 指标页（/admin/metrics）。图表是 ECharts 画布，这里只管容器与卡片。 */
+.metrics-chart {
+  width: 100%;
+  min-width: 0;
+}
+
+.metrics-latency-value {
+  font-variant-numeric: tabular-nums;
+}
+
+.metrics-rate-good {
+  color: var(--green);
+}
+
+.metrics-rate-warn {
+  color: #b45309;
+}
+
+.metrics-rate-bad {
+  color: var(--red-deep);
+}
+
 .analytics-missing {
   color: var(--red-deep);
   font-size: 12px;
