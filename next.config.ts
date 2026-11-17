@@ -23,6 +23,9 @@ const nextConfig: NextConfig = {
     // sidebar navigation does not wait on a slow round trip every time.
     staleTimes: { dynamic: 15 },
     dynamicOnHover: true,
+    // Only offer security-patch upgrades from the in-app update nudge, so
+    // "next upgrade" never pulls a major release into the running storefront.
+    agentUpgrade: "security",
   },
   async redirects() {
     // The customer console no longer exposes API key or usage pages. Keep old
