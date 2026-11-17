@@ -293,6 +293,20 @@ try {
       console.log("ADMIN_EMAIL/ADMIN_PASSWORD not set; skipped admin seed.");
     }
 
+    // Internal LLM tasks (shop import agent) book usage_events against this
+    // system account so internal costs never touch a real user's balance.
+    // The password hash is a non-bcrypt sentinel: no password can ever match,
+    // so this account can never log in.
+    await client.query(
+      `INSERT INTO users (email, password_hash, name, role, referral_code)
+       VALUES ($1, '!', '内部任务', 'user', $2)
+       ON CONFLICT (email) DO NOTHING`,
+      [
+        "internal-agent@cokeai.local",
+        `INTERNAL${crypto.randomBytes(3).toString("hex").toUpperCase()}`,
+      ],
+    );
+
     await client.query("COMMIT");
     console.log("Seed data is ready.");
   } catch (error) {

@@ -207,12 +207,10 @@ export function sanitizeSupplierCopy(
 
   let text = input;
 
-  // Exact store names first, before generic phrase replacement.
-  for (const name of storeNames(identity.store)) {
-    text = text.replace(new RegExp(escapeRegExp(name), "gi"), SHOP_COPY_NAME);
-  }
-
-  // Supplier host in any form, including its bare domain.
+  // Supplier host in any form, including its bare domain. This must run
+  // BEFORE the store-name pass: a store whose name is a prefix of its own
+  // domain ("zyanai" inside "zyanai.cc") would otherwise be half-replaced as
+  // "CokeAI 小店.cc" before the domain rule ever sees it.
   const host = hostOf(identity.url);
   if (host) {
     text = text.replace(
@@ -226,6 +224,12 @@ export function sanitizeSupplierCopy(
       new RegExp(`(?:[a-z0-9-]+\\.)*${escapeRegExp(host)}(?::\\d+)?(?:/[^\\s，。；、）)】\\]\"'<>]*)?`, "gi"),
       SUPPLIER_PLACEHOLDER,
     );
+  }
+
+  // Exact store names after the domain pass: by now every URL-shaped mention
+  // is already a placeholder, so only plain-word mentions get rewritten.
+  for (const name of storeNames(identity.store)) {
+    text = text.replace(new RegExp(escapeRegExp(name), "gi"), SHOP_COPY_NAME);
   }
 
   // Any other external URL would also point buyers away from the shop. Keep
@@ -336,6 +340,15 @@ export function sanitizeSupplierCopy(
           /((?:你(?:自己)?的|您的))\s*本站商品页\s*(?=查看)/g,
           "$1邮箱",
         );
+        // Tutorial lines keep pointing at the tutorial: a masked tutorial URL
+        // must not be rewritten into an order-page address. This check runs
+        // before the generic verb rewrite below for exactly that reason.
+        if (line.includes("视频教程")) {
+          return line.replaceAll(SUPPLIER_PLACEHOLDER, "本页下方视频教程");
+        }
+        if (line.includes("教程")) {
+          return line.replaceAll(SUPPLIER_PLACEHOLDER, "本页教程");
+        }
         line = line.replace(
           /((?:打开|访问|进入|前往)\s*)?(兑换网站|兑换页面|兑换网址|充值网站|充值页面|网站|网址|地址|链接)\s*本站商品页/g,
           (_match, verb: string | undefined, noun: string) =>
@@ -347,13 +360,6 @@ export function sanitizeSupplierCopy(
           /(?:打开|访问|进入|前往)\s*本站商品页/g,
           "打开订单详情页中的兑换地址",
         );
-        if (!line.includes(SUPPLIER_PLACEHOLDER)) return line;
-        if (line.includes("视频教程")) {
-          return line.replaceAll(SUPPLIER_PLACEHOLDER, "本页下方视频教程");
-        }
-        if (line.includes("教程")) {
-          return line.replaceAll(SUPPLIER_PLACEHOLDER, "本页教程");
-        }
         return line;
       }
       return trimmed;

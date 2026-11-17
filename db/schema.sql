@@ -564,6 +564,15 @@ CREATE INDEX IF NOT EXISTS shop_import_jobs_offer_idx
 -- 同一条货源同时只允许一个排队中/生成中的任务。
 CREATE UNIQUE INDEX IF NOT EXISTS shop_import_jobs_active_offer_idx
   ON shop_import_jobs(offer_id) WHERE status IN ('queued', 'running');
+-- 受控 Agent 轨迹与用量：engine 增加 'agent'；steps 只存摘要（KB 级），
+-- token/calls 用来对比单轮方案的成本（评测与 /admin/metrics 内部任务一节）。
+ALTER TABLE shop_import_jobs DROP CONSTRAINT IF EXISTS shop_import_jobs_engine_check;
+ALTER TABLE shop_import_jobs ADD CONSTRAINT shop_import_jobs_engine_check
+  CHECK (engine IN ('heuristic', 'ai', 'agent', 'n8n'));
+ALTER TABLE shop_import_jobs ADD COLUMN IF NOT EXISTS steps JSONB;
+ALTER TABLE shop_import_jobs ADD COLUMN IF NOT EXISTS agent_input_tokens BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE shop_import_jobs ADD COLUMN IF NOT EXISTS agent_output_tokens BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE shop_import_jobs ADD COLUMN IF NOT EXISTS agent_calls INTEGER NOT NULL DEFAULT 0;
 
 CREATE TABLE IF NOT EXISTS shop_orders (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

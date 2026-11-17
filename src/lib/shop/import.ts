@@ -8,6 +8,7 @@ import { autoRetailPrice } from "@/lib/shop/auto-pricing";
 import { getShopTargetMarginBps } from "@/lib/shop/settings";
 import { classifyOffer } from "@/lib/shop/offer-classify";
 import { sanitizeSupplierCopy, sanitizeSupplierLines } from "@/lib/shop/sanitize";
+import { generateAgentCopy, type AgentRunResult } from "@/lib/shop/import-agent";
 
 /**
  * Turns a supplier offer into a draft shop product.
@@ -28,7 +29,7 @@ export type ImportJobResult = {
   error?: string | null;
 };
 
-const AI_SCHEMA = z.object({
+export const AI_SCHEMA = z.object({
   name: z.string().trim().min(2).max(120),
   subtitle: z.string().trim().min(2).max(120),
   description: z.string().trim().min(2).max(2000),
@@ -36,17 +37,17 @@ const AI_SCHEMA = z.object({
   usage: z.array(z.string().trim().min(1).max(400)).min(1).max(10),
 });
 
-type DraftCopy = z.infer<typeof AI_SCHEMA> & {
+export type DraftCopy = z.infer<typeof AI_SCHEMA> & {
   notice: string;
   refund: string;
   warranty_type: "first_login" | "days" | "none";
   warranty_days: number;
   warranty_note: string;
-  engine: "heuristic" | "ai";
+  engine: "heuristic" | "ai" | "agent";
   note: string;
 };
 
-type OfferRow = {
+export type OfferRow = {
   id: string;
   external_key: string;
   source_title: string;
@@ -614,7 +615,32 @@ export async function runImportJob(
     }
 
     let copy: DraftCopy;
-    if (
+    let agentRun: AgentRunResult | null = null;
+    const { category: offerCategory, productType: offerProductType, displayCategory: offerDisplay } =
+      categoryFor(offer.source_title);
+    const agentAllowed =
+      sourceText !== null &&
+      config.shopImportAgentEnabled &&
+      (config.shopImportAgentCategories.length === 0 ||
+        config.shopImportAgentCategories.includes(offerCategory) ||
+        config.shopImportAgentCategories.includes(offerDisplay));
+
+    if (agentAllowed && sourceText) {
+      try {
+        agentRun = await generateAgentCopy({
+          offer,
+          sourceText,
+          category: offerCategory,
+          displayCategory: offerDisplay,
+          targetMarginBps: await getShopTargetMarginBps(),
+        });
+        copy = agentRun.copy;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Agent 文案生成失败";
+        copy = heuristicCopy(offer, sourceText);
+        copy.note = [message, "已回退为规则提取"].join("，");
+      }
+    } else if (
       sourceText &&
       config.shopImportAiBaseUrl &&
       config.shopImportAiApiKey &&
@@ -629,7 +655,7 @@ export async function runImportJob(
       }
     } else {
       copy = heuristicCopy(offer, sourceText);
-      if (!config.shopImportAiBaseUrl) {
+      if (!config.shopImportAiBaseUrl && !config.shopImportAgentEnabled) {
         copy.note = [copy.note, "未配置 AI，使用规则提取"].filter(Boolean).join("；");
       }
     }
@@ -640,7 +666,9 @@ export async function runImportJob(
     copy = scrubCopy(copy, offer);
 
     const brand = inferBrand(offer.source_title);
-    const { category, productType, displayCategory } = categoryFor(offer.source_title);
+    const category = offerCategory;
+    const productType = offerProductType;
+    const displayCategory = offerDisplay;
     const price = priceFor(offer, await getShopTargetMarginBps());
     const availability =
       offer.availability === "in_stock" || offer.availability === "low_stock"
@@ -701,9 +729,20 @@ export async function runImportJob(
       await client.query(
         `UPDATE shop_import_jobs
             SET status = 'draft_ready', product_id = $2, engine = $3, note = $4,
+                steps = $5, agent_input_tokens = $6, agent_output_tokens = $7,
+                agent_calls = $8,
                 error = NULL, finished_at = now(), updated_at = now()
           WHERE id = $1`,
-        [jobId, id, copy.engine, copy.note || null],
+        [
+          jobId,
+          id,
+          copy.engine,
+          copy.note || null,
+          agentRun ? JSON.stringify(agentRun.steps) : null,
+          agentRun?.inputTokens ?? 0,
+          agentRun?.outputTokens ?? 0,
+          agentRun?.modelCalls ?? 0,
+        ],
       );
       return id;
     });
