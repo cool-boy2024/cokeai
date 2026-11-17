@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AlertTriangle, ArrowLeft, CheckCircle2, ExternalLink, PackageCheck } from "lucide-react";
 import {
+  adminAddManualShopSourceAction,
   adminCancelShopOrderAction,
   adminDeliverShopAction,
   adminMarkShopPaidAction,
@@ -15,6 +16,7 @@ import {
 } from "@/app/actions/admin-shop";
 import { DeliveryFields } from "@/components/admin-shop/DeliveryFields";
 import { ProcurementCopy } from "@/components/admin-shop/ProcurementCopy";
+import { SubmitButton } from "@/components/SubmitButton";
 import { customerMailReady } from "@/lib/alerts";
 import { requireAdmin } from "@/lib/auth";
 import { query } from "@/lib/db";
@@ -55,30 +57,28 @@ export default async function AdminShopOrderDetailPage({
   const procurementClosed = ["bought", "delivered", "refunded"].includes(
     order.procurement_status,
   );
-  const offer = procurementClosed
-    ? order.supplier_offer_id
-      ? (
-          await query<{
-            url: string;
-            source_title: string;
-            source_store: string;
-            price_micros: string;
-            availability: string;
-          }>(
-            `SELECT url, source_title, source_store, price_micros, availability
-               FROM shop_offers WHERE id = $1 LIMIT 1`,
-            [order.supplier_offer_id],
-          )
-        ).rows[0]
-      : null
+  type Offer = {
+    url: string;
+    source_title: string;
+    source_store: string;
+    price_micros: string;
+    availability: string;
+    entered_for_order?: string | null;
+  };
+  const snapshotOffer = order.supplier_offer_id
+    ? (
+        await query<Offer>(
+          `SELECT url, source_title, source_store, price_micros, availability,
+                  raw->>'entered_for_order' AS entered_for_order
+             FROM shop_offers WHERE id = $1 LIMIT 1`,
+          [order.supplier_offer_id],
+        )
+      ).rows[0] ?? null
+    : null;
+  const currentOffer = procurementClosed
+    ? null
     : (
-        await query<{
-          url: string;
-          source_title: string;
-          source_store: string;
-          price_micros: string;
-          availability: string;
-        }>(
+        await query<Offer>(
           `SELECT o.url, o.source_title, o.source_store, o.price_micros, o.availability
              FROM shop_product_sources s
              JOIN shop_offers o ON o.id = s.offer_id
@@ -91,6 +91,11 @@ export default async function AdminShopOrderDetailPage({
           [order.product_id, order.variant_id],
         )
       ).rows[0] ?? null;
+  // A source entered specifically for this order must not be replaced by a
+  // later product mapping. Older automatic snapshots still follow the current
+  // product source until procurement is marked bought.
+  const usesSnapshotOffer = procurementClosed || snapshotOffer?.entered_for_order === order.id;
+  const offer = usesSnapshotOffer ? snapshotOffer : currentOffer;
   const customerInput = decryptCustomerInput(order.customer_input_encrypted);
   const customerMail = await customerMailReady();
   const manualClaim =
@@ -110,6 +115,9 @@ export default async function AdminShopOrderDetailPage({
         ).rows[0] ?? null
       : null;
   const canProcure = order.status === "paid" || order.status === "procuring";
+  const canAddSource =
+    ["pending_payment", "paid", "procuring"].includes(order.status) &&
+    ["pending", "to_buy", "bought"].includes(order.procurement_status);
   // 已交付也要能退款：发错卡密、账号有问题、客户投诉，这些都要赔。
   // refundShopOrder 本身只挡 refunded，UI 不该比后端更严。
   const canRefund =
@@ -125,7 +133,7 @@ export default async function AdminShopOrderDetailPage({
     `数量：${order.qty}`,
     `售价：${formatCny(order.amount_micros)}`,
     offer ? `供货商：${offer.source_store}` : "",
-    offer ? `供货商链接：${offer.url}` : "",
+    offer?.url ? `供货商链接：${offer.url}` : "",
     offer ? `原始标题：${offer.source_title}` : "",
     Object.keys(customerInput).length > 0 ? "客户填写：" : "",
     ...Object.entries(customerInput).map(([key, value]) => `- ${key}: ${value}`),
@@ -150,9 +158,9 @@ export default async function AdminShopOrderDetailPage({
     PAYMENT_PROVIDER_LABELS[order.payment_provider] || order.payment_provider;
   const supplierCost = offer
     ? formatCny(
-        procurementClosed
+        usesSnapshotOffer
           ? order.supplier_cost_micros
-          : Number(offer.price_micros),
+          : Number(offer.price_micros) * order.qty,
       )
     : "未绑定货源";
   const deliveryDefaultKind: "code" | "account" | "manual_note" = ["code", "account", "manual_note"].includes(
@@ -257,7 +265,7 @@ export default async function AdminShopOrderDetailPage({
               </div>
               <div className="shop-panel-actions">
                 <ProcurementCopy text={procurementText} />
-                {offer ? (
+                {offer?.url ? (
                   <a className="btn btn-light btn-sm" href={offer.url} target="_blank" rel="noreferrer">
                     去供货商下单 <ExternalLink size={13} />
                   </a>
@@ -265,6 +273,18 @@ export default async function AdminShopOrderDetailPage({
               </div>
             </div>
             <div className="panel-body shop-panel-stack">
+              {flags.sourceAdded === "1" ? (
+                <div className="notice notice-green" role="status">
+                  <CheckCircle2 size={16} />
+                  <div>货源已添加，可以继续处理本单采购。</div>
+                </div>
+              ) : null}
+              {flags.sourceError ? (
+                <div className="notice notice-red" role="alert">
+                  <AlertTriangle size={16} />
+                  <div>{flags.sourceError}</div>
+                </div>
+              ) : null}
               {offer ? (
                 <>
                   <div className="shop-procure-pack">
@@ -272,7 +292,7 @@ export default async function AdminShopOrderDetailPage({
                     <strong>{offer.source_store}</strong>
                     <span>原始标题（内部）</span>
                     <code>{offer.source_title}</code>
-                    <span>成本 / 库存</span>
+                    <span>单件成本 / 库存</span>
                     <strong>
                       {formatCny(offer.price_micros)} · {offerAvailabilityLabel(offer.availability)}
                     </strong>
@@ -283,8 +303,52 @@ export default async function AdminShopOrderDetailPage({
                     采购链接和原始标题只出现在后台。公开页面只显示 CokeAI 商品文案。
                   </p>
                 </>
+              ) : canAddSource ? (
+                <div className="shop-form-group">
+                  <div>
+                    <strong>手动添加货源</strong>
+                    <p className="shop-muted">填写真实供货信息，保存后用于本单采购；仅运营后台可见。</p>
+                  </div>
+                  <form action={adminAddManualShopSourceAction} className="shop-admin-form">
+                    <input type="hidden" name="orderId" value={order.id} />
+                    <div className="shop-form-grid">
+                      <label className="shop-field">
+                        <span>供货商 / 店铺名称 <em>*</em></span>
+                        <input name="sourceStore" required maxLength={120} placeholder="例如：供货商店铺名" />
+                      </label>
+                      <label className="shop-field">
+                        <span>货源原始标题 <em>*</em></span>
+                        <input name="sourceTitle" required maxLength={300} placeholder="按供货商页面填写" />
+                      </label>
+                      <label className="shop-field">
+                        <span>单件采购成本（元）<em>*</em></span>
+                        <input name="costYuan" type="number" inputMode="decimal" min="0.01" step="0.01" required placeholder="0.00" />
+                      </label>
+                      <label className="shop-field">
+                        <span>货源库存</span>
+                        <select name="availability" defaultValue="in_stock">
+                          <option value="in_stock">有货</option>
+                          <option value="low_stock">库存紧张</option>
+                        </select>
+                      </label>
+                    </div>
+                    <label className="shop-field">
+                      <span>采购链接（选填）</span>
+                      <input name="sourceUrl" type="url" maxLength={2000} placeholder="https://…；线下货源可留空" />
+                    </label>
+                    <label className="shop-field">
+                      <span>使用范围</span>
+                      <select name="scope" defaultValue="order">
+                        <option value="order">仅用于本单</option>
+                        <option value="product">同时保存为该商品 / 规格货源</option>
+                      </select>
+                      <small>商品售价、可售状态和库存仍按商品设置维护。绑定后，新订单的会员价可能按此成本重新计算。</small>
+                    </label>
+                    <SubmitButton className="btn btn-dark" pendingText="保存中…">保存货源</SubmitButton>
+                  </form>
+                </div>
               ) : (
-                <div className="shop-empty-inline">未绑定供货商 offer。请在商品货源中绑定后再采购。</div>
+                <div className="shop-empty-inline">此单没有可用货源记录。</div>
               )}
 
               {canProcure ? (
