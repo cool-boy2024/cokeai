@@ -9,7 +9,7 @@ WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-RUN npm run build && npm run build:zyanai && npm run build:aibuy
+RUN npm run build && npm run build:zyanai && npm run build:aibuy && npm run build:eval
 
 FROM node:22-alpine AS runner
 RUN apk add --no-cache libc6-compat
@@ -33,6 +33,9 @@ COPY --from=builder --chown=nextjs:nodejs /app/scripts ./scripts
 # that copy of sanitize-html is incomplete.
 COPY --from=builder --chown=nextjs:nodejs /app/zyanai-sync.cjs ./zyanai-sync.cjs
 COPY --from=builder --chown=nextjs:nodejs /app/aibuy-sync.cjs ./aibuy-sync.cjs
+# AI listing eval runner: reads a fixture file passed with --fixtures,
+# never ships supplier text in the image.
+COPY --from=builder --chown=nextjs:nodejs /app/eval-run.cjs ./eval-run.cjs
 # Next bundles most deps; seed scripts still need bcryptjs on disk.
 COPY --from=deps --chown=nextjs:nodejs /app/node_modules/bcryptjs ./node_modules/bcryptjs
 

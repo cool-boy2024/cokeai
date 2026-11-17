@@ -181,7 +181,7 @@ export function stripSupplierPricing(input: string): string {
  * copy, so drop the matching sentence from every public text field.
  */
 const SETTLEMENT_MARKER =
-  /(?:卡台手续费|退款话术|代申请服务|80\s*%\s*结算|20\s*%\s*为卡台|按.{0,12}官方退款.{0,16}结算)/;
+  /(?:卡台|退款话术|代申请服务|80\s*%\s*结算|20\s*%\s*为卡台|按.{0,12}官方退款.{0,16}结算)/;
 
 function stripSettlementCopy(input: string): string {
   if (!input || !SETTLEMENT_MARKER.test(input)) return input;

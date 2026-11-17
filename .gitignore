@@ -47,4 +47,8 @@ tools/supplier-scraper/*.jsonl
 # Bundled maintenance scripts (built in Docker, not committed)
 zyanai-sync.cjs
 aibuy-sync.cjs
+eval-run.cjs
 zyanai-sync.mjs
+
+# 评测样本含货源正文，只留在本机；仓库是 public。
+.local-data/eval/

@@ -1090,3 +1090,38 @@ ALTER TABLE shop_products ADD COLUMN IF NOT EXISTS supplier_stock INTEGER NOT NU
 ALTER TABLE shop_products ADD COLUMN IF NOT EXISTS supplier_synced_at TIMESTAMPTZ;
 
 INSERT INTO schema_migrations (version) VALUES ('008_shop_display_sales') ON CONFLICT (version) DO NOTHING;
+
+-- ============================================================================
+-- 009_ai_eval_runs：AI 商品上架的三方案对照评测（heuristic / 单轮 / 受控 Agent）
+--
+-- 每次评测运行有一个 batch_id，每条样本 × 每个方案写一行。metrics 是自动
+-- 指标（结构合规、泄露、价格外露、字段完整性），human_score 是人工一次性
+-- 1–5 可用性打分。样本正文不进库（只存 fixture_id），避免把货源内容再复制
+-- 一份到数据库里。
+-- 纯加法迁移。
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS ai_eval_runs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  batch_id UUID NOT NULL,
+  fixture_id TEXT NOT NULL,
+  variant TEXT NOT NULL CHECK (variant IN ('heuristic', 'single_shot', 'agent')),
+  model_id TEXT,
+  draft JSONB,
+  metrics JSONB NOT NULL,
+  input_tokens BIGINT NOT NULL DEFAULT 0 CHECK (input_tokens >= 0),
+  output_tokens BIGINT NOT NULL DEFAULT 0 CHECK (output_tokens >= 0),
+  latency_ms INTEGER NOT NULL DEFAULT 0 CHECK (latency_ms >= 0),
+  model_calls INTEGER NOT NULL DEFAULT 0 CHECK (model_calls >= 0),
+  tool_calls INTEGER NOT NULL DEFAULT 0 CHECK (tool_calls >= 0),
+  error TEXT,
+  human_score SMALLINT CHECK (human_score BETWEEN 1 AND 5),
+  human_note TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS ai_eval_runs_batch_idx ON ai_eval_runs(batch_id, variant);
+CREATE INDEX IF NOT EXISTS ai_eval_runs_created_idx ON ai_eval_runs(created_at DESC);
+-- 同一批次里同一样本同一方案只允许一条，防止重复跑覆盖成脏数据。
+CREATE UNIQUE INDEX IF NOT EXISTS ai_eval_runs_unique_idx
+  ON ai_eval_runs(batch_id, fixture_id, variant);
+
+INSERT INTO schema_migrations (version) VALUES ('009_ai_eval_runs') ON CONFLICT (version) DO NOTHING;
