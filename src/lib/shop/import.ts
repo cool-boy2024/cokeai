@@ -8,6 +8,7 @@ import { autoRetailPrice } from "@/lib/shop/auto-pricing";
 import { getShopTargetMarginBps } from "@/lib/shop/settings";
 import { classifyOffer } from "@/lib/shop/offer-classify";
 import { sanitizeSupplierCopy, sanitizeSupplierLines } from "@/lib/shop/sanitize";
+import { parseSupplierVariants } from "@/lib/shop/supplier-variants";
 import { generateAgentCopy, type AgentRunResult } from "@/lib/shop/import-agent";
 
 /**
@@ -181,11 +182,22 @@ async function fetchSupplierHtml(rawUrl: string): Promise<string> {
   throw new Error("货源页面跳转过多");
 }
 
-export async function fetchSupplierText(url: string): Promise<string> {
+export type SupplierPage = {
+  /** Raw HTML — needed for structured data the readable-text pass strips. */
+  html: string;
+  /** Sanitized-length readable text used for copy generation. */
+  text: string;
+};
+
+export async function fetchSupplierPage(url: string): Promise<SupplierPage> {
   const html = await fetchSupplierHtml(url);
   const text = extractReadableText(html);
   if (text.length < 40) throw new Error("货源页面没有可读文本，可能需登录或由 JS 渲染");
-  return text;
+  return { html, text };
+}
+
+export async function fetchSupplierText(url: string): Promise<string> {
+  return (await fetchSupplierPage(url)).text;
 }
 
 const NOTICE_LINE =
@@ -598,10 +610,16 @@ export async function runImportJob(
     }
 
     let sourceText: string | null = options?.sourceText?.trim() || null;
+    // The readable text strips <script>, so structured option data (the
+    // supplier's "宝贝类型" list) only survives in the raw HTML. Keep it aside
+    // when we fetch, and skip options entirely when a caller supplies text.
+    let sourceHtml: string | null = null;
     let fetchError: string | null = null;
     if (!sourceText) {
       try {
-        sourceText = await fetchSupplierText(offer.url);
+        const page = await fetchSupplierPage(offer.url);
+        sourceText = page.text;
+        sourceHtml = page.html;
       } catch (error) {
         fetchError = error instanceof Error ? error.message : "货源页面抓取失败";
       }
@@ -669,11 +687,22 @@ export async function runImportJob(
     const category = offerCategory;
     const productType = offerProductType;
     const displayCategory = offerDisplay;
-    const price = priceFor(offer, await getShopTargetMarginBps());
+    const marginBps = await getShopTargetMarginBps();
+    const price = priceFor(offer, marginBps);
     const availability =
       offer.availability === "in_stock" || offer.availability === "low_stock"
         ? offer.availability
         : "out_of_stock";
+    // Options come from the raw HTML's product JSON, priced the same way as the
+    // single-product price: supplier cost + our margin. Empty when the page has
+    // no options, so the product keeps selling at one price.
+    const supplierVariants = sourceHtml
+      ? parseSupplierVariants(sourceHtml).map((variant, index) => ({
+          ...variant,
+          retailMicros: autoRetailPrice(variant.costMicros, marginBps),
+          sort_order: index,
+        }))
+      : [];
     // Same rule as adminSaveShopProductAction: price is not part of readiness.
     const etaMax = 120;
     const copyReady =
@@ -726,6 +755,43 @@ export async function runImportJob(
       );
       const id = inserted.rows[0].id;
       await linkOffer(run, id, offer);
+
+      // Options parsed from the supplier page. Prices are ours (cost + margin),
+      // availability mirrors the product because the supplier tracks stock at
+      // the product level, not per option.
+      for (const variant of supplierVariants) {
+        await client.query(
+          `INSERT INTO shop_product_variants
+             (product_id, variant_key, label, price_micros, warranty_type,
+              warranty_days, warranty_note, availability, preorder_manual, sort_order)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, FALSE, $9)
+           ON CONFLICT (product_id, variant_key) DO UPDATE
+             SET label = EXCLUDED.label, price_micros = EXCLUDED.price_micros,
+                 availability = EXCLUDED.availability,
+                 sort_order = EXCLUDED.sort_order, active = TRUE, updated_at = now()`,
+          [
+            id,
+            `auto-${variant.sort_order}`,
+            variant.label,
+            variant.retailMicros,
+            copy.warranty_type,
+            copy.warranty_days,
+            copy.warranty_note,
+            availability,
+            variant.sort_order,
+          ],
+        );
+      }
+
+      const note = [
+        copy.note,
+        supplierVariants.length > 0
+          ? `已自动生成 ${supplierVariants.length} 个档位`
+          : "",
+      ]
+        .filter(Boolean)
+        .join("；");
+
       await client.query(
         `UPDATE shop_import_jobs
             SET status = 'draft_ready', product_id = $2, engine = $3, note = $4,
@@ -737,7 +803,7 @@ export async function runImportJob(
           jobId,
           id,
           copy.engine,
-          copy.note || null,
+          note || null,
           agentRun ? JSON.stringify(agentRun.steps) : null,
           agentRun?.inputTokens ?? 0,
           agentRun?.outputTokens ?? 0,

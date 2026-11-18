@@ -10,6 +10,7 @@ import {
   isPreorderStock,
 } from "@/lib/shop/preorder";
 import { extractReadableText } from "@/lib/shop/readable";
+import { scanJson } from "@/lib/shop/html-json";
 import { buildRichDescriptionHtml } from "@/lib/shop/rich-description";
 import { sanitizeSupplierCopy } from "@/lib/shop/sanitize";
 
@@ -125,38 +126,6 @@ async function fetchText(url: string): Promise<string> {
     await new Promise((resolve) => setTimeout(resolve, 800 * (attempt + 1)));
   }
   throw new Error(`无法获取 ${url}`);
-}
-
-function scanJson(html: string, marker: string): unknown | null {
-  const start = html.indexOf(marker);
-  if (start < 0) return null;
-  const objectStart = html.indexOf("{", start);
-  if (objectStart < 0) return null;
-  let depth = 0;
-  let inString = false;
-  let escaped = false;
-  for (let i = objectStart; i < html.length; i += 1) {
-    const char = html[i];
-    if (inString) {
-      if (escaped) escaped = false;
-      else if (char === "\\") escaped = true;
-      else if (char === '"') inString = false;
-      continue;
-    }
-    if (char === '"') inString = true;
-    else if (char === "{") depth += 1;
-    else if (char === "}") {
-      depth -= 1;
-      if (depth === 0) {
-        try {
-          return JSON.parse(html.slice(objectStart, i + 1));
-        } catch {
-          return null;
-        }
-      }
-    }
-  }
-  return null;
 }
 
 const IMG_SRC_PATTERN = /<img\b[^>]*\bsrc\s*=\s*["']([^"']+)["'][^>]*>/gi;

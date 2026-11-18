@@ -50,6 +50,7 @@
     "test:shop:sales": "tsx scripts/test-shop-sales.ts",
     "test:shop:sanitize": "tsx scripts/test-shop-sanitize.ts",
     "test:shop:statement": "tsx scripts/test-alipay-statement.ts",
+    "test:shop:supplier-variants": "tsx scripts/test-shop-supplier-variants.ts",
     "test:shop:sync": "tsx scripts/test-shop-sync.ts",
     "test:shop:usdt": "tsx scripts/test-shop-usdt.ts",
     "test:shop:variants": "tsx scripts/test-shop-variants.ts",
