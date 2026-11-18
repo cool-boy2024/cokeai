@@ -82,24 +82,47 @@ export function productAvailabilityState(input: {
 }
 
 /**
+ * 列表页用的粗粒度销量：10 以下照实显示，10 以上向下取整到十位再加 `+`
+ * （87 → `80+`）。既表达「卖得多」，又不把精确销量整批交给爬虫。
+ */
+export function coarseSold(units: number): string {
+  const n = Number.isFinite(units) ? Math.max(0, Math.trunc(units)) : 0;
+  if (n < 10) return String(n);
+  return `${Math.floor(n / 10) * 10}+`;
+}
+
+/**
  * One-line storefront label, e.g. 「已售 88 · 库存 9」.
  *
  * 规则（全站唯一口径）：
  * - 已售永远按上游累计件数显示，0 就不显示，避免满屏「已售 0」；
  * - 能买的时候才写库存：有具体件数写「库存 N」，只有「充足」档位写「现货充足」；
  * - 不能买时只写「已售罄」或不写库存——绝不能在「补货中」旁边挂「现货充足」。
+ *
+ * `coarse` 供列表页使用：销量和库存都粗粒度化，精确数字只在商品详情页和
+ * 下单组件出现，避免一次列表请求就把全店库存快照带走。
  */
 export function salesLabel(
   display: ShopSalesDisplay,
-  options: { available?: boolean } = {},
+  options: { available?: boolean; coarse?: boolean } = {},
 ): string {
   const parts: string[] = [];
-  if (display.sold > 0) parts.push(`已售 ${display.sold}`);
+  if (display.sold > 0) {
+    parts.push(`已售 ${options.coarse ? coarseSold(display.sold) : display.sold}`);
+  }
   if (display.soldOut) {
     parts.push("已售罄");
     return parts.join(" · ");
   }
   if (options.available === false) return parts.join(" · ");
+  if (options.coarse) {
+    if (display.remaining !== null && display.remaining > 0) {
+      parts.push(display.remaining >= 10 ? "现货充足" : "仅剩少量");
+    } else if (display.remaining === null && display.abundant) {
+      parts.push("现货充足");
+    }
+    return parts.join(" · ");
+  }
   if (display.remaining !== null && display.remaining > 0) {
     parts.push(`库存 ${display.remaining}`);
   } else if (display.remaining === null && display.abundant) {

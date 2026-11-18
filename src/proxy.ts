@@ -16,7 +16,11 @@ import {
   legacyShopSlugRedirect,
   shopCrawlLimit,
   shopDetailSlug,
+  shopListLimit,
+  shopListSearchKey,
   SHOP_CRAWL_WINDOW_SECONDS,
+  SHOP_LIST_PROBE_AFTER,
+  SHOP_LIST_WINDOW_SECONDS,
 } from "@/lib/shop-crawl-guard";
 
 /**
@@ -29,7 +33,7 @@ import {
  */
 
 type Policy = {
-  type: "captcha" | "shop-media" | "shop-api" | "auth-page" | "shop-page" | "shop-dashboard" | "api" | "server-action";
+  type: "captcha" | "shop-media" | "shop-api" | "auth-page" | "shop-list" | "shop-page" | "shop-dashboard" | "api" | "server-action";
   limit: number;
   windowSeconds: number;
 };
@@ -64,11 +68,18 @@ const POLICIES: Array<{ test: (pathname: string) => boolean; policy: Policy }> =
     policy: { type: "auth-page", limit: 60, windowSeconds: 60 },
   },
   {
-    // Public catalogue pages are the most attractive crawl target because
+    // The catalogue list is the cheapest way to mirror the whole shop: names,
+    // prices, stock labels and cover URLs are all in one HTML response. 60/min
+    // per IP is far above human clicking (a visitor loads one list page and a
+    // handful of products); product images have their own media budget above.
+    test: (pathname) => pathname === "/shop" || pathname === "/shop/",
+    policy: { type: "shop-list", limit: 60, windowSeconds: 60 },
+  },
+  {
+    // Product detail pages are the most attractive crawl target because
     // supplier-derived copy and links live there. 120/min per IP covers normal
-    // browsing while stopping bulk mirroring. Product images have their own
-    // media budget above, so one page view does not consume this allowance.
-    test: (pathname) => pathname === "/shop" || pathname.startsWith("/shop/"),
+    // browsing while the distinct-slug counter below stops bulk mirroring.
+    test: (pathname) => pathname.startsWith("/shop/"),
     policy: { type: "shop-page", limit: 120, windowSeconds: 60 },
   },
   {
@@ -279,6 +290,41 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
       60,
     );
     return limitedResponse(request, result.resetSeconds);
+  }
+
+  // The list budget alone still lets one IP walk every page/filter combination
+  // slowly. Count distinct list views per IP in a rolling minute and stop
+  // filter-based reassembly of the catalogue. Only consulted after a burst of
+  // requests, so an ordinary shopper never pays the extra Redis call.
+  if (
+    policy.type === "shop-list" &&
+    request.method === "GET" &&
+    !isSearchCrawler(userAgent) &&
+    limit - result.remaining >= SHOP_LIST_PROBE_AFTER
+  ) {
+    const listKey = shopListSearchKey(request.nextUrl);
+    if (listKey) {
+      const distinct = await rollingDistinctCount(
+        `sec:crawl:list:${ip}`,
+        listKey,
+        SHOP_LIST_WINDOW_SECONDS,
+      );
+      const listLimit = shopListLimit(strict);
+      if (distinct > listLimit && !(await isTrustedAdminIp(ip))) {
+        await recordSecurityEventOnce(
+          {
+            type: "rate_limit",
+            ip,
+            path: pathname,
+            method: request.method,
+            detail: `列表页枚举 ${distinct}/${listLimit} 个/${SHOP_LIST_WINDOW_SECONDS}s`,
+            ua: userAgent,
+          },
+          60,
+        );
+        return limitedResponse(request, SHOP_LIST_WINDOW_SECONDS);
+      }
+    }
   }
 
   const response = NextResponse.next();

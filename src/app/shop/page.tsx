@@ -34,6 +34,7 @@ import {
   type ShopCategorySlug,
 } from "@/lib/shop/categories";
 import { productPriceLabel } from "@/lib/shop/copy";
+import { coarseSold } from "@/lib/shop/sales-display";
 import { loadShopTrending } from "@/lib/shop/trending";
 
 export const metadata: Metadata = {
@@ -292,7 +293,8 @@ export default async function ShopPage({
                       <div>
                         <strong>{item.product.name}</strong>
                         <span>
-                          {productDisplayCategory(item.product)} · 已售 {item.units} 件
+                          {productDisplayCategory(item.product)} · 已售{" "}
+                          {coarseSold(item.units)} 件
                         </span>
                       </div>
                       <em>{productPriceLabel(startingPriceMicros(item.product))}</em>

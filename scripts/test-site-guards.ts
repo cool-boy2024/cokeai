@@ -3,7 +3,11 @@ import {
   legacyShopSlugRedirect,
   shopCrawlLimit,
   shopDetailSlug,
+  shopListLimit,
+  shopListSearchKey,
 } from "../src/lib/shop-crawl-guard";
+import { coarseSold, salesLabel } from "../src/lib/shop/sales-display";
+import { isAllowedImageReferer } from "../src/lib/shop/image-referer";
 import { baseUrlFromHeaders } from "../src/lib/public-url";
 
 /**
@@ -94,6 +98,75 @@ for (const ua of [
 
 assertEqual(shopCrawlLimit(false), 20, "normal limit");
 assertEqual(shopCrawlLimit(true), 10, "strict halves the limit");
+assertEqual(shopListLimit(false), 20, "list limit");
+assertEqual(shopListLimit(true), 10, "strict list limit");
+
+// --- catalogue view identity ------------------------------------------------
+
+assertEqual(
+  shopListSearchKey(new URL("http://x/shop")),
+  "*|*|1",
+  "bare catalogue is view 1",
+);
+assertEqual(
+  shopListSearchKey(new URL("http://x/shop?page=3")),
+  "*|*|3",
+  "page number is kept",
+);
+assertEqual(
+  shopListSearchKey(new URL("http://x/shop?page=03&category=Codex&q=%20Pro%20")),
+  "codex|pro|3",
+  "filters are normalised; page 03 and 3 are the same view",
+);
+assertEqual(
+  shopListSearchKey(new URL("http://x/shop?page=abc")),
+  "*|*|1",
+  "junk page falls back to 1",
+);
+assertEqual(
+  shopListSearchKey(new URL("http://x/shop/p-46")),
+  null,
+  "product pages do not use the list counter",
+);
+
+// --- coarse storefront labels ----------------------------------------------
+
+assertEqual(coarseSold(0), "0", "small counts stay exact");
+assertEqual(coarseSold(9), "9", "small counts stay exact");
+assertEqual(coarseSold(12), "10+", "rounds down to tens");
+assertEqual(coarseSold(263), "260+", "large counts lose precision");
+assertEqual(
+  salesLabel({ sold: 263, soldOut: false, remaining: 9, abundant: false }, { coarse: true }),
+  "已售 260+ · 仅剩少量",
+  "list label is coarse",
+);
+assertEqual(
+  salesLabel({ sold: 263, soldOut: false, remaining: 9, abundant: false }),
+  "已售 263 · 库存 9",
+  "detail label stays exact",
+);
+
+// --- image hotlink allowlist ------------------------------------------------
+
+for (const referer of [
+  undefined,
+  "",
+  "https://cokeai.cc.cd/shop/p-46",
+  "https://mp.weixin.qq.com/",
+  "https://t.me/somechannel",
+  "https://www.google.com/",
+  "not a url",
+]) {
+  assertEqual(isAllowedImageReferer(referer), true, `referer allowed: ${referer || "(empty)"}`);
+}
+
+for (const referer of [
+  "https://evil.example.com/page",
+  "https://evilqq.com/page",
+  "https://qq.com.evil.example/page",
+]) {
+  assertEqual(isAllowedImageReferer(referer), false, `referer blocked: ${referer}`);
+}
 
 // --- canonical public URL --------------------------------------------------
 

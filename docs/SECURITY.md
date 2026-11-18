@@ -22,8 +22,9 @@
 |---|---|---|---|
 | 扫描拦截（应用层） | **已启用** | `/.env`、`/.git`、`wp-admin`、`phpMyAdmin`、路径穿越、`.php/.asp/.jsp/.cgi` 等常见探测，直接返回 404 并记录事件 | 伪装成正常路径的业务探测、SQL 注入/XSS 参数、分布式低频扫描、只请求首页和商品页的慢速爬取 |
 | 登录/注册频控 | **已启用** | `/login`、`/register` 页面 60 次/分钟/IP；登录 20 次/10 分钟/IP、10 次/10 分钟/邮箱；注册 10 次/10 分钟/IP、5 次/10 分钟/邮箱；失败突增会记 `auth` 事件 | 代理池分布式撞库、已泄露密码的一次性成功登录、人工慢速尝试；不能替代密码强度、2FA 和泄露密码检测 |
-| 下单频控 | **已启用** | 验证码接口 30 次/分钟/IP；`/api/shop/*` 120 次/分钟/IP；下单 10 次/10 分钟/用户；商品页 120 次/分钟/IP | 多账号分散下单、真人慢速库存探测、支付欺诈和拒付；不校验商品是否真的该被买 |
+| 下单频控 | **已启用** | 验证码接口 30 次/分钟/IP；`/api/shop/*` 120 次/分钟/IP；下单 10 次/10 分钟/用户；商品列表页 60 次/分钟/IP、商品详情页 120 次/分钟/IP | 多账号分散下单、真人慢速库存探测、支付欺诈和拒付；不校验商品是否真的该被买 |
 | 商品页枚举检测 | **已启用** | 按 IP 统计**不同**商品详情页数量（滚动 60 秒，重复访问同一商品不累加）：正常 20 个/分钟、收紧时 10 个/分钟，超过返回 429 并记 `rate_limit` 事件 | 换 IP 的分布式镜像、绕开详情页直接抓 API、模拟搜索引擎 UA 的爬虫；它是「别让人一次抄完整店」，不是身份验证 |
+| 列表页枚举检测 | **已启用** | 列表页 60 次/分钟/IP；同一 IP 发出 20 次以上列表请求后，再统计**不同** `category × q × page` 组合（滚动 60 秒，正常 20 个、收紧时 10 个），超过返回 429 并记 `rate_limit` 事件 | 换 IP 的分布式翻页、模拟搜索引擎 UA；它对「正常翻两页看商品」的顾客几乎没有成本，只拦批量翻页 |
 | Server Action 频控 | **已启用** | 所有带 `next-action` 的 POST 请求 60 次/分钟/IP，覆盖登录、注册、下单、后台操作等表单入口 | 正常用户连续操作被误伤（尤其共享出口 IP）、伪造普通 POST 绕过 `next-action` 的接口、业务层越权 |
 | 通用 API 频控 | **已启用** | `/api/*` 240 次/分钟/IP（`/api/health`、`/api/internal/*` 除外） | 慢速请求、分布式请求；`/api/internal/*` 只靠 `INTERNAL_API_SECRET` 保护，不在这一层 |
 | 边缘 Caddy 限流 | **未启用** | 计划在流量到达应用前按 IP 限速，省 CPU/内存，并能覆盖全部路径；`caddy-ratelimit` 由 Caddy 作者 mholt 维护 | 当前 Tunnel 不经过 edge，开了也不生效；不能挡 L3/L4 洪水；配置不当会打断 SSE 流式响应或误伤正常用户 |
@@ -49,14 +50,16 @@
 - **例外**：`04-gateway-maintenance.json` 的六个任务相互独立，失败时继续执行后续任务；
   这些接口自身记录错误，关键数据链路由上面的新鲜度检查兜底。
 
-### 2.2 商品页枚举检测（2026-11-15）
+### 2.2 商品页与列表页枚举检测（2026-11-15，列表页 2026-11-18）
 
-单个 IP 在原有的 120 次/分钟预算内，足以把 36 个商品详情页全部走一遍；固定的请求计数挡不住这种「慢速整店镜像」。现在在 `src/proxy.ts` 里按 IP 统计**不同**商品详情页：
+单个 IP 在原有的 120 次/分钟预算内，足以把 36 个商品详情页全部走一遍；固定的请求计数挡不住这种「慢速整店镜像」。现在在 `src/proxy.ts` 里按 IP 统计**不同**商品详情页，同时对列表页单独限流并统计**不同**视图组合：
 
-- **口径**：Redis 有序集合 `sec:crawl:<ip>`，成员是商品 slug、分数是首次访问时间；进入前先删掉 60 秒前的成员，重复访问同一 slug 只更新时间，不增加数量。只有 `GET /shop/<slug>` 参与，`/shop` 列表页、条款/隐私/FAQ 等非商品 slug 不算。
-- **阈值**：正常 20 个不同商品/60 秒；应急防护或临时收紧时为 10 个。超过直接返回 429（JSON 请求返回 JSON），并记一条 `rate_limit` 事件，detail 形如 `商品页枚举 21/20 个/60s`。
+- **商品详情页口径**：Redis 有序集合 `sec:crawl:<ip>`，成员是商品 slug、分数是首次访问时间；进入前先删掉 60 秒前的成员，重复访问同一 slug 只更新时间，不增加数量。只有 `GET /shop/<slug>` 参与，`/shop` 列表页、条款/隐私/FAQ 等非商品 slug 不算。
+- **商品详情页阈值**：正常 20 个不同商品/60 秒；应急防护或临时收紧时为 10 个。超过直接返回 429（JSON 请求返回 JSON），并记一条 `rate_limit` 事件，detail 形如 `商品页枚举 21/20 个/60s`。
+- **列表页口径**：`/shop` 单独一条限流策略，60 次/分钟/IP（详情页仍是 120 次/分钟，翻商品不受影响）。同一 IP 在 60 秒内发出 20 次以上的列表请求后，才开始查 Redis 有序集合 `sec:crawl:list:<ip>`；成员是 `category|q|page` 组合，同一组合只算一个。这样正常顾客翻页、改分类、搜索都不产生额外 Redis 调用。
+- **列表页阈值**：正常 20 个不同视图/60 秒；收紧时 10 个。超过返回 429，事件 detail 形如 `列表页枚举 21/20 个/60s`。它是「别让人一遍扫完整个目录」，拦的是批量翻页，不是「多看了几页」。
 - **例外**：Googlebot、bingbot、百度、Yandex、Applebot、DuckDuckBot、搜狗、360 等搜索引擎 UA 不参与计数，避免自断收录。用 UA 伪装成搜索引擎可以绕过这一层，所以它是降低镜像速度，不是身份验证。
-- **失败开放**：Redis 不可用时返回 0，不拦截；固定窗口限流仍然生效。正常顾客几十秒内看 10–20 个商品几乎不可能，误伤面很小。
+- **失败开放**：Redis 不可用时返回 0，不拦截；固定窗口限流仍然生效。正常顾客几十秒内看 10–20 个商品、翻 20 个列表视图几乎不可能，误伤面很小。
 - **代码**：`src/lib/shop-crawl-guard.ts`（纯函数，可测）+ `src/lib/rate-limit.ts` 的 `rollingDistinctCount`；测试 `npm run test:site-guards`。
 - **robots/sitemap**：此前生产 `APP_URL` 未设置，`robots.txt` 和 `sitemap.xml` 会输出 `http://localhost:3000`。现在两个路由改为从请求的 `x-forwarded-host` / `host` 推导公开域名（`src/lib/public-url.ts`），生产应输出 `https://cokeai.cc.cd`。
 
@@ -64,12 +67,12 @@
 
 应用层之外，Cloudflare 是当前唯一可用的边缘防护，不需要动 Tunnel 配置。以下在 Cloudflare 控制台由域名管理员操作，仓库不自动修改：
 
-1. **Security → Bots**：开启 Bot Fight Mode（免费版）或 Super Bot Fight Mode（Pro 及以上）。对「Definitely automated」设 Block，对「Verified bots」放行；**免费版 Bot Fight Mode 不支持按路径排除**，如影响 `/v1` 的 API 调用，先只开观察、确认无业务影响再升级策略。
+1. **Security → Bots**：**目前不要开 Bot Fight Mode**。免费版不支持按路径排除，开了会对全站自动请求做挑战，`/v1` 的 API 调用和支付回调处于同一域名下，一旦被挑战就是业务中断。等升级到 Pro（可按路径/按 ASN 配置）再评估；现阶段靠下面的 `/shop*` 速率规则挡脚本。
 2. **Security → WAF → Managed rules**：启用 Cloudflare Managed Ruleset（免费版提供托管规则集），先以默认动作运行，观察 24 小时的误杀记录再收紧。
-3. **Security → WAF → Rate limiting rules**（免费版可建 1 条，Pro 更多）：
-   - `http.request.uri.path matches "^/shop/"` → 60 次/分钟/IP → 动作 Block 或 Managed Challenge；
-   - `http.request.uri.path eq "/login" or eq "/register"` → 10 次/分钟/IP → Managed Challenge；
-   - `starts_with(http.request.uri.path, "/api/")` → 120 次/分钟/IP → Block。
+3. **Security → WAF → Rate limiting rules**：免费版通常只能建 **1 条**速率规则、窗口固定 10 秒（以控制台实际为准），所以这一条要留给小店目录：
+   - 表达式 `http.request.uri.path matches "^/shop"` → 10 秒内超过 30 次/IP → 动作 **Block**，封禁时长 10 分钟。
+   - 这正好覆盖「10 秒扫一遍目录」的脚本：真人 10 秒点不到 30 次；应用层 60 次/分钟的列表限流和 20 个不同视图检测作为第二道。
+   - 「限速 + Managed Challenge」需要按路径分区且更宽的规则条数，属于 Pro 及以上；升级前不要和上面这条抢唯一的名额。`/login`、`/register`、`/api/*` 已经由应用层频控覆盖，边缘不重复配置。
    应用层阈值更细，边缘规则只做粗筛，宁可先松后紧。
 4. **Under Attack Mode**：只在确认攻击且站点明显变慢时临时开启，会挑战所有访客，影响转化，处理完立即关闭。
 5. **不要**在 Cloudflare 改 Tunnel、源站或 DNS 记录来「顺手加防护」；Tunnel 变更属于生产变更，按第 7 节单独审批。
@@ -347,7 +350,7 @@ done | sort | uniq -c
 | 后台与 API | `/admin/**` 页面由 `requireAdmin()` 保护（未登录 307 到登录页，普通用户 307 到 `/dashboard`）；admin API 也要独立校验，非管理员返回 404。Server Action 自己在第一行调用 `requireAdmin()`，不能只依赖布局 | `src/app/admin/layout.tsx`、`src/app/api/admin/**`、`src/app/actions/admin*.ts` |
 | 内部任务 | `/api/internal/**` 只认 `x-internal-secret`（长度至少 24）；同步/导入/定价/帮助任务只能由 n8n 或管理员 Server Action 触发。失败响应只返回固定错误码，细节只写服务器日志 | `src/lib/internal.ts`、`src/app/api/internal/**`、`src/app/actions/*` |
 | 公开 URL | 商品 slug 只用中性前缀（`p-<编号>` 与 `auto-<摘要>-<编号>`），不得出现供应商名或上游商品 id。2026-11-15 之前的 `zy-*` / `auto-<供应商>-*` 由 schema 迁移改写，旧链接经 301 跳到新 slug | `db/schema.sql`、`src/lib/shop/zyanai.ts`、`src/lib/shop/import.ts`、`src/lib/shop-crawl-guard.ts` |
-| 抓取 | `/shop` 与商品页 120 次/分钟/IP，`/api/shop/*` 120 次/分钟/IP；超出 429 | `src/proxy.ts` |
+| 抓取 | 商品列表页 60 次/分钟/IP、商品详情页 120 次/分钟/IP，`/api/shop/*` 120 次/分钟/IP；超过 429 | `src/proxy.ts` |
 | 索引 | `robots.txt` Disallow `/admin`、`/api`、`/dashboard`；`next.config.ts` 给这三类路径加 `X-Robots-Tag: noindex, nofollow, noarchive` 和 `Cache-Control: no-store`；sitemap 只列公开页面 | `src/app/robots.ts`、`src/app/sitemap.ts`、`next.config.ts` |
 
 公开接口只返回 `shop_products` 的公开列，不查 `shop_offers` / `shop_product_sources` 的原始字段；读取这两个表的唯一公开用途是拿 `source_store` / `url` 给清洗器做最后一道替换，替换完成后不返回。
@@ -366,7 +369,7 @@ node scripts/audit-supplier-leaks.mjs https://cokeai.cc.cd
 
 脚本会抓 `/shop`、`/help`、sitemap 里的商品/教程页，检查供应商域名、`supplier_cost`、`source_title`、`source_store`、`shop_offers`、`货源`、`供货商`、`上游供应商`，并顺带确认 robots.txt 的 Disallow 和 sitemap 不含 `/admin`、`/api`、`/dashboard`。发现泄露退出码为 1。
 
-请求默认间隔 600ms，低于小店 120 次/分钟的限流；遇到 429 会按 `Retry-After` 退避重试。重试后仍有页面读不到时，脚本输出 `INCOMPLETE` 并以 1 退出——只有全部发现的页面都被检查过才会报 `OK`。需要更慢时设 `AUDIT_DELAY_MS=1000`。
+请求默认间隔 600ms（约 100 次/分钟），低于商品详情页 120 次/分钟的限流；列表页只读 1 次，不会碰到 60 次/分钟的上限。遇到 429 会按 `Retry-After` 退避重试。重试后仍有页面读不到时，脚本输出 `INCOMPLETE` 并以 1 退出——只有全部发现的页面都被检查过才会报 `OK`。需要更慢时设 `AUDIT_DELAY_MS=1000`。
 
 补充人工检查（可选）：
 

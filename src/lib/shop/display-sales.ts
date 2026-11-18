@@ -11,7 +11,7 @@ import { query } from "@/lib/db";
  */
 
 export type { ShopSalesDisplay } from "./sales-display";
-export { salesDisplay, salesLabel, normalizeSupplierStock } from "./sales-display";
+export { salesDisplay, salesLabel, coarseSold, normalizeSupplierStock } from "./sales-display";
 
 type StockRow = {
   units: string | number;

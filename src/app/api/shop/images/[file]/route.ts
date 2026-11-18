@@ -1,5 +1,6 @@
 import sharp from "sharp";
 import { query } from "@/lib/db";
+import { isAllowedImageReferer } from "@/lib/shop/image-referer";
 import { SHOP_IMAGE_WIDTHS } from "@/lib/shop/media-url";
 
 export const runtime = "nodejs";
@@ -39,6 +40,16 @@ export async function GET(
     });
   }
   const hash = match[1];
+
+  // Hotlink guard, defense-in-depth: an edge cache hit never reaches the
+  // origin, so Cloudflare Hotlink Protection is still the primary control.
+  // Empty/missing Referer stays allowed (direct opens, chat clients).
+  if (!isAllowedImageReferer(request.headers.get("referer"))) {
+    return new Response("Forbidden", {
+      status: 403,
+      headers: { "Cache-Control": "no-store" },
+    });
+  }
 
   const result = await query<{ mime: string; bytes: Buffer }>(
     "SELECT mime, bytes FROM shop_images WHERE hash = $1",

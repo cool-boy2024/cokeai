@@ -153,7 +153,8 @@ curl -s -o /dev/null -w "health %{http_code}\n" http://127.0.0.1:3000/api/health
   后，任何工作流失败都会推到 `ALERT_WEBHOOK_URL`。`/api/internal/health` 同时检查
   货源同步新鲜度：aibijia 超过 6 小时、zyanai 超过 24 小时没有成功同步即降级，
   由现有 15 分钟健康告警推送。生产 n8n 需重新导入工作流并手动设置 Error Workflow。
-- 当前真正生效的只有应用层防护：`src/proxy.ts` 的扫描拦截，登录/注册/小店/API/Server Action 按 IP 限流；事件写 Redis，管理员页 `/admin/security`；n8n 每 5 分钟拉取摘要，应用把告警发到后台配置的通道。
+- 当前真正生效的只有应用层防护：`src/proxy.ts` 的扫描拦截，登录/注册/小店/API/Server Action 按 IP 限流；事件写 Redis，管理员页 `/admin/security`；n8n 每 5 分钟拉取摘要，应用把告警发到后台配置的通道。小店单独两条：列表页 `/shop` 60 次/分钟/IP、同一 IP 发出 20 次列表请求后统计 20 个不同 `category|q|page` 视图；商品详情页 120 次/分钟/IP、60 秒内 20 个不同 slug 判枚举。列表页与详情页的库存/销量在列表组件里只显示粗粒度（`10+`/「现货充足」），精确数字只在详情页。
+- 商品图片接口（`/api/shop/images/*`）带 Referer 白名单：空 Referer、本站和常见分享/搜索平台放行，其余外站 403。它只是源站兜底，真正的防盗链要在 Cloudflare 开 Hotlink Protection（边缘缓存命中不经过源站）。追加域名用 `SHOP_IMAGE_ALLOWED_HOSTS`（逗号分隔，自动含子域名）。
 - **防护状态与拦截计数只对管理员展示**：完整计数、告警和应急开关都在 `/admin/security`；公开页面（包括页脚）不再出现“应用层防护已开启/今日拦截”等状态。后台侧栏的“安全”入口已移到“概览”之后，首屏可见。
 - **Cloudflare Tunnel 仍指向 `app:3000`**，边缘 Caddy 限流不在公网链路上；CrowdSec、Anubis、WAF 均未启用。`ops/edge/` 的限流预案默认关闭，启用前必须单独审批并验证回滚。
 - 告警只在真正攻击时触发：扫描洪流（5 分钟 ≥ 300 / 15 分钟 ≥ 600 次）、分布式来源（5 分钟内 ≥ 5 个 IP 共 60 次，或 15 分钟内 ≥ 10 个 IP 共 120 次）、业务接口滥用（登录/下单/客服/后台动作 15 分钟 ≥ 10 次）、限流洪流（15 分钟 ≥ 600 次）。单一来源的 `.env` / `.git` 探测显示“扫描探测”，不告警。冷却 30 分钟（`SECURITY_ALERT_COOLDOWN_MINUTES`）。管理员页可“测试告警”“把当前摘要发到告警通道”，也可临时收紧限流（`sec:strict`，默认 60 分钟自动恢复）。
