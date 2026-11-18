@@ -4,11 +4,15 @@ import { requireAdmin } from "@/lib/auth";
 import { query } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { formatCny } from "@/lib/money";
+import { Pagination } from "@/components/Pagination";
 import { availabilityLabel, productStatusLabel } from "@/lib/shop/copy";
 import { preorderSql } from "@/lib/shop/preorder";
 
 export const metadata: Metadata = { title: "小店商品" };
 export const dynamic = "force-dynamic";
+
+/** 每页商品数。想调整分页大小只改这一处。 */
+const PAGE_SIZE = 20;
 
 type ProductRow = {
   id: string;
@@ -27,8 +31,32 @@ type ProductRow = {
   updated_at: string;
 };
 
-export default async function AdminShopProductsPage() {
+export default async function AdminShopProductsPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | undefined>>;
+}) {
   await requireAdmin();
+  const params = await searchParams;
+  // 模糊查询按商品名 / slug / 品牌匹配，运营找货时不用翻页。
+  const q = (params.q || "").trim().slice(0, 64);
+  const requestedPage = Number.parseInt(params.page || "1", 10);
+
+  const countResult = await query<{ total: string }>(
+    `SELECT COUNT(*)::text AS total
+       FROM shop_products p
+      WHERE ($1 = '' OR p.name ILIKE '%' || $1 || '%'
+                        OR p.slug ILIKE '%' || $1 || '%'
+                        OR p.brand ILIKE '%' || $1 || '%')`,
+    [q],
+  );
+  const total = Number(countResult.rows[0]?.total || 0);
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const page = Math.min(
+    Math.max(Number.isFinite(requestedPage) ? requestedPage : 1, 1),
+    totalPages,
+  );
+
   const result = await query<ProductRow>(
     `SELECT p.id, p.slug, p.name, p.brand, p.status, p.availability,
             ${preorderSql("p.")} AS preorder,
@@ -39,9 +67,24 @@ export default async function AdminShopProductsPage() {
             COUNT(s.id)::text AS sources
        FROM shop_products p
        LEFT JOIN shop_product_sources s ON s.product_id = p.id AND s.active = TRUE
+      WHERE ($1 = '' OR p.name ILIKE '%' || $1 || '%'
+                        OR p.slug ILIKE '%' || $1 || '%'
+                        OR p.brand ILIKE '%' || $1 || '%')
       GROUP BY p.id
-      ORDER BY p.sort_order, p.created_at`,
+      ORDER BY p.sort_order, p.created_at, p.id
+      LIMIT $2 OFFSET $3`,
+    [q, PAGE_SIZE, (page - 1) * PAGE_SIZE],
   );
+
+  // 分页链接带上当前搜索词，搜索和翻页才能组合生效。
+  function listHref(next: { q?: string; page?: number } = {}): string {
+    const search = new URLSearchParams();
+    const nextQuery = next.q ?? q;
+    if (nextQuery) search.set("q", nextQuery);
+    if (next.page && next.page > 1) search.set("page", String(next.page));
+    const suffix = search.toString();
+    return `/admin/shop/products${suffix ? `?${suffix}` : ""}`;
+  }
 
   // 「最近上新」：按上架时间（没有就用创建时间）倒序，只看最近 14 天。
   // 运营用它确认新同步进来的货有没有漏上架、有没有标错价。
@@ -78,6 +121,32 @@ export default async function AdminShopProductsPage() {
           从货源创建
         </Link>
       </div>
+
+      <form
+        className="order-search"
+        action="/admin/shop/products"
+        method="get"
+        role="search"
+        key={q}
+      >
+        <input
+          className="input"
+          type="search"
+          name="q"
+          defaultValue={q}
+          placeholder="商品名 / slug / 品牌"
+          aria-label="搜索商品"
+          maxLength={64}
+        />
+        <button className="btn btn-sm btn-dark" type="submit">
+          搜索
+        </button>
+        {q ? (
+          <Link className="btn btn-sm btn-ghost" href={listHref({ q: "", page: 1 })}>
+            清除
+          </Link>
+        ) : null}
+      </form>
 
       <section className="panel mb-16">
         <div className="panel-head">
@@ -143,10 +212,16 @@ export default async function AdminShopProductsPage() {
           <div>
             <h2>商品列表</h2>
           </div>
-          <span className="badge">{result.rows.length} 个</span>
+          <span className="badge">
+            {q ? `匹配 ${total} 个` : `${total} 个`}
+          </span>
         </div>
         {result.rows.length === 0 ? (
-          <div className="empty">还没有商品。先同步货源，再创建商品草稿。</div>
+          <div className="empty">
+            {q
+              ? `没有匹配「${q}」的商品。可试商品名 / slug / 品牌。`
+              : "还没有商品。先同步货源，再创建商品草稿。"}
+          </div>
         ) : (
           <div className="table-scroll">
             <table>
@@ -223,6 +298,15 @@ export default async function AdminShopProductsPage() {
             </table>
           </div>
         )}
+        <Pagination
+          className="pager--inset"
+          page={page}
+          totalPages={totalPages}
+          total={total}
+          hrefFor={(next) => listHref({ page: next })}
+          action="/admin/shop/products"
+          hidden={{ q: q || undefined }}
+        />
       </section>
     </>
   );
