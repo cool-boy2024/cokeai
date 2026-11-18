@@ -8,6 +8,7 @@ import { config } from "@/lib/config";
 import { query, withTransaction } from "@/lib/db";
 import { autoRetailPrice } from "@/lib/shop/auto-pricing";
 import { SHOP_PRODUCT_CATEGORIES } from "@/lib/shop/categories";
+import { validateProductCopy } from "@/lib/shop/copy";
 import { createImportJob, drainQueuedJobs, runImportJob } from "@/lib/shop/import";
 import { addManualShopSource } from "@/lib/shop/manual-source";
 import { notifyShopOrderDelivered } from "@/lib/shop/notify";
@@ -688,10 +689,23 @@ export async function adminSaveShopProductAction(formData: FormData): Promise<vo
   const totalSources = Number(sourceCheck.rows[0]?.total || 0);
   const sourceBlocked = status === "active" && availableSources === 0;
 
+  // 上架被拒时逐条说明原因。以前这里静默把 active 改回 draft，运营只看到
+  // 「商品已保存」，不知道商品根本没上架。
+  const publishBlockers: string[] = [];
+  if (status === "active") {
+    if (!copyReady) publishBlockers.push("文案不完整");
+    if (!complianceAck) publishBlockers.push("未勾选合规确认");
+    if (sourceBlocked) {
+      publishBlockers.push(
+        totalSources === 0
+          ? "这件商品没有绑定任何货源，不能上架"
+          : "关联货源当前无货或无法打开，不能上架",
+      );
+    }
+  }
+
   const finalStatus =
-    status === "active" && (!copyReady || !complianceAck || sourceBlocked)
-      ? "draft"
-      : status;
+    status === "active" && publishBlockers.length > 0 ? "draft" : status;
 
   await query(
     `UPDATE shop_products
@@ -768,13 +782,25 @@ export async function adminSaveShopProductAction(formData: FormData): Promise<vo
   revalidatePath("/shop");
   // 被拦下来要说清原因，否则运营只会看到「保存了但还是草稿」。
   if (status === "active" && finalStatus !== "active") {
-    const reason = sourceBlocked
-      ? totalSources === 0
-        ? "这件商品没有绑定任何货源，不能上架"
-        : "货源当前无货或无法打开，不能上架；请先在「货源」里确认库存"
-      : !copyReady
-        ? "文案不完整，不能上架"
-        : "需要勾选合规确认才能上架";
+    const missingCopy = validateProductCopy({
+      name,
+      subtitle,
+      description,
+      includes,
+      usage_notes: usage,
+      customer_notice: notice,
+      refund_policy: refund,
+      eta_max_minutes: etaMax,
+      warranty_type: warrantyType,
+      warranty_days: warrantyDays,
+    });
+    const reason = publishBlockers
+      .map((blocker) =>
+        blocker === "文案不完整" && missingCopy.length > 0
+          ? `文案不完整（缺少：${missingCopy.join("、")}）`
+          : blocker,
+      )
+      .join("；");
     redirect(
       `/admin/shop/products/${productId}?error=${encodeURIComponent(`上架被拦下：${reason}`)}`,
     );
@@ -940,12 +966,15 @@ export async function adminSaveShopVariantsAction(formData: FormData): Promise<v
           ],
         );
       } else {
-        await client.query(
+        // 新增档位必须记进 keptIds：末尾的清理语句会停用所有不在 keptIds
+        // 里的档位，漏掉新 id 会让刚添加的档位立刻变成 active = FALSE。
+        const inserted = await client.query<{ id: string }>(
           `INSERT INTO shop_product_variants
              (product_id, variant_key, label, badge, price_micros,
               warranty_type, warranty_days, warranty_note, availability,
               preorder_manual, sort_order)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+           RETURNING id`,
           [
             productId,
             `v${crypto.randomUUID().slice(0, 8)}`,
@@ -960,6 +989,8 @@ export async function adminSaveShopVariantsAction(formData: FormData): Promise<v
             item.sortOrder,
           ],
         );
+        const newId = inserted.rows[0]?.id;
+        if (newId) keptIds.push(newId);
       }
     }
 
