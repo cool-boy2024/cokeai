@@ -118,7 +118,29 @@ function sanitizeHelpHtml(html: string): string {
       (frame.tag === "video" && !frame.attribs.src) ||
       (frame.tag === "source" && !frame.attribs.src),
   });
-  return sanitizeSupplierCopy(parsed);
+  return scrubHelpCopy(parsed);
+}
+
+/**
+ * Supplier-copy scrubbing runs on the whole HTML string. First-party media
+ * URLs have already passed isSafeHelpUrl; park them so a hashed filename
+ * ending in `.jpg` cannot be read as a `.jp` domain.
+ */
+function scrubHelpCopy(html: string): string {
+  const saved: string[] = [];
+  const tokenized = html.replace(
+    /\b(?:src|href|poster)=(["'])([^"']+)\1/gi,
+    (full, _quote: string, url: string) => {
+      if (!isSafeHelpUrl(url)) return full;
+      const token = `__COKEAI_HELP_URL_${saved.length}__`;
+      saved.push(url);
+      return full.replace(url, token);
+    },
+  );
+  return sanitizeSupplierCopy(tokenized).replace(
+    /__COKEAI_HELP_URL_(\d+)__/g,
+    (_match, index: string) => saved[Number(index)] ?? "",
+  );
 }
 
 function cleanHelpText(value: string): string {
