@@ -241,8 +241,11 @@ export function sanitizeSupplierCopy(
       return urlHost && isAllowedHost(urlHost) ? url : SUPPLIER_PLACEHOLDER;
     },
   );
+  // `(?![a-z0-9-])` after the TLD is required: without it, a hashed image
+  // path such as `/api/shop/images/cd767e…fe6.jpg` matches as the host
+  // `…fe6.jp` and the leftover `g` produces the broken src `本站商品页g`.
   text = text.replace(
-    /(?<![\w.@])(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|cn|net|org|cloud|club|online|store|site|info|link|live|shop|app|dev|pro|biz|top|xyz|vip|fun|io|cc|co|ai|me|tv|us|uk|hk|tw|jp|kr|sg)(?:\/[^\s，。；、）)】\]"'<>]*)?/gi,
+    /(?<![\w.@])(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|cn|net|org|cloud|club|online|store|site|info|link|live|shop|app|dev|pro|biz|top|xyz|vip|fun|io|cc|co|ai|me|tv|us|uk|hk|tw|jp|kr|sg)(?![a-z0-9-])(?:\/[^\s，。；、）)】\]"'<>]*)?/gi,
     (value, offset: number, whole: string) => {
       const urlHost = hostFromValue(value);
       if (urlHost && isAllowedHost(urlHost)) return value;

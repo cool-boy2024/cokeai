@@ -103,6 +103,25 @@ assertMatch(
   "our own URL kept intact",
 );
 
+// Hashed first-party images end in `.jpg`. The bare-domain pass used to treat
+// the `…fe6.jp` prefix as a Japanese host and leave the leftover `g`.
+const hashedJpg = "/api/shop/images/cd767eaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaafe6.jpg";
+assertEqual(
+  sanitizeSupplierCopy(`见 ${hashedJpg}`),
+  `见 ${hashedJpg}`,
+  "hashed .jpg path is not treated as a .jp domain",
+);
+assertEqual(
+  sanitizeSupplierCopy(`<img src="${hashedJpg}" alt="步骤图">`),
+  `<img src="${hashedJpg}" alt="步骤图">`,
+  "hashed .jpg img src kept intact",
+);
+assertNotMatch(
+  sanitizeSupplierCopy("备用站 example.jp 可兑换。"),
+  /example\.jp/,
+  "a real .jp host is still masked",
+);
+
 // Official product sites are usage instructions, not supplier identity.
 assertMatch(
   sanitizeSupplierCopy("登录 https://chatgpt.com 后在 muse.ai 查看。"),
