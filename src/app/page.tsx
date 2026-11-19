@@ -88,6 +88,13 @@ export default async function HomePage() {
 
   const showcase = models.slice(0, 8);
   const newProducts = shopProducts.slice(0, 3);
+  // 主推（featured）永远先上光环，再用其余商品补足；两段都保持目录顺序。
+  // listPublicProducts() 已经按 featured DESC 排过，这里显式写死是为了
+  // 以后改 SQL 排序或加筛选时主推不会悄悄掉出去。
+  const ringProducts = [
+    ...shopProducts.filter((product) => product.featured),
+    ...shopProducts.filter((product) => !product.featured),
+  ].slice(0, 8);
   const featuredPlan =
     planResult.rows.find((plan) => plan.highlight) || planResult.rows[0];
   const orderedPlans = featuredPlan
@@ -178,7 +185,7 @@ export default async function HomePage() {
 
         {shopProducts.length > 0 ? (
           <section className="section shop-collection">
-            <ShopRing products={shopProducts.slice(0, 8)} />
+            <ShopRing products={ringProducts} />
             <div className="container shop-collection-center">
               <Reveal>
                 <div className="hero-eyebrow">

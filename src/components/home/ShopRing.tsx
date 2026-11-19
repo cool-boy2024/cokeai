@@ -6,6 +6,9 @@ import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { CustomEase } from "gsap/CustomEase";
 import type { PublicShopProduct } from "@/lib/shop/catalog";
+// variants.ts is pure; catalog.ts pulls the database client, which must not
+// reach this client component's browser bundle.
+import { startingPriceMicros } from "@/lib/shop/variants";
 import { productPriceLabel } from "@/lib/shop/copy";
 import { ProductCover } from "@/components/shop/ProductCover";
 
@@ -230,7 +233,10 @@ export function ShopRing({ products }: { products: PublicShopProduct[] }) {
                 </span>
                 <span className="shop-ring-name">{product.name}</span>
                 <span className="shop-ring-price">
-                  {productPriceLabel(product.price_micros)}
+                  {productPriceLabel(startingPriceMicros(product))}
+                  {product.variants.length > 0 ? (
+                    <em className="shop-price-from">起</em>
+                  ) : null}
                 </span>
               </div>
             </Link>
