@@ -9,6 +9,7 @@ import {
 import { coarseSold, salesLabel } from "../src/lib/shop/sales-display";
 import { isAllowedImageReferer } from "../src/lib/shop/image-referer";
 import { baseUrlFromHeaders } from "../src/lib/public-url";
+import nextConfig from "../next.config";
 
 /**
  * Pure-function checks for the shop crawl guard and the canonical public URL
@@ -205,4 +206,48 @@ assertEqual(
   "missing host uses fallback without trailing slash",
 );
 
-console.log("site guards: ok");
+// --- next.config header rules ----------------------------------------------
+
+/**
+ * Shop images and media choose Cache-Control per status in their route
+ * handlers: immutable for 200/206/304, no-store for 400/403/404. A static
+ * Cache-Control rule in next.config would win over the handler (Next applies
+ * config headers last), so the hotlink guard's 403 would be cached by
+ * Cloudflare for a year — one foreign-Referer request poisons an image for
+ * every visitor (incident 2026-11-19).
+ */
+type HeaderRule = {
+  source: string;
+  headers?: ReadonlyArray<{ key: string; value: string }>;
+};
+
+function assertShopMediaCacheHeaders(rules: ReadonlyArray<HeaderRule>): void {
+  const offending = rules
+    .filter(
+      (rule) =>
+        /shop\/(?:images|media)/.test(rule.source) &&
+        (rule.headers ?? []).some(
+          (header) => header.key.toLowerCase() === "cache-control",
+        ),
+    )
+    .map((rule) => rule.source);
+  assertEqual(
+    offending.join(", "),
+    "",
+    "no static Cache-Control rule may cover shop images or media",
+  );
+  assertEqual(
+    rules.some((rule) => rule.source === "/api/:path*"),
+    false,
+    "the bare /api rule is gone so it cannot override handler cache headers",
+  );
+}
+
+void (async () => {
+  const rules = (await nextConfig.headers?.()) ?? [];
+  assertShopMediaCacheHeaders(rules);
+  console.log("site guards: ok");
+})().catch((error: unknown) => {
+  console.error(error instanceof Error ? error.message : error);
+  process.exit(1);
+});

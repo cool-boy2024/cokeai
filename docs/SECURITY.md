@@ -60,6 +60,7 @@
 - **列表页阈值**：正常 20 个不同视图/60 秒；收紧时 10 个。超过返回 429，事件 detail 形如 `列表页枚举 21/20 个/60s`。它是「别让人一遍扫完整个目录」，拦的是批量翻页，不是「多看了几页」。
 - **例外**：Googlebot、bingbot、百度、Yandex、Applebot、DuckDuckBot、搜狗、360 等搜索引擎 UA 不参与计数，避免自断收录。用 UA 伪装成搜索引擎可以绕过这一层，所以它是降低镜像速度，不是身份验证。
 - **失败开放**：Redis 不可用时返回 0，不拦截；固定窗口限流仍然生效。正常顾客几十秒内看 10–20 个商品、翻 20 个列表视图几乎不可能，误伤面很小。
+- **黑盒实测口径（2026-11-19）**：商品页枚举在第 21 个不同 slug 准时触发 429。列表页视图检测在一次 65 个请求的连续翻页中**没有触发**：固定窗口的 60 秒 TTL 从窗口第一个请求算起，跨洋客户端单个窗口只能发出约 25–35 个请求，前 20 次又只用来「上膛」不记视图，剩下的不同视图数到不了 21。实际触发需要约 40+ 次/分钟且都落在同一个窗口内，比文档阈值苛刻。已记入 `docs/ANTI_CRAWL_BACKLOG.md` P0。
 - **代码**：`src/lib/shop-crawl-guard.ts`（纯函数，可测）+ `src/lib/rate-limit.ts` 的 `rollingDistinctCount`；测试 `npm run test:site-guards`。
 - **robots/sitemap**：此前生产 `APP_URL` 未设置，`robots.txt` 和 `sitemap.xml` 会输出 `http://localhost:3000`。现在两个路由改为从请求的 `x-forwarded-host` / `host` 推导公开域名（`src/lib/public-url.ts`），生产应输出 `https://cokeai.cc.cd`。
 
@@ -99,6 +100,13 @@
 - 记录保留 30 天，打点接口和后台页都会清理过期行；`cokeai_vid` cookie 有效期同样是 30 天。
 - 来源只存 host + path，去掉 query；`/shop/orders/<订单号>`、`/shop/checkout/<订单号>` 在入库前归一为 `:id`。
 - 隐私政策已同步披露访客记录、用途、保留期和 `cokeai_vid` cookie。
+
+### 2.5 商品图片防盗链与 CDN 缓存（2026-11-19）
+
+- **口径**：`/api/shop/images/<sha256>.<ext>` 只允许空 Referer（直接打开、聊天软件拉预览）或白名单域名（本站、微信/Telegram 等常见分享平台），其它 Referer 返回 403。实现在 `src/lib/shop/image-referer.ts`。
+- **缓存投毒坑（2026-11-19 黑盒实测发现并修复）**：`next.config.ts` 曾用 `headers()` 给 `/api/shop/images/:path*` 统一写 `Cache-Control: public, max-age=31536000, immutable`。Next.js 的 `headers()` 会覆盖路由 handler 自己写的头，于是 403 也带上了「一年 immutable」，Cloudflare 把 403 缓存下来——任何人先带外站 Referer 请求一次，这张图对**所有访客**都是 403。修复：通用 `/api` 的 `no-store` 规则改成 `/api/:path((?!shop/(?:images|media)).*)`，图片/视频的缓存头完全交给路由按状态码决定（200/206/304 → 一年 immutable；400/403/404 → `no-store`）。
+- **仍然存在的限制**：边缘缓存命中时请求根本到不了源站，Referer 检查只在缓存未命中（或新图）时执行。源站这层是纵深防御；真正「防外站盗链」要靠 Cloudflare Hotlink Protection（见 `docs/ANTI_CRAWL_BACKLOG.md` P2）。
+- **验证方法**：取一张**未被缓存**的图，第一次就带 `Referer: https://evil.example.com/` 请求，应返回 `403` 且响应头是 `cache-control: no-store`；随后无 Referer 请求应返回 200 并被边缘缓存。若线上已出现被缓存的 403，需在 Cloudflare 控制台 Purge 对应 URL（或 Purge Everything），否则要等缓存过期。
 
 
 ## 3. 能不能上：逐项评估
