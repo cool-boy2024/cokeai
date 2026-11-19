@@ -1,12 +1,12 @@
 # 安全防护与攻击处置
 
-最后核对：2026-11-15。本文按仓库代码和当前生产拓扑写；生产配置可能变化，动手前先按第 8 节在本地复核，生产变更必须单独审批。
+最后核对：2026-11-19。本文按仓库代码和当前生产拓扑写；生产配置可能变化，动手前先按第 8 节在本地复核，生产变更必须单独审批。
 
 ## 1. 一句话结论
 
-**当前真正生效的只有应用层防护**：Next.js `src/proxy.ts` 的扫描路径拦截、按 IP/邮箱的登录注册限流、小店/API/Server Action 限流、商品页枚举检测、Redis 安全事件、`/admin/security` 管理员页，以及 n8n 每 5 分钟的安全告警。
+**当前生效的是应用层防护 + 1 条 Cloudflare 速率规则**：Next.js `src/proxy.ts` 的扫描路径拦截、按 IP/邮箱的登录注册限流、小店/API/Server Action 限流、商品页枚举检测、Redis 安全事件、`/admin/security` 管理员页，以及 n8n 每 5 分钟的安全告警；边缘侧是 Cloudflare 的 `shop-rate-limit`（`/shop*` 10 秒 > 30 次/IP → Block 10 秒，见 2.3）。
 
-**未启用**：边缘 Caddy 限流（Cloudflare Tunnel 仍指向 `app:3000`，不是 `edge:8080`）、CrowdSec、Anubis PoW、WAF。本机 2 vCPU / 3.5GB（约 1.5GB 可用）、40G 磁盘已用 85%（剩约 6GB），也不适合直接上重型 WAF。
+**未启用**：边缘 Caddy 限流（Cloudflare Tunnel 仍指向 `app:3000`，不是 `edge:8080`）、CrowdSec、Anubis PoW、WAF 托管规则（Cloudflare 那边只有 1 条速率规则已单独启用，见 2.3）。本机 2 vCPU / 3.5GB（约 1.5GB 可用）、40G 磁盘已用 85%（剩约 6GB），也不适合直接上重型 WAF。
 
 **一键开关**：`/admin/security` 右上角的“启动应急防护”。它不是提前开启重防护，而是受攻击时才按的按钮：立即把应用层敏感入口限速减半（24 小时后自动恢复），并向告警通道发送边缘切换步骤。Cloudflare Tunnel 和容器重建仍由运维人工执行，按钮不会自动改生产网络。
 
@@ -69,10 +69,22 @@
 
 1. **Security → Bots**：**目前不要开 Bot Fight Mode**。免费版不支持按路径排除，开了会对全站自动请求做挑战，`/v1` 的 API 调用和支付回调处于同一域名下，一旦被挑战就是业务中断。等升级到 Pro（可按路径/按 ASN 配置）再评估；现阶段靠下面的 `/shop*` 速率规则挡脚本。
 2. **Security → WAF → Managed rules**：启用 Cloudflare Managed Ruleset（免费版提供托管规则集），先以默认动作运行，观察 24 小时的误杀记录再收紧。
-3. **Security → WAF → Rate limiting rules**：免费版通常只能建 **1 条**速率规则、窗口固定 10 秒（以控制台实际为准），所以这一条要留给小店目录：
-   - 表达式 `http.request.uri.path matches "^/shop"` → 10 秒内超过 30 次/IP → 动作 **Block**，封禁时长 10 分钟。
+3. **Security → WAF → Rate limiting rules**：免费版只能建 **1 条**速率规则，而且周期、动作、封禁时长都是固定选项（控制台实测：周期只有 10 秒、动作只有 Block、时长只有 10 秒，页面显示 `Rate limiting rules 1/1 rules | Upgrade plan`）。这一条留给小店目录，**2026-11-19 已部署并生效**：
+
+   | 项 | 值 |
+   |---|---|
+   | 名称 | `shop-rate-limit` |
+   | 表达式 | `starts_with(http.request.uri.path, "/shop")` |
+   | 特征 | IP（`ip.src`） |
+   | 阈值 | 10 秒内超过 30 次 |
+   | 动作 | Block，封禁 **10 秒** |
+   | 执行顺序 / 状态 | First / Active |
+
    - 这正好覆盖「10 秒扫一遍目录」的脚本：真人 10 秒点不到 30 次；应用层 60 次/分钟的列表限流和 20 个不同视图检测作为第二道。
-   - 「限速 + Managed Challenge」需要按路径分区且更宽的规则条数，属于 Pro 及以上；升级前不要和上面这条抢唯一的名额。`/login`、`/register`、`/api/*` 已经由应用层频控覆盖，边缘不重复配置。
+   - **Free 版封禁只有 10 秒**，等一会儿就能继续，属于「打断节奏」而不是封禁。要 10 分钟以上的时长或「限速 + Managed Challenge」，必须升 Pro（也才有按路径分区的规则条数和足够名额）。
+   - 验证位置：**Security → Analytics → Events**，筛 `Service = Rate limiting rules`。2026-11-19 实测命中过一次（中国 IPv6 来源）。只看 `Events` 列的计数会滞后，以 Events 页为准。
+   - **IPv6 会削弱「按 IP」统计**：同一台设备可能同时有多个 IPv6 前缀（隐私地址、多出口），脚本换前缀就重新计数。实测本机在 10 秒窗口内发 40–50 个请求时并不是每次都触发，就是被前缀切换和跨境链路延迟摊开了。所以边缘规则只做粗筛，真正兜底的是应用层「不同 slug / 不同视图」的检测。
+   - `/login`、`/register`、`/api/*` 已经由应用层频控覆盖，边缘不重复配置。
    应用层阈值更细，边缘规则只做粗筛，宁可先松后紧。
 4. **Under Attack Mode**：只在确认攻击且站点明显变慢时临时开启，会挑战所有访客，影响转化，处理完立即关闭。
 5. **不要**在 Cloudflare 改 Tunnel、源站或 DNS 记录来「顺手加防护」；Tunnel 变更属于生产变更，按第 7 节单独审批。
