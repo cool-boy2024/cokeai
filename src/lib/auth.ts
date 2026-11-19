@@ -273,7 +273,8 @@ export async function authenticateApiKey(
   authorization: string | null,
 ): Promise<{ user?: ApiKeyUser; error?: string; status?: number }> {
   if (!authorization || !authorization.startsWith("Bearer ")) {
-    return { error: "缺少 API Key。请使用 Authorization: Bearer sk-coke-...", status: 401 };
+    // Deliberately vague: a blind attacker should not learn the key prefix.
+    return { error: "缺少 API Key。请使用 Authorization: Bearer <你的 API Key>。", status: 401 };
   }
   const plain = authorization.slice(7).trim();
   if (!plain.startsWith("sk-coke-")) {

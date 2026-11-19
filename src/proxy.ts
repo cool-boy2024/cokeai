@@ -47,7 +47,9 @@ const SERVER_ACTION_POLICY: Policy = {
 const POLICIES: Array<{ test: (pathname: string) => boolean; policy: Policy }> = [
   {
     test: (pathname) => pathname === "/api/shop/captcha",
-    policy: { type: "captcha", limit: 30, windowSeconds: 60 },
+    // 15/min: the SVG is cheap but unsolved captcha spam still burns CPU and
+    // Redis nonce space; the real checkout flow needs one per order attempt.
+    policy: { type: "captcha", limit: 15, windowSeconds: 60 },
   },
   {
     // Image URLs end in a file extension, so the matcher below currently keeps
