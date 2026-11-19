@@ -25,7 +25,8 @@ export function ProductRow({ product }: { product: PublicShopProduct }) {
       preorder: product.preorder,
       soldOut: product.sales.soldOut,
     }) === "available";
-  const sales = salesLabel(product.sales, { available });
+  // 列表页用粗粒度库存/销量；精确数字只在商品详情页出现。
+  const sales = salesLabel(product.sales, { available, coarse: true });
   return (
     <Link href={`/shop/${product.slug}`} className="shop-row">
       <div className="shop-row-cover">
