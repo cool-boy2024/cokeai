@@ -1,0 +1,51 @@
+{
+  "manifest_version": 3,
+  "name": "CokeAI 采购回填助手",
+  "version": "0.1.0",
+  "description": "在运营自己的浏览器里把货源站购得的卡密回填到 CokeAI 小店订单；登录态不出本机。",
+  "icons": {
+    "128": "icons/icon128.png"
+  },
+  "permissions": [
+    "storage",
+    "activeTab",
+    "notifications"
+  ],
+  "host_permissions": [
+    "https://cokeai.cc.cd/*",
+    "https://zyanai.cc/*",
+    "https://ai-buy.vip/*",
+    "http://localhost:3000/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://cokeai.cc.cd/admin/*"
+      ],
+      "js": [
+        "content-cokeai.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://zyanai.cc/*",
+        "https://ai-buy.vip/*"
+      ],
+      "js": [
+        "content-supplier.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "CokeAI 采购回填助手",
+    "default_icon": {
+      "128": "icons/icon128.png"
+    }
+  }
+}

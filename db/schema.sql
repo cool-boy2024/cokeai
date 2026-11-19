@@ -603,6 +603,9 @@ CREATE TABLE IF NOT EXISTS shop_orders (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- Operator clicked “去采购”; the Chrome helper may post the supplier CDK
+-- until this timestamp. NULL means the helper should not bind this order.
+ALTER TABLE shop_orders ADD COLUMN IF NOT EXISTS capture_pending_until TIMESTAMPTZ;
 CREATE INDEX IF NOT EXISTS shop_orders_user_idx
   ON shop_orders(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS shop_orders_status_idx
@@ -656,6 +659,21 @@ CREATE TABLE IF NOT EXISTS shop_order_events (
 );
 CREATE INDEX IF NOT EXISTS shop_order_events_order_idx
   ON shop_order_events(order_id, created_at);
+
+-- Short-lived tokens for the procurement Chrome helper. The helper cannot
+-- send the admin session cookie from chrome-extension://, so the admin
+-- console mints a hashed bearer token. Raw tokens never stay in the table.
+CREATE TABLE IF NOT EXISTS shop_capture_tokens (
+  token_hash TEXT PRIMARY KEY,
+  admin_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  expires_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS shop_capture_tokens_expiry_idx
+  ON shop_capture_tokens(expires_at);
+CREATE INDEX IF NOT EXISTS shop_capture_tokens_admin_idx
+  ON shop_capture_tokens(admin_id);
+INSERT INTO schema_migrations (version) VALUES ('010_shop_capture') ON CONFLICT (version) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS shop_payment_events (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

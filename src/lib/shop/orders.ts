@@ -67,6 +67,7 @@ export type ShopOrderDetail = ShopOrderSummary & {
   delivery_note: string;
   revealed_at: string | null;
   reveal_count: number;
+  capture_pending_until: string | null;
   events?: Array<{
     id: string;
     actor_type: string;
@@ -82,7 +83,7 @@ const ORDER_COLUMNS = `
          o.id, o.order_no, o.status, o.amount_micros, o.subtotal_micros,
          o.payment_provider, o.provider_ref, o.pay_amount, o.pay_currency, o.pay_address,
          o.pay_txid, o.pay_expires_at, o.expires_at, o.created_at, o.paid_at,
-         o.delivered_at, o.user_id, o.customer_note, o.admin_note,
+         o.delivered_at, o.capture_pending_until, o.user_id, o.customer_note, o.admin_note,
          i.product_id, i.product_slug, i.product_name, i.brand, i.variant_id,
          i.unit_price_micros, i.qty,
          i.procurement_status, i.delivery_kind, i.delivered_at AS delivered_at_item,
@@ -156,6 +157,7 @@ function mapOrder(row: Record<string, unknown>): ShopOrderDetail {
     delivery_note: String(row.delivery_note || ""),
     revealed_at: row.revealed_at ? String(row.revealed_at) : null,
     reveal_count: Number(row.reveal_count || 0),
+    capture_pending_until: row.capture_pending_until ? String(row.capture_pending_until) : null,
   };
 }
 
@@ -861,7 +863,7 @@ export async function deliverShopItem(input: {
               procurement_status = 'delivered',
               delivered_at = now(),
               updated_at = now()
-        WHERE order_id = $1 AND procurement_status <> 'refunded'`,
+        WHERE order_id = $1 AND procurement_status NOT IN ('refunded', 'delivered')`,
       [input.orderId, input.kind, encryptSecret(payloadText), String(input.note || "").slice(0, 2000)],
     );
 

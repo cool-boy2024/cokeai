@@ -2,11 +2,13 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ExternalLink } from "lucide-react";
 import { ProcurementCopy } from "@/components/admin-shop/ProcurementCopy";
+import { BeginCaptureButton } from "@/components/admin-shop/BeginCaptureButton";
 import { requireAdmin } from "@/lib/auth";
 import { query } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { formatCny } from "@/lib/money";
 import { decryptCustomerInput } from "@/lib/shop/orders";
+import { captureGate } from "@/lib/shop/capture";
 import { SHOP_COPY } from "@/lib/shop/copy";
 
 export const metadata: Metadata = { title: "小店采购队列" };
@@ -33,6 +35,7 @@ type QueueRow = {
 
 export default async function AdminShopQueuePage() {
   await requireAdmin();
+  const gate = await captureGate();
   const result = await query<QueueRow>(
     `SELECT o.id, o.order_no, o.status, o.created_at, o.paid_at, o.amount_micros,
             o.customer_note, i.product_name, i.qty, i.customer_input_encrypted,
@@ -53,6 +56,15 @@ export default async function AdminShopQueuePage() {
         <div>
           <h1>采购队列</h1>
           <p>已付款、等待去供货商下单的订单。复制采购信息后打开供货商页面。</p>
+          {gate.enabled ? (
+            <p className="capture-gate-note">
+              自动回填待命中：待采购 {gate.depth} 单 ≥ 门槛 {gate.min} 单。点「开始采购」后在供货商付款，扩展会自动取回卡密。
+            </p>
+          ) : (
+            <p className="capture-gate-note">
+              自动回填未启用：待采购 {gate.depth} 单，门槛 {gate.min} 单（SHOP_CAPTURE_MIN_QUEUE）。走人工采购。
+            </p>
+          )}
         </div>
         <span className="badge badge-dark">{result.rows.length} 笔</span>
       </div>
@@ -130,6 +142,7 @@ export default async function AdminShopQueuePage() {
                 ) : null}
 
                 <div className="shop-queue-actions">
+                  <BeginCaptureButton orderId={order.id} />
                   <Link
                     className="btn btn-dark btn-sm"
                     href={`/admin/shop/orders/${order.id}#procurement`}

@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CokeAI 采购回填助手</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <img class="logo" src="icons/icon128.png" alt="" width="28" height="28" />
+        <div>
+          <h1>采购回填助手</h1>
+          <p id="conn-line" class="muted small">正在连接…</p>
+        </div>
+      </div>
+      <span id="status-pill" class="pill">连接中</span>
+    </header>
+
+    <main>
+      <p id="banner-token" class="banner warn hidden"></p>
+      <p id="banner-gate" class="banner warn hidden"></p>
+      <p id="banner-error" class="banner error hidden"></p>
+
+      <section class="block">
+        <div class="block-head">
+          <h2>待回填队列</h2>
+          <span id="queue-meta" class="muted small"></span>
+        </div>
+        <ul id="queue-list" class="queue"></ul>
+      </section>
+
+      <section id="pending" class="block hidden">
+        <div class="block-head">
+          <h2>抓到的交付内容</h2>
+          <span id="pending-note" class="muted small"></span>
+        </div>
+        <dl id="field-list" class="fields"></dl>
+        <p id="pending-url" class="muted small break"></p>
+        <div class="row">
+          <label for="order-select">回填到订单</label>
+          <select id="order-select"></select>
+        </div>
+        <button id="confirm" class="primary" type="button" disabled>回填到本站</button>
+      </section>
+
+      <section id="pending-empty" class="block hidden">
+        <div class="block-head">
+          <h2>抓到的交付内容</h2>
+        </div>
+        <p class="muted">
+          还没有抓到卡密。请在货源站完成付款并停留在成功页；扩展抓到后会在这里等待你确认。
+        </p>
+      </section>
+
+      <p id="result" class="result hidden" role="status" aria-live="polite"></p>
+
+      <details class="block settings">
+        <summary>设置</summary>
+        <label for="api-base">API Base</label>
+        <input id="api-base" type="url" inputmode="url" spellcheck="false" placeholder="https://cokeai.cc.cd" />
+        <div class="row-between">
+          <span id="save-hint" class="muted small"></span>
+          <button id="save-base" class="ghost" type="button">保存</button>
+        </div>
+        <p class="muted small">
+          默认 https://cokeai.cc.cd，本地开发填 http://localhost:3000。扩展的请求都发到这里；令牌由后台页所在域名签发，两边要保持一致。
+        </p>
+      </details>
+    </main>
+
+    <script src="popup.js" defer></script>
+  </body>
+</html>

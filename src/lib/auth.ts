@@ -142,8 +142,14 @@ export async function createSession(userId: string): Promise<void> {
 export async function destroySession(): Promise<void> {
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE)?.value;
+  // Resolve the user before the session row is gone, so capture tokens can
+  // be revoked in the same breath.
+  const user = await getCurrentUser();
   if (token) {
     await query("DELETE FROM sessions WHERE token_hash = $1", [sha256(token)]);
+  }
+  if (user) {
+    await query("DELETE FROM shop_capture_tokens WHERE admin_id = $1", [user.id]);
   }
   cookieStore.delete(SESSION_COOKIE);
 }
