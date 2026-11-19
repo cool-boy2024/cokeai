@@ -111,28 +111,24 @@ const nextConfig: NextConfig = {
         headers: NO_INDEX_HEADERS,
       },
       {
-        source: "/api/:path*",
+        // Shop media sets its own Cache-Control per status: immutable for 200,
+        // no-store for 400/403/404. A static header here would also stamp the
+        // 403 from the hotlink guard, and Cloudflare would cache that 403 for
+        // a year — one foreign-Referer request would break the image for every
+        // visitor (verified 2026-11-19). Keep them out of the blanket no-store
+        // rule instead of overriding it.
+        source: "/api/:path((?!shop/(?:images|media)).*)",
         headers: NO_INDEX_HEADERS,
       },
-      // Content-addressed shop images are not sensitive and are requested in
-      // bursts when a product page opens. Keep their immutable caching; only
-      // the noindex header is inherited. This rule must stay after the generic
-      // /api rule so it wins for the same header key.
+      // Content-addressed shop images and clips stay indexable-but-hidden;
+      // caching is decided by their route handlers.
       {
         source: "/api/shop/images/:path*",
-        headers: [
-          { key: "X-Robots-Tag", value: "noindex, nofollow, noarchive" },
-          { key: "Cache-Control", value: "public, max-age=31536000, immutable" },
-        ],
+        headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow, noarchive" }],
       },
-      // Mirrored tutorial clips are content-addressed too. Range requests
-      // from the <video> element must not be revalidated on every seek.
       {
         source: "/api/shop/media/:path*",
-        headers: [
-          { key: "X-Robots-Tag", value: "noindex, nofollow, noarchive" },
-          { key: "Cache-Control", value: "public, max-age=31536000, immutable" },
-        ],
+        headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow, noarchive" }],
       },
     ];
   },
