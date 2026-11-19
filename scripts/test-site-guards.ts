@@ -10,6 +10,8 @@ import { coarseSold, salesLabel } from "../src/lib/shop/sales-display";
 import { isAllowedImageReferer } from "../src/lib/shop/image-referer";
 import { baseUrlFromHeaders } from "../src/lib/public-url";
 import nextConfig from "../next.config";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 /**
  * Pure-function checks for the shop crawl guard and the canonical public URL
@@ -243,9 +245,33 @@ function assertShopMediaCacheHeaders(rules: ReadonlyArray<HeaderRule>): void {
   );
 }
 
+/**
+ * The homepage ring and every catalogue card must quote the same price. The
+ * detail page and ProductCard use startingPriceMicros() (cheapest option,
+ * "¥xx 起"); the ring once printed the raw product price, so a product with
+ * tiers showed two different numbers on the same page (2026-11-19).
+ */
+function assertRingUsesStartingPrice(): void {
+  const source = readFileSync(
+    join(process.cwd(), "src/components/home/ShopRing.tsx"),
+    "utf8",
+  );
+  if (!source.includes("productPriceLabel(startingPriceMicros(product))")) {
+    throw new Error(
+      "ASSERT: ShopRing must price cards with startingPriceMicros(product)",
+    );
+  }
+  if (/productPriceLabel\(product\.price_micros\)/.test(source)) {
+    throw new Error(
+      "ASSERT: ShopRing must not price cards with the raw product.price_micros",
+    );
+  }
+}
+
 void (async () => {
   const rules = (await nextConfig.headers?.()) ?? [];
   assertShopMediaCacheHeaders(rules);
+  assertRingUsesStartingPrice();
   console.log("site guards: ok");
 })().catch((error: unknown) => {
   console.error(error instanceof Error ? error.message : error);
