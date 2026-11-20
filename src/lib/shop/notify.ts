@@ -5,6 +5,7 @@ import { query, toNumber } from "@/lib/db";
 import { formatCny } from "@/lib/money";
 import { USDT_NETWORKS, type UsdtNetwork } from "@/lib/payments/networks";
 import { preorderSql } from "@/lib/shop/preorder";
+import { getTicket } from "@/lib/support";
 
 const PROVIDER_LABELS: Record<string, string> = {
   alipay_easypay: "支付宝",
@@ -378,6 +379,41 @@ export async function notifyShopDepositAttention(input: {
   } catch (error) {
     console.warn(
       "[shop] deposit alert failed",
+      error instanceof Error ? error.message : error,
+    );
+  }
+}
+
+/**
+ * Tells the operators a customer asked for a human agent in the support
+ * widget. Fire-and-forget like the other notify* helpers: an unconfigured or
+ * slow channel must never stop the ticket from being created.
+ */
+export async function notifySupportHandoff(ticketId: string): Promise<void> {
+  try {
+    const ticket = await getTicket(ticketId);
+    if (!ticket) return;
+
+    const text = [
+      "【CokeAI 小店】顾客请求人工客服",
+      `工单：#${ticket.id.slice(0, 8)}`,
+      `顾客账号：${ticket.userEmail}`,
+      `首条：${ticket.subject}`,
+      `消息数：${ticket.messageCount}`,
+      `后台：${config.appUrl}/admin/support/${ticket.id}`,
+      "下一步：打开工单直接回复，顾客在悬浮窗里会实时看到。",
+    ].join("\n");
+
+    const sent = await sendAlert(text, {
+      event: "shop_support_handoff",
+      ticketId: ticket.id,
+    });
+    if (!sent.ok) {
+      console.warn("[shop] handoff alert not delivered:", sent.error);
+    }
+  } catch (error) {
+    console.warn(
+      "[shop] handoff alert failed",
       error instanceof Error ? error.message : error,
     );
   }
