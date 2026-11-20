@@ -6017,6 +6017,11 @@ body {
    这样 squash & stretch 不会和位移动画互相覆盖。
    -------------------------------------------------------------------------- */
 
+:root {
+  /* 桌宠用 JS 写 translate3d 定位，env() 在 JS 里读不到，先转成变量交给它。 */
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
 .shop-mascot {
   position: fixed;
   /* 低于吸顶 header（60）和客服弹窗（140），滚动时让导航盖住。 */
@@ -6234,7 +6239,13 @@ body {
   /* 名称和价格分两行时长度更均匀，不会孤零零留下一个英文词。 */
   text-wrap: balance;
   pointer-events: none;
+  /* JS 量完 --bubble-shift 才挂 is-visible，气泡不会先歪着出现再横跳。 */
+  visibility: hidden;
   transform: translateX(calc(-50% + var(--bubble-shift, 0px)));
+}
+
+.shop-mascot-bubble.is-visible {
+  visibility: visible;
   animation: shop-mascot-bubble-in 200ms ease-out both;
 }
 
@@ -6267,6 +6278,19 @@ body {
     height: 48px;
   }
 
+  /* 移动端只静态站位：待机、眨眼、跳跃和彩蛋全部停掉，跟 JS 里的
+     isStatic() 判断对齐，省电也避免小屏上晃。 */
+  .shop-mascot-idle,
+  .shop-mascot.is-jumping .shop-mascot-hop,
+  .shop-mascot.is-tilt .shop-mascot-mood,
+  .shop-mascot.is-spin .shop-mascot-mood,
+  .shop-mascot.is-sway .shop-mascot-mood,
+  .shop-mascot-eye,
+  .shop-mascot:hover .shop-mascot-eye,
+  .shop-mascot-bubble.is-visible {
+    animation: none;
+  }
+
   .shop-mascot-bubble {
     max-width: 168px;
     padding: 7px 11px;
@@ -6288,7 +6312,7 @@ body {
   .shop-mascot.is-sway .shop-mascot-mood,
   .shop-mascot-eye,
   .shop-mascot:hover .shop-mascot-eye,
-  .shop-mascot-bubble {
+  .shop-mascot-bubble.is-visible {
     animation: none;
   }
 

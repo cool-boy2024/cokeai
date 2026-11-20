@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { sanitizeSupplierCopy } from "@/lib/shop/sanitize";
+import { usePathname, useSearchParams } from "next/navigation";
+import { SUPPLIER_PLACEHOLDER, sanitizeSupplierCopy } from "@/lib/shop/sanitize";
+import { ShopMascotIdlePose } from "./ShopMascotArt";
 
 const KINDS = ["claude", "gpt"] as const;
 type Kind = (typeof KINDS)[number];
@@ -19,6 +21,8 @@ const EGG_MAX_MS = 30000;
 const EGG_HOLD_MS = 1400;
 const CARD_SELECTOR = "a.shop-row, a.shop-product-card";
 const EGG_ACTIONS = ["is-tilt", "is-spin", "is-sway"] as const;
+/** 气泡离视口左右边缘至少留这么多，量出来再位移。 */
+const BUBBLE_EDGE = 12;
 
 type CardInfo = {
   name: string;
@@ -37,9 +41,12 @@ type Runtime = {
   hopTimer: number;
   eggTimer: number;
   eggClearTimer: number;
+  moveClearTimer: number;
 };
 
 const CLICK_LINE = "跟着我看好货 →";
+
+const FALLBACK_LINES = ["点我直接看", "热卖中！点我看看", CLICK_LINE];
 
 /**
  * 话术只取商品卡上的名称、价格、质保、已售；名称先过供应商文案清洗，
@@ -48,14 +55,14 @@ const CLICK_LINE = "跟着我看好货 →";
 function bubbleLines(info: CardInfo): string[] {
   const short = shortName(info.name, 11);
   const full = shortName(info.name, 14);
+  // 名字整条都是脱敏占位符时没有可说的词，退回通用话术。
+  if (!short) return FALLBACK_LINES;
   const lines = [`${short} · ${info.price ?? "点我看看"}`, `点我看看${short}`];
   if (info.warranty) lines.push(`${full} · ${info.warranty}`);
   if (info.sales) lines.push(`${short} · ${info.sales}`);
   if (info.price) lines.push(`${short}，${info.price}`);
   return lines;
 }
-
-const FALLBACK_LINES = ["点我直接看", "热卖中！点我看看", CLICK_LINE];
 
 /** 商品名里的【直充｜月卡】是卖点后缀，气泡里只留商品本名。 */
 function shortName(name: string, limit: number): string {
@@ -67,11 +74,26 @@ function truncate(text: string, limit: number): string {
   const clean = text.replace(/\s+/g, " ").trim();
   const chars = Array.from(clean);
   if (chars.length <= limit) return clean;
-  const cut = chars.slice(0, limit).join("");
-  const space = cut.lastIndexOf(" ");
+  let end = limit;
+  // 占位符是脱敏时整词换上去的，截成半截会读成「Claude Pro 本…」：
+  // 截断点落进占位符就整词丢掉，而不是留半截。
+  let at = clean.indexOf(SUPPLIER_PLACEHOLDER);
+  while (at !== -1) {
+    const start = Array.from(clean.slice(0, at)).length;
+    const stop = start + Array.from(SUPPLIER_PLACEHOLDER).length;
+    if (start < end && end < stop) end = start;
+    at = clean.indexOf(SUPPLIER_PLACEHOLDER, at + 1);
+  }
+  const cut = chars.slice(0, end).join("");
   // 截断点落在英文单词中间时退回上一个空格，别留下 "Claude pr…"。
-  const head = space > 0 && /[A-Za-z0-9]$/.test(cut) ? cut.slice(0, space) : cut;
-  return `${head}…`;
+  // 中文没有空格，只去掉悬空的标点；回退会砍掉大半句时也宁可硬截断。
+  const space = cut.lastIndexOf(" ");
+  const word =
+    cut.endsWith(" ") || !/[A-Za-z0-9]$/.test(cut) || space * 10 < limit * 7
+      ? cut
+      : cut.slice(0, space);
+  const head = word.replace(/[\s·｜,，、-]+$/, "");
+  return head ? `${head}…` : clean;
 }
 
 function pick<T>(list: readonly T[]): T {
@@ -132,6 +154,10 @@ export function ShopMascots() {
     }, delay);
   }, []);
 
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const navKey = `${pathname}?${searchParams.toString()}`;
+
   useEffect(() => {
     const runtime = runtimeRef.current;
     const nodes = nodesRef.current;
@@ -151,6 +177,23 @@ export function ShopMascots() {
     const viewport = () => {
       const root = document.documentElement;
       return { vw: root.clientWidth, vh: root.clientHeight };
+    };
+
+    // 安全区由 CSS 变量 --safe-bottom 统一交给 JS（env() 只在 CSS 里可用），
+    // 尺寸变化时重读，不跟着每次移动去碰布局。
+    let bottomInset = 0;
+    const readBottomInset = () => {
+      const value = Number.parseFloat(
+        getComputedStyle(document.documentElement).getPropertyValue("--safe-bottom"),
+      );
+      bottomInset = Number.isFinite(value) && value > 0 ? value : 0;
+    };
+    readBottomInset();
+
+    /** 角色下沿的可用最低点：留出边距和安全区。 */
+    const bottomBaseline = () => {
+      const { vh } = viewport();
+      return Math.max(EDGE_GAP, vh - EDGE_GAP - mascotSize() - bottomInset);
     };
 
     const supportBox = () => {
@@ -173,7 +216,7 @@ export function ShopMascots() {
         minX: EDGE_GAP,
         maxX: Math.max(EDGE_GAP, vw - EDGE_GAP - size),
         minY: Math.min(TOP_SAFE, Math.max(EDGE_GAP, vh - size - EDGE_GAP)),
-        maxY: Math.max(EDGE_GAP, vh - EDGE_GAP - size),
+        maxY: bottomBaseline(),
       };
     };
 
@@ -191,14 +234,14 @@ export function ShopMascots() {
       };
     };
 
+    // 两个角色的待机位规则一致：各占一侧下角，谁都不会压在客服按钮上，
+    // 也都会让开刘海屏底部的 Home 指示条。
     const idleSpot = (kind: Kind) => {
-      const { vw, vh } = viewport();
+      const { vw } = viewport();
       const size = mascotSize();
-      if (kind === "claude") {
-        return { x: EDGE_GAP, y: Math.max(EDGE_GAP, vh - EDGE_GAP - size) };
-      }
-      const x = Math.max(EDGE_GAP, vw - EDGE_GAP - size);
-      let y = Math.max(EDGE_GAP, vh - EDGE_GAP - size);
+      const x =
+        kind === "claude" ? EDGE_GAP : Math.max(EDGE_GAP, vw - EDGE_GAP - size);
+      let y = bottomBaseline();
       const box = supportBox();
       if (box && hitsSupport(x, y, size)) y = Math.max(EDGE_GAP, box.top - size - 10);
       return { x, y };
@@ -237,7 +280,8 @@ export function ShopMascots() {
       if (duration > 0 && hop) {
         restartHop(kind, duration);
         rt.moving = true;
-        window.setTimeout(() => {
+        window.clearTimeout(rt.moveClearTimer);
+        rt.moveClearTimer = window.setTimeout(() => {
           rt.moving = false;
         }, duration);
       }
@@ -453,6 +497,7 @@ export function ShopMascots() {
       window.clearTimeout(resizeTimer);
       resizeTimer = window.setTimeout(() => {
         if (disposed) return;
+        readBottomInset();
         for (const kind of KINDS) {
           const rt = runtime[kind];
           if (rt.target) claims.delete(rt.target);
@@ -532,13 +577,17 @@ export function ShopMascots() {
         window.clearTimeout(runtime[kind].hopTimer);
         window.clearTimeout(runtime[kind].eggTimer);
         window.clearTimeout(runtime[kind].eggClearTimer);
+        window.clearTimeout(runtime[kind].moveClearTimer);
         nodes[kind]?.classList.remove("is-jumping", "is-ready", ...EGG_ACTIONS);
       }
       for (const kind of KINDS) window.clearTimeout(bubbleTimers.current[kind]);
     };
-  }, [showBubble, hideBubble]);
+    // 分页 / 切分类 / 搜索都是 next/link 的客户端导航，组件实例不会重建：
+    // 依赖 URL 让整段观察器跟着换页重绑，新一页的卡片才会被认领。
+  }, [showBubble, hideBubble, navKey]);
 
-  // 气泡可能顶到视口边缘：量一次实际位置，往内推。
+  // 气泡可能顶到视口边缘：先量出实际位置往内推，推好了再挂 is-visible 上屏，
+  // 不然气泡会先在屏幕外出现再横跳一下。
   useEffect(() => {
     for (const kind of KINDS) {
       const text = bubbles[kind];
@@ -550,9 +599,10 @@ export function ShopMascots() {
       const rect = bubble.getBoundingClientRect();
       const vw = document.documentElement.clientWidth;
       let shift = 0;
-      if (rect.left < 12) shift = 12 - rect.left;
-      else if (rect.right > vw - 12) shift = vw - 12 - rect.right;
+      if (rect.left < BUBBLE_EDGE) shift = BUBBLE_EDGE - rect.left;
+      else if (rect.right > vw - BUBBLE_EDGE) shift = vw - BUBBLE_EDGE - rect.right;
       bubble.style.setProperty("--bubble-shift", `${Math.round(shift)}px`);
+      bubble.classList.add("is-visible");
     }
   }, [bubbles]);
 
@@ -579,17 +629,11 @@ export function ShopMascots() {
         onMouseLeave={() => apiRef.current?.hover("claude", false)}
       >
         {bubbles.claude ? (
-          <span className="shop-mascot-bubble is-visible" aria-hidden="true">
+          <span className="shop-mascot-bubble" aria-hidden="true">
             {bubbles.claude}
           </span>
         ) : null}
-        <span className="shop-mascot-hop">
-          <span className="shop-mascot-idle">
-            <span className="shop-mascot-mood">
-              <ClaudeMascotArt />
-            </span>
-          </span>
-        </span>
+        <ShopMascotIdlePose kind="claude" />
       </div>
       <div
         ref={setNode("gpt")}
@@ -608,17 +652,11 @@ export function ShopMascots() {
         onMouseLeave={() => apiRef.current?.hover("gpt", false)}
       >
         {bubbles.gpt ? (
-          <span className="shop-mascot-bubble is-visible" aria-hidden="true">
+          <span className="shop-mascot-bubble" aria-hidden="true">
             {bubbles.gpt}
           </span>
         ) : null}
-        <span className="shop-mascot-hop">
-          <span className="shop-mascot-idle">
-            <span className="shop-mascot-mood">
-              <GPTMascotArt />
-            </span>
-          </span>
-        </span>
+        <ShopMascotIdlePose kind="gpt" />
       </div>
     </>
   );
@@ -635,190 +673,6 @@ function newRuntime(): Runtime {
     hopTimer: 0,
     eggTimer: 0,
     eggClearTimer: 0,
+    moveClearTimer: 0,
   };
-}
-
-/** 12 道圆头射线：长短交替 + 整体略歪，保持手绘星芒的手感。 */
-const STAR_RAYS = [
-  { angle: -90, length: 31 },
-  { angle: -60, length: 25 },
-  { angle: -30, length: 30 },
-  { angle: 0, length: 24 },
-  { angle: 30, length: 30 },
-  { angle: 60, length: 25 },
-  { angle: 90, length: 31 },
-  { angle: 120, length: 26 },
-  { angle: 150, length: 29 },
-  { angle: 180, length: 23 },
-  { angle: 210, length: 30 },
-  { angle: 240, length: 26 },
-];
-
-const STAR_CENTER = { x: 48, y: 31 };
-
-// 坐标取三位小数：服务端和浏览器的 Math.sin 末位不同，不圆整会触发 hydration 不匹配。
-function round(value: number) {
-  return Number(value.toFixed(3));
-}
-
-function polar(angle: number, radius: number) {
-  const rad = (angle * Math.PI) / 180;
-  return {
-    x: round(STAR_CENTER.x + Math.cos(rad) * radius),
-    y: round(STAR_CENTER.y + Math.sin(rad) * radius),
-  };
-}
-
-/** 圆角星芒 + 大圆眼 + 卡通大框墨镜 + 小短脚：Q 版比例，头大身小。 */
-function ClaudeMascotArt() {
-  return (
-    <svg
-      className="shop-mascot-art"
-      viewBox="0 0 96 96"
-      aria-hidden="true"
-      focusable="false"
-    >
-      {/* 小短脚和身子：头部占角色约三分之二 */}
-      <g fill="#B85C3F">
-        <rect x="35" y="74" width="10.5" height="9" rx="4.4" />
-        <rect x="50.5" y="74" width="10.5" height="9" rx="4.4" />
-      </g>
-      <rect x="35" y="47" width="26" height="30" rx="13" fill="#CF6B4A" />
-      {/* 星芒做圆角化：长短交替的圆头射线围着一个圆脸 */}
-      <g
-        transform="rotate(-5 48 31)"
-        stroke="#D97757"
-        strokeWidth="7.4"
-        strokeLinecap="round"
-      >
-        {STAR_RAYS.map((ray) => {
-          const inner = polar(ray.angle, 20);
-          const outer = polar(ray.angle, ray.length);
-          return (
-            <line
-              key={ray.angle}
-              x1={inner.x}
-              y1={inner.y}
-              x2={outer.x}
-              y2={outer.y}
-            />
-          );
-        })}
-      </g>
-      <circle cx="48" cy="31" r="22.5" fill="#D97757" />
-      {/* 腮红 */}
-      <ellipse cx="32" cy="43.5" rx="5.4" ry="3.2" fill="#F4718C" opacity="0.58" />
-      <ellipse cx="64" cy="43.5" rx="5.4" ry="3.2" fill="#F4718C" opacity="0.58" />
-      {/* 大圆眼：白色高光点让眼神发亮 */}
-      <g className="shop-mascot-eye">
-        <ellipse cx="35" cy="30.5" rx="6.2" ry="6.2" fill="#FFFDF8" />
-        <circle cx="35.9" cy="31.4" r="3.5" fill="#231D1A" />
-        <circle cx="33.7" cy="28.8" r="1.9" fill="#FFFFFF" />
-        <circle cx="37.4" cy="33.6" r="0.95" fill="#FFFFFF" opacity="0.9" />
-      </g>
-      <g className="shop-mascot-eye">
-        <ellipse cx="61" cy="30.5" rx="6.2" ry="6.2" fill="#FFFDF8" />
-        <circle cx="61.9" cy="31.4" r="3.5" fill="#231D1A" />
-        <circle cx="59.7" cy="28.8" r="1.9" fill="#FFFFFF" />
-        <circle cx="63.4" cy="33.6" r="0.95" fill="#FFFFFF" opacity="0.9" />
-      </g>
-      {/* 卡通大框圆角墨镜：浅暖色镜片，眼睛仍清楚可见 */}
-      <g fill="#FFD9C6" fillOpacity="0.3" stroke="#1D1B1A" strokeWidth="3.3">
-        <rect x="22.5" y="22" width="24.5" height="17.5" rx="7.8" />
-        <rect x="49" y="22" width="24.5" height="17.5" rx="7.8" />
-      </g>
-      <path
-        d="M47 29.5 L49 29.5"
-        stroke="#1D1B1A"
-        strokeWidth="3.3"
-        strokeLinecap="round"
-      />
-      <path
-        d="M22.9 27.2 L13.2 23.2 M73.1 27.2 L82.8 23.2"
-        stroke="#1D1B1A"
-        strokeWidth="3.1"
-        strokeLinecap="round"
-      />
-      {/* 小嘴：墨镜下方一点点 */}
-      <path
-        d="M44.9 45.8 Q48 48.6 51.1 45.8"
-        stroke="#B85C3F"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-        fill="none"
-      />
-    </svg>
-  );
-}
-
-/** OpenAI 花结：六段圆头短线拧成风车，中心留出六边形空心放脸。 */
-const KNOT = { cx: 48, cy: 32, distance: 21.2, length: 27, thickness: 10.2, twist: 3.4 };
-
-const KNOT_ARMS = [0, 60, 120, 180, 240, 300].map((offset) => {
-  const angle = offset - 90;
-  const rad = (angle * Math.PI) / 180;
-  const tangent = { x: -Math.sin(rad), y: Math.cos(rad) };
-  const center = {
-    x: KNOT.cx + Math.cos(rad) * KNOT.distance + tangent.x * KNOT.twist,
-    y: KNOT.cy + Math.sin(rad) * KNOT.distance + tangent.y * KNOT.twist,
-  };
-  const half = KNOT.length / 2;
-  return {
-    x1: round(center.x - tangent.x * half),
-    y1: round(center.y - tangent.y * half),
-    x2: round(center.x + tangent.x * half),
-    y2: round(center.y + tangent.y * half),
-  };
-});
-
-/** 绿色花结 + 直接在花结中心点上的大圆眼 + 腮红 + 小短脚，不带任何文字标签。 */
-function GPTMascotArt() {
-  return (
-    <svg
-      className="shop-mascot-art"
-      viewBox="0 0 96 96"
-      aria-hidden="true"
-      focusable="false"
-    >
-      <g fill="#0C7D62">
-        <rect x="36.5" y="72" width="10" height="8.5" rx="4.2" />
-        <rect x="49.5" y="72" width="10" height="8.5" rx="4.2" />
-      </g>
-      <rect x="37.5" y="51" width="21" height="24" rx="10.5" fill="#0C7D62" />
-      <g
-        transform="rotate(-6 48 32)"
-        stroke="#10A37F"
-        strokeWidth={KNOT.thickness}
-        strokeLinecap="round"
-      >
-        {KNOT_ARMS.map((arm, index) => (
-          <line key={index} x1={arm.x1} y1={arm.y1} x2={arm.x2} y2={arm.y2} />
-        ))}
-      </g>
-      {/* 腮红 */}
-      <ellipse cx="31" cy="42" rx="5.8" ry="3.5" fill="#FFAD8F" opacity="0.95" />
-      <ellipse cx="65" cy="42" rx="5.8" ry="3.5" fill="#FFAD8F" opacity="0.95" />
-      {/* 眼睛直接点在花结中心 */}
-      <g className="shop-mascot-eye">
-        <ellipse cx="40.9" cy="31.5" rx="5.8" ry="5.8" fill="#FFFDF8" />
-        <circle cx="41.6" cy="32.3" r="3.3" fill="#0B2B22" />
-        <circle cx="39.8" cy="30" r="1.7" fill="#FFFFFF" />
-        <circle cx="42.9" cy="34" r="0.85" fill="#FFFFFF" opacity="0.9" />
-      </g>
-      <g className="shop-mascot-eye">
-        <ellipse cx="55.1" cy="31.5" rx="5.8" ry="5.8" fill="#FFFDF8" />
-        <circle cx="55.8" cy="32.3" r="3.3" fill="#0B2B22" />
-        <circle cx="54" cy="30" r="1.7" fill="#FFFFFF" />
-        <circle cx="57.1" cy="34" r="0.85" fill="#FFFFFF" opacity="0.9" />
-      </g>
-      {/* 小嘴 */}
-      <path
-        d="M45.6 42.8 Q48 45.6 50.4 42.8"
-        stroke="#083527"
-        strokeWidth="2"
-        strokeLinecap="round"
-        fill="none"
-      />
-    </svg>
-  );
 }

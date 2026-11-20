@@ -29,7 +29,7 @@ export function RecentSidebar({ products }: { products: PublicShopProduct[] }) {
                   variant={product.cover_variant}
                   brand={product.brand}
                   imageUrl={product.image_url}
-                  sizes="56px"
+                  sizes="44px"
                 />
               </span>
               <span className="shop-side-recent-copy">
