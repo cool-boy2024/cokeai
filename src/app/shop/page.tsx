@@ -14,6 +14,7 @@ import { Pagination } from "@/components/Pagination";
 import { ProductCard } from "@/components/shop/ProductCard";
 import { ProductRow } from "@/components/shop/ProductRow";
 import { RecentSidebar } from "@/components/shop/RecentSidebar";
+import { ShopMascots } from "@/components/shop/ShopMascots";
 import { ShopFeaturedCard } from "@/components/shop/ShopFeaturedCard";
 import { AvailabilityLegend } from "@/components/shop/ShopBadges";
 import { getCurrentUser } from "@/lib/auth";
@@ -362,6 +363,7 @@ export default async function ShopPage({
           </div>
         </section>
       </main>
+      <ShopMascots />
       <SiteFooter />
     </>
   );
