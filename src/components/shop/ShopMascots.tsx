@@ -20,10 +20,18 @@ const BUBBLE_EDGE = 12;
 /** 介绍气泡收掉后再等 0.6-0.9s，才问「要我带你去看吗」，不抢话。 */
 const GUIDE_DELAY_MIN_MS = 600;
 const GUIDE_DELAY_MAX_MS = 900;
-/** 带按钮的气泡停留时间；点按钮 / 滚动 / 点别处都会提前收。 */
-const GUIDE_HOLD_MS = 6000;
-/** 每只桌宠每会话最多带路 2 次。 */
-const GUIDE_SESSION_MAX = 2;
+/** 带按钮的气泡停留时间；点按钮 / 滚出一定距离 / 点别处都会提前收。 */
+const GUIDE_HOLD_MS = 9000;
+/** 每只桌宠每会话最多带路 4 次；同一商品仍只带一次。 */
+const GUIDE_SESSION_MAX = 4;
+/** 引导按钮气泡的滚动收起阈值：累计滚动超过 180px 才收，指尖抖一下不算。 */
+const GUIDE_SCROLL_HIDE = 180;
+/** 别的桌宠按钮还挂着时错峰重来：每张卡最多重试 2 次，间隔 1.5-2.5s。 */
+// 占用期间每 ~2s 轮询一次，最多 10 次（≈20s）：这样前一只的按钮收起后，
+// 排队的那只自然接力追问，而不是在 9s 占用期内把重试次数耗尽。
+const GUIDE_RETRY_MAX = 10;
+const GUIDE_RETRY_MIN_MS = 1800;
+const GUIDE_RETRY_MAX_MS = 2400;
 const PATROL_MIN_MS = 9000;
 const PATROL_MAX_MS = 15000;
 const ACT_MIN_MS = 7000;
@@ -453,6 +461,10 @@ export function ShopMascots() {
   const bubbleTimers = useRef<Record<Kind, number>>({ claude: 0, gpt: 0, grok: 0 });
   /** 带路气泡的延时器：介绍气泡落地后才起，换页 / 打断时一起清。 */
   const guideTimers = useRef<Record<Kind, number>>({ claude: 0, gpt: 0, grok: 0 });
+  /** 错峰重试的延时器：别的桌宠按钮还挂着时延后再问，随换页 / 卸载一起清。 */
+  const guideRetryTimers = useRef<Record<Kind, number>>({ claude: 0, gpt: 0, grok: 0 });
+  /** 按钮气泡弹出时的滚动位置：只有滚出一定距离才收，轻扫不让按钮消失。 */
+  const actionScrollY = useRef<Record<Kind, number>>({ claude: 0, gpt: 0, grok: 0 });
   /** 当前气泡的文本：带路延时到点时用它确认介绍还没被别的台词顶掉。 */
   const bubbleTextRef = useRef<Record<Kind, string | null>>({
     claude: null,
@@ -472,12 +484,14 @@ export function ShopMascots() {
 
   const showBubble = useCallback(
     (kind: Kind, text: string, hold = BUBBLE_HOLD_MS, action: BubbleAction | null = null) => {
+      // 按钮气泡挂着时普通台词让路：巡逻 / 悬停 / 互动都不把它顶掉。
+      // 按钮气泡自己也走这里（action 非空），所以引导不会被这条规则挡住。
+      if (!action && actionRef.current[kind]) return;
       window.clearTimeout(bubbleTimers.current[kind]);
       actionRef.current[kind] = action;
       bubbleTextRef.current[kind] = text;
-      // 新台词顶上来就作废这次还没冒头的带路追问：十几秒后的老定时器不该抢话。
-      window.clearTimeout(guideTimers.current[kind]);
-      guideTimers.current[kind] = 0;
+      // 记下弹按钮时的滚动位置，滚动阈值按相对位移算。
+      if (action) actionScrollY.current[kind] = window.scrollY;
       setBubbles((prev) => {
         const current = prev[kind];
         if (current && current.text === text && actionKey(current.action) === actionKey(action)) {
@@ -813,12 +827,17 @@ export function ShopMascots() {
     const cancelGuide = (kind: Kind) => {
       window.clearTimeout(guideTimers.current[kind]);
       guideTimers.current[kind] = 0;
+      // 排队中的重试属于这一次机会，一起撤掉；每张卡的重试计数留在下面的 WeakMap 里。
+      window.clearTimeout(guideRetryTimers.current[kind]);
+      guideRetryTimers.current[kind] = 0;
     };
 
     /** 同一时刻只留一颗带路按钮：三只一起问就成了弹窗墙。 */
     const otherActionUp = (kind: Kind) =>
       KINDS.some((other) => other !== kind && actionRef.current[other]);
 
+    // 这里只判环境和状态；「同时只有一颗按钮」的互斥交给 runGuide，
+    // 那里才知道是直接放弃还是排队等对方收摊。
     const guideAllowed = (kind: Kind) =>
       !disposed &&
       !onDetail() &&
@@ -827,8 +846,7 @@ export function ShopMascots() {
       !sleeping &&
       !runtime[kind].hovering &&
       document.visibilityState === "visible" &&
-      !editing() &&
-      !otherActionUp(kind);
+      !editing();
 
     /**
      * 带路配额统一在这里记账：每只桌宠每会话最多 GUIDE_SESSION_MAX 次，
@@ -846,15 +864,47 @@ export function ShopMascots() {
     /**
      * 真正弹「要我带你去看吗」，跳的是卡片上读到的真实 href。
      * 互斥也在这里判：认领追问和点桌宠两条路共用同一个入口，
-     * 别的桌宠按钮还挂着就直接放弃，不弹第二颗。
+     * 别的桌宠按钮还挂着就先排一次错峰重试，不弹第二颗。
      */
     const runGuide = (kind: Kind, href: string, card?: HTMLElement | null): boolean => {
       if (card && !cardInStock(card)) return false;
       if (!guidePath) return false;
-      if (otherActionUp(kind)) return false;
+      if (otherActionUp(kind)) {
+        if (card) queueGuideRetry(kind, card);
+        return false;
+      }
       if (!recordGuide(kind, href)) return false;
+      // 这次轮到它了，排队中的重试作废。
+      window.clearTimeout(guideRetryTimers.current[kind]);
+      guideRetryTimers.current[kind] = 0;
       showBubble(kind, "要我带你去看吗？", GUIDE_HOLD_MS, { label: "带我去 →", href });
       return true;
+    };
+
+    /** 每张卡的重试次数：换卡重新计，卡片回收后跟着消失。 */
+    const guideRetries = new WeakMap<Element, number>();
+
+    /**
+     * 别的桌宠按钮挂着时，这颗按钮不丢，1.5-2.5s 后再问一次。
+     * 到点重新走完整校验（路径 / 环境 / 卡片有效 / 有货 / 配额），
+     * 还是不行就收手，配额一次都不记；每张卡最多重试 GUIDE_RETRY_MAX 次。
+     */
+    const queueGuideRetry = (kind: Kind, card: HTMLElement) => {
+      const tries = guideRetries.get(card) ?? 0;
+      if (tries >= GUIDE_RETRY_MAX) return;
+      window.clearTimeout(guideRetryTimers.current[kind]);
+      guideRetryTimers.current[kind] = window.setTimeout(() => {
+        guideRetryTimers.current[kind] = 0;
+        if (disposed || !guidePath || !guideAllowed(kind)) return;
+        // 排队期间卡片被换掉 / 卖掉 / 改链接，就不再带客户去旧货。
+        if (!card.isConnected || !cardInStock(card)) return;
+        // 已经改认领别的卡了就不再追旧卡；还没认领时放行（点桌宠那条路就是这样）。
+        if (runtime[kind].target && runtime[kind].target !== card) return;
+        const next = card.getAttribute("href");
+        if (!next || !next.startsWith("/")) return;
+        guideRetries.set(card, tries + 1);
+        runGuide(kind, next, card);
+      }, GUIDE_RETRY_MIN_MS + Math.random() * (GUIDE_RETRY_MAX_MS - GUIDE_RETRY_MIN_MS));
     };
 
     /**
@@ -1559,9 +1609,12 @@ export function ShopMascots() {
     };
 
     const reconcile = () => {
-      if (disposed || isStatic() || interacting || enteringDetail) return;
+      if (disposed || interacting || enteringDetail) return;
+      // 静态模式（移动端 / 减少动效）照样认领和介绍，只是不位移、不跳跃：
+      // 手机上没有侧位可挪，硬算落点只会白读布局。
+      const staticMode = isStatic();
       if (onDetail()) {
-        holdDetail();
+        if (!staticMode) holdDetail();
         return;
       }
       readBuyBar();
@@ -1600,7 +1653,7 @@ export function ShopMascots() {
       const taken: MascotPoint[] = [];
       for (const kind of KINDS) {
         const card = assignment.get(kind) ?? null;
-        if (!card) {
+        if (!card || staticMode) {
           planned.set(kind, null);
           continue;
         }
@@ -1624,15 +1677,17 @@ export function ShopMascots() {
         const card = assignment.get(kind) ?? null;
         const next = card?.el ?? null;
         const spot = planned.get(kind) ?? null;
-        if (!next || !spot) {
+        if (!next) {
           if (rt.target) {
             claims.delete(rt.target);
             rt.target = null;
-            sendHome(kind, true);
+            // 静态模式只清认领，不把人挪回角落。
+            if (!staticMode) sendHome(kind, true);
           }
           continue;
         }
         if (rt.target === next) {
+          if (staticMode || !spot) continue;
           // 同一张卡，但落点被新来的那只占了：跟着挪一格，不换个卡站。
           if (
             !rt.hovering &&
@@ -1647,6 +1702,11 @@ export function ShopMascots() {
         if (rt.target) claims.delete(rt.target);
         claims.set(next, kind);
         rt.target = next;
+        if (staticMode || !spot) {
+          // 站原地介绍 + 追问：移动端在卡片进入视口时也能听到这句。
+          announceCard(kind, next);
+          continue;
+        }
         jumpToCard(kind, next, spot);
       }
     };
@@ -1690,9 +1750,12 @@ export function ShopMascots() {
     // 滚动结束后再按新的视口重算一次，滚动中只做轻量跟随。
     const onScroll = () => {
       onActivity();
-      // 带按钮的气泡一滚就收：按钮跟着页面跑会跟内容错位。
+      // 带按钮的气泡只在滚出一定距离后收：按钮贴着卡片，小幅滚动不该让它消失。
       for (const kind of KINDS) {
-        if (actionRef.current[kind]) hideBubble(kind, 0);
+        if (!actionRef.current[kind]) continue;
+        if (Math.abs(window.scrollY - actionScrollY.current[kind]) > GUIDE_SCROLL_HIDE) {
+          hideBubble(kind, 0);
+        }
       }
       followTarget();
       window.clearTimeout(scrollTimer);
@@ -1709,6 +1772,10 @@ export function ShopMascots() {
         // 互动编排靠 onLand 串动作，重排时别把正在走的位移掐断。
         if (disposed || interacting) return;
         enteringDetail = false;
+        // 尺寸一变按钮气泡的落点就不再可信，直接收掉（滚动阈值只留给滚动）。
+        for (const kind of KINDS) {
+          if (actionRef.current[kind]) hideBubble(kind, 0);
+        }
         readBottomInset();
         readBuyBar();
         for (const kind of KINDS) {
@@ -2006,6 +2073,8 @@ export function ShopMascots() {
       for (const kind of KINDS) {
         window.clearTimeout(guideTimers.current[kind]);
         guideTimers.current[kind] = 0;
+        window.clearTimeout(guideRetryTimers.current[kind]);
+        guideRetryTimers.current[kind] = 0;
         actionRef.current[kind] = null;
         bubbleTextRef.current[kind] = null;
       }
