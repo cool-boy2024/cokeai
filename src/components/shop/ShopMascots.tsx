@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { SUPPLIER_PLACEHOLDER, sanitizeSupplierCopy } from "@/lib/shop/sanitize";
 import { ShopMascotIdlePose } from "./ShopMascotArt";
 import type { ShopMascotEyes, ShopMascotKind, ShopMascotState } from "./ShopMascotArt";
@@ -17,6 +17,13 @@ const TOP_SAFE = 96;
 const SUPPORT_PAD = 10;
 const BUBBLE_HOLD_MS = 3400;
 const BUBBLE_EDGE = 12;
+/** 介绍气泡收掉后再等 0.6-0.9s，才问「要我带你去看吗」，不抢话。 */
+const GUIDE_DELAY_MIN_MS = 600;
+const GUIDE_DELAY_MAX_MS = 900;
+/** 带按钮的气泡停留时间；点按钮 / 滚动 / 点别处都会提前收。 */
+const GUIDE_HOLD_MS = 6000;
+/** 每只桌宠每会话最多带路 2 次。 */
+const GUIDE_SESSION_MAX = 2;
 const PATROL_MIN_MS = 9000;
 const PATROL_MAX_MS = 15000;
 const ACT_MIN_MS = 7000;
@@ -39,6 +46,7 @@ const SPARK_BUDGET = 2;
 const CARD_GAP = 12;
 const SLOT_GAP = 10;
 const INTERACTION_KEY = "cokeai:mascot-interactions";
+const GUIDE_KEY = "cokeai:mascot-guides";
 const SPARK_KEY = "cokeai:mascot-sparkles";
 const POS_KEY = "cokeai:mascot-pos";
 const PATH_KEY = "cokeai:mascot-path";
@@ -56,6 +64,20 @@ type CardInfo = {
   warranty: string | null;
   sales: string | null;
 };
+
+/**
+ * 气泡按钮：要么跳到卡片自己的详情链接，要么滚到本页的下单区。
+ * 跳转只认卡片上读到的真实 href，不按 slug 拼 URL。
+ */
+type BubbleAction = { label: string; href: string } | { label: string; scroll: "buy" };
+
+type Bubble = { text: string; action: BubbleAction | null };
+
+/** 气泡去重只看文本和按钮指向，不比较对象身份。 */
+function actionKey(action: BubbleAction | null): string {
+  if (!action) return "";
+  return "href" in action ? `href:${action.href}` : `scroll:${action.scroll}`;
+}
 
 /** 闲置剧目用的状态；P1 已把它们并进 ShopMascotState，这里留个别名让消费端读得懂。 */
 type ActState = ShopMascotState | "type" | "build" | "music" | "juggle";
@@ -293,6 +315,62 @@ function writeStoredPath(pathname: string): void {
   }
 }
 
+/** 本会话的带路配额：每只最多 GUIDE_SESSION_MAX 次，同一商品只带一次。 */
+type GuideLog = { counts: Record<Kind, number>; items: string[] };
+
+/** 隐私模式写不进 sessionStorage 时靠这份内存兜底，刷新即重置。 */
+let guideCache: GuideLog | null = null;
+
+function emptyGuideLog(): GuideLog {
+  return { counts: { claude: 0, gpt: 0, grok: 0 }, items: [] };
+}
+
+function readGuideLog(): GuideLog {
+  if (guideCache) return guideCache;
+  const log = emptyGuideLog();
+  try {
+    const raw = window.sessionStorage.getItem(GUIDE_KEY);
+    const parsed = raw ? (JSON.parse(raw) as Partial<GuideLog>) : null;
+    for (const kind of KINDS) {
+      const count = parsed?.counts?.[kind];
+      log.counts[kind] = Number.isFinite(count) && Number(count) > 0 ? Number(count) : 0;
+    }
+    if (Array.isArray(parsed?.items)) {
+      log.items = parsed.items.filter((item): item is string => typeof item === "string");
+    }
+  } catch {
+    // 解析失败就按没带过路处理，最多多问一次。
+  }
+  guideCache = log;
+  return log;
+}
+
+function writeGuideLog(log: GuideLog): void {
+  guideCache = log;
+  try {
+    window.sessionStorage.setItem(
+      GUIDE_KEY,
+      JSON.stringify({ counts: log.counts, items: log.items.slice(-60) }),
+    );
+  } catch {
+    // 写不进去也留着内存副本，本页不会重复问。
+  }
+}
+
+/**
+ * 详情页的下单入口：优先专用钩子，其次文案命中的 CTA。
+ * 找不到就返回 null，这种情况宁可不给按钮，也不要指错地方。
+ */
+function buyHintTarget(): HTMLElement | null {
+  const panel = document.querySelector<HTMLElement>(".shop-detail-buy, .shop-buy-panel");
+  if (panel) return panel;
+  return (
+    Array.from(document.querySelectorAll<HTMLElement>("button, a")).find((el) =>
+      /立即购买|立即下单|马上购买|去下单/.test(el.textContent || ""),
+    ) ?? null
+  );
+}
+
 function newRuntime(): Runtime {
   return {
     x: 0,
@@ -321,7 +399,7 @@ function paidTimestamp(): number {
 }
 
 export function ShopMascots() {
-  const [bubbles, setBubbles] = useState<Record<Kind, string | null>>({
+  const [bubbles, setBubbles] = useState<Record<Kind, Bubble | null>>({
     claude: null,
     gpt: null,
     grok: null,
@@ -354,22 +432,60 @@ export function ShopMascots() {
     grok: newRuntime(),
   });
   const bubbleTimers = useRef<Record<Kind, number>>({ claude: 0, gpt: 0, grok: 0 });
+  /** 带路气泡的延时器：介绍气泡落地后才起，换页 / 打断时一起清。 */
+  const guideTimers = useRef<Record<Kind, number>>({ claude: 0, gpt: 0, grok: 0 });
+  /** 当前气泡的文本：带路延时到点时用它确认介绍还没被别的台词顶掉。 */
+  const bubbleTextRef = useRef<Record<Kind, string | null>>({
+    claude: null,
+    gpt: null,
+    grok: null,
+  });
+  /** 当前挂着的按钮：滚动、点别处、卸载时按它判断要不要收气泡。 */
+  const actionRef = useRef<Record<Kind, BubbleAction | null>>({
+    claude: null,
+    gpt: null,
+    grok: null,
+  });
   const apiRef = useRef<{
     activate: (kind: Kind) => void;
     hover: (kind: Kind, on: boolean) => void;
   } | null>(null);
 
-  const showBubble = useCallback((kind: Kind, text: string, hold = BUBBLE_HOLD_MS) => {
-    window.clearTimeout(bubbleTimers.current[kind]);
-    setBubbles((prev) => (prev[kind] === text ? prev : { ...prev, [kind]: text }));
-    bubbleTimers.current[kind] = window.setTimeout(() => {
-      setBubbles((prev) => ({ ...prev, [kind]: null }));
-    }, hold);
-  }, []);
+  const showBubble = useCallback(
+    (kind: Kind, text: string, hold = BUBBLE_HOLD_MS, action: BubbleAction | null = null) => {
+      window.clearTimeout(bubbleTimers.current[kind]);
+      actionRef.current[kind] = action;
+      bubbleTextRef.current[kind] = text;
+      // 新台词顶上来就作废这次还没冒头的带路追问：十几秒后的老定时器不该抢话。
+      window.clearTimeout(guideTimers.current[kind]);
+      guideTimers.current[kind] = 0;
+      setBubbles((prev) => {
+        const current = prev[kind];
+        if (current && current.text === text && actionKey(current.action) === actionKey(action)) {
+          return prev;
+        }
+        return { ...prev, [kind]: { text, action } };
+      });
+      bubbleTimers.current[kind] = window.setTimeout(() => {
+        actionRef.current[kind] = null;
+        bubbleTextRef.current[kind] = null;
+        setBubbles((prev) => ({ ...prev, [kind]: null }));
+      }, hold);
+    },
+    [],
+  );
 
   const hideBubble = useCallback((kind: Kind, delay = 0) => {
     window.clearTimeout(bubbleTimers.current[kind]);
+    actionRef.current[kind] = null;
+    bubbleTextRef.current[kind] = null;
+    if (delay <= 0) {
+      setBubbles((prev) => (prev[kind] ? { ...prev, [kind]: null } : prev));
+      return;
+    }
     bubbleTimers.current[kind] = window.setTimeout(() => {
+      actionRef.current[kind] = null;
+      bubbleTextRef.current[kind] = null;
       setBubbles((prev) => ({ ...prev, [kind]: null }));
     }, delay);
   }, []);
@@ -378,6 +494,7 @@ export function ShopMascots() {
   // 分类 / 搜索换页由下面的卡片同步兜住。
   const pathname = usePathname();
   const hidden = hiddenOnPath(pathname);
+  const router = useRouter();
 
   useEffect(() => {
     if (hidden) return;
@@ -530,6 +647,18 @@ export function ShopMascots() {
 
     const onDetail = () => isDetailPath(pathname);
 
+    /** 列表 / 首页才带路；详情页、结账、订单、须知这些页面都不问。 */
+    const guidePath =
+      !isDetailPath(pathname) && !/^\/shop\/(?:checkout|orders|terms)(?:\/|$)/.test(pathname);
+
+    /** 客户正在填表时绝不插话，包括带按钮的那种。 */
+    const editing = () => {
+      const el = document.activeElement as HTMLElement | null;
+      if (!el) return false;
+      const tag = el.tagName;
+      return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el.isContentEditable;
+    };
+
     // 三只角色的待机位：星芒侠占左下、云宝居中、小黑球占右下。
     // 谁都不会压在右下角客服按钮上，也都会让开刘海屏底部的 Home 指示条。
     const cornerSpot = (kind: Kind) => {
@@ -662,8 +791,108 @@ export function ShopMascots() {
       window.setTimeout(() => stance.classList.remove("is-land"), 140);
     };
 
+    const cancelGuide = (kind: Kind) => {
+      window.clearTimeout(guideTimers.current[kind]);
+      guideTimers.current[kind] = 0;
+    };
+
+    /** 同一时刻只留一颗带路按钮：三只一起问就成了弹窗墙。 */
+    const otherActionUp = (kind: Kind) =>
+      KINDS.some((other) => other !== kind && actionRef.current[other]);
+
+    const guideAllowed = (kind: Kind) =>
+      !disposed &&
+      !onDetail() &&
+      !enteringDetail &&
+      !interacting &&
+      !sleeping &&
+      !runtime[kind].hovering &&
+      document.visibilityState === "visible" &&
+      !editing() &&
+      !otherActionUp(kind);
+
+    /**
+     * 带路配额统一在这里记账：每只桌宠每会话最多 GUIDE_SESSION_MAX 次，
+     * 同一商品（或同一次详情页提示）只算一次。
+     */
+    const recordGuide = (kind: Kind, key: string): boolean => {
+      const log = readGuideLog();
+      if (log.counts[kind] >= GUIDE_SESSION_MAX || log.items.includes(key)) return false;
+      log.counts[kind] += 1;
+      log.items.push(key);
+      writeGuideLog(log);
+      return true;
+    };
+
+    /**
+     * 真正弹「要我带你去看吗」，跳的是卡片上读到的真实 href。
+     * 互斥也在这里判：认领追问和点桌宠两条路共用同一个入口，
+     * 别的桌宠按钮还挂着就直接放弃，不弹第二颗。
+     */
+    const runGuide = (kind: Kind, href: string): boolean => {
+      if (!guidePath) return false;
+      if (otherActionUp(kind)) return false;
+      if (!recordGuide(kind, href)) return false;
+      showBubble(kind, "要我带你去看吗？", GUIDE_HOLD_MS, { label: "带我去 →", href });
+      return true;
+    };
+
+    /**
+     * 认领介绍气泡收掉后再追问一句。任何一项条件不满足就整场跳过，
+     * 不消耗配额，也不留半截定时器。
+     */
+    const scheduleGuide = (kind: Kind, card: HTMLElement, intro: string, after: number) => {
+      cancelGuide(kind);
+      if (!guidePath) return;
+      guideTimers.current[kind] = window.setTimeout(() => {
+        guideTimers.current[kind] = 0;
+        if (!guideAllowed(kind)) return;
+        // 介绍气泡这十几秒里可能被巡逻台词 / 互动台词顶掉，顶掉了就不追问。
+        // 正常时序是介绍气泡先自然收起（ref 变 null），追问才到点；此时应放行。
+        const current = bubbleTextRef.current[kind];
+        if (current !== null && current !== intro) return;
+        // 卡片被换掉（换分类 / 搜索）后就不再属于这只了，别带客户去旧货。
+        if (!card.isConnected || runtime[kind].target !== card) return;
+        const href = card.getAttribute("href");
+        if (!href || !href.startsWith("/")) return;
+        runGuide(kind, href);
+      }, after + GUIDE_DELAY_MIN_MS + Math.random() * (GUIDE_DELAY_MAX_MS - GUIDE_DELAY_MIN_MS));
+    };
+
+    /**
+     * 详情页介绍完再给个「就在这页」的下单提示；下单区找不到就不给按钮。
+     */
+    const scheduleDetailHint = (kind: Kind, hold: number) => {
+      cancelGuide(kind);
+      if (!onDetail()) return;
+      guideTimers.current[kind] = window.setTimeout(() => {
+        guideTimers.current[kind] = 0;
+        if (
+          disposed ||
+          !onDetail() ||
+          enteringDetail ||
+          interacting ||
+          sleeping ||
+          runtime[kind].hovering ||
+          document.visibilityState !== "visible" ||
+          editing() ||
+          otherActionUp(kind)
+        ) {
+          return;
+        }
+        if (!buyHintTarget()) return;
+        if (!recordGuide(kind, `detail:${pathname}:${kind}`)) return;
+        showBubble(kind, "就在这页，往下滑下单 ↓", GUIDE_HOLD_MS, {
+          label: "带我去下单 ↓",
+          scroll: "buy",
+        });
+      }, hold + GUIDE_DELAY_MIN_MS);
+    };
+
     const announceCard = (kind: Kind, card: HTMLElement) => {
-      showBubble(kind, pick(bubbleLines(readCard(card))));
+      const line = pick(bubbleLines(readCard(card)));
+      showBubble(kind, line);
+      scheduleGuide(kind, card, line, BUBBLE_HOLD_MS);
     };
 
     const jumpToCard = (kind: Kind, card: HTMLElement, spot: MascotPoint) => {
@@ -676,10 +905,12 @@ export function ShopMascots() {
       if (info.kinds.includes(kind)) {
         const head = `${DETAIL_LINES[kind]} · ${shortName(info.name, 12)}`;
         showBubble(kind, info.warranty ? `${head} · ${info.warranty}` : head, 4800);
+        scheduleDetailHint(kind, 4800);
         return;
       }
       if (info.kinds.length === 0 && kind === "grok") {
         showBubble("grok", pick(NO_BRAND_LINES), 4600);
+        scheduleDetailHint(kind, 4600);
       }
     };
 
@@ -909,13 +1140,6 @@ export function ShopMascots() {
     const otherTwo = (): [Kind, Kind] => {
       const shuffled = [...KINDS].sort(() => Math.random() - 0.5);
       return [shuffled[0], shuffled[1]] as [Kind, Kind];
-    };
-
-    const editing = () => {
-      const el = document.activeElement as HTMLElement | null;
-      if (!el) return false;
-      const tag = el.tagName;
-      return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el.isContentEditable;
     };
 
     const onScreen = (kind: Kind) => {
@@ -1176,6 +1400,8 @@ export function ShopMascots() {
       interactionGen += 1;
       const gen = interactionGen;
       interacting = true;
+      // 剧目一开演就把还没冒头的带路气泡撤掉，别让按钮打断打闹。
+      for (const kind of KINDS) cancelGuide(kind);
       if (isStatic()) {
         // reduced-motion / 移动端：只留同时冒出的气泡对，不做位移。
         const [a, b] = otherTwo();
@@ -1437,6 +1663,10 @@ export function ShopMascots() {
     // 滚动结束后再按新的视口重算一次，滚动中只做轻量跟随。
     const onScroll = () => {
       onActivity();
+      // 带按钮的气泡一滚就收：按钮跟着页面跑会跟内容错位。
+      for (const kind of KINDS) {
+        if (actionRef.current[kind]) hideBubble(kind, 0);
+      }
       followTarget();
       window.clearTimeout(scrollTimer);
       scrollTimer = window.setTimeout(() => {
@@ -1498,6 +1728,8 @@ export function ShopMascots() {
         skipInteraction();
         return;
       }
+      // 客户自己上手了：撤掉还没冒头的那次追问，别待会儿又补一句。
+      cancelGuide(kind);
       const rt = runtime[kind];
       // 正在位移时不插播蹦跳，避免两段 squash 动画打架。
       if (!travelers[kind]?.busy) travelers[kind]?.bounce();
@@ -1511,21 +1743,38 @@ export function ShopMascots() {
         return;
       }
       const card = rt.target ?? heroCard(kind);
-      showBubble(
-        kind,
-        card ? CLICK_LINE : pick(kind === "grok" ? GROK_ROAM_LINES : FALLBACK_LINES),
-        2600,
-      );
-      // 点一下就把商品带到眼前；静态模式直接跳，不要长距离平滑滚动。
-      card?.scrollIntoView({
-        behavior: reducedQuery.matches ? "auto" : "smooth",
-        block: "center",
-      });
+      // 移动端和减少动效的静态模式不走卡片认领，点桌宠是客户唯一的入口：
+      // 这里也问一句要不要带路，配额和认领后那一次共用。
+      // 别的桌宠按钮还挂着时 runGuide 会拒掉：只留一句普通台词，也不再滚页面，
+      // 免得把人家那颗按钮连带收掉。
+      const otherBusy = otherActionUp(kind);
+      const href = card?.getAttribute("href") ?? "";
+      const guided = href.startsWith("/") ? runGuide(kind, href) : false;
+      if (!guided) {
+        showBubble(
+          kind,
+          card ? CLICK_LINE : pick(kind === "grok" ? GROK_ROAM_LINES : FALLBACK_LINES),
+          2600,
+        );
+        if (otherBusy) return;
+        // 点一下就把商品带到眼前；静态模式直接跳，不要长距离平滑滚动。
+        // 已经弹出带路按钮时不再滚：滚动会把刚冒出来的按钮收掉。
+        card?.scrollIntoView({
+          behavior: reducedQuery.matches ? "auto" : "smooth",
+          block: "center",
+        });
+      }
     };
 
     const hover = (kind: Kind, on: boolean) => {
       const rt = runtime[kind];
       rt.hovering = on;
+      // 带按钮的气泡挂着时，鼠标扫过桌宠不抢话，也不替客户把按钮收掉：
+      // 客户多半是奔着那颗按钮来的。
+      if (actionRef.current[kind]) {
+        if (!on) scheduleReconcile(320);
+        return;
+      }
       if (on) {
         const card = rt.target ?? heroCard(kind);
         const info = card ? readCard(card) : null;
@@ -1622,6 +1871,27 @@ export function ShopMascots() {
     }
     scheduleInteraction();
     resetIdle();
+
+    // 点气泡以外的地方就把带按钮的气泡收掉，不挡客户接下来的操作。
+    const onDocPointerDown = (event: Event) => {
+      const target = event.target as Element | null;
+      if (target?.closest(".shop-mascot-bubble")) return;
+      for (const kind of KINDS) {
+        if (actionRef.current[kind]) hideBubble(kind, 0);
+      }
+    };
+    document.addEventListener("pointerdown", onDocPointerDown, true);
+
+    // 带按钮的气泡挂起时，Escape 只收这一颗按钮气泡；没有按钮就完全不管，
+    // 也不 preventDefault：输入框、弹层自己的 Escape 语义不能被桌宠抢走。
+    const onDocKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      for (const kind of KINDS) {
+        if (actionRef.current[kind]) hideBubble(kind, 0);
+      }
+    };
+    document.addEventListener("keydown", onDocKeyDown);
+
     window.addEventListener("scroll", onScroll, { passive: true });
     window.addEventListener("resize", onResize);
     window.addEventListener("pointerdown", onActivity, { passive: true });
@@ -1659,6 +1929,8 @@ export function ShopMascots() {
         };
       }
       writeStoredSpots(snapshot);
+      document.removeEventListener("pointerdown", onDocPointerDown, true);
+      document.removeEventListener("keydown", onDocKeyDown);
       window.removeEventListener("scroll", onScroll);
       window.removeEventListener("resize", onResize);
       window.removeEventListener("pointerdown", onActivity);
@@ -1700,6 +1972,15 @@ export function ShopMascots() {
         );
       }
       for (const kind of KINDS) window.clearTimeout(bubbleTimers.current[kind]);
+      // 换页时把气泡连同按钮一起收干净：旧气泡的收起定时器刚被清掉，
+      // 不主动清状态的话它会一直挂在上一页的位置上。
+      for (const kind of KINDS) {
+        window.clearTimeout(guideTimers.current[kind]);
+        guideTimers.current[kind] = 0;
+        actionRef.current[kind] = null;
+        bubbleTextRef.current[kind] = null;
+      }
+      setBubbles({ claude: null, gpt: null, grok: null });
     };
     // 分页 / 进商品详情 / 回列表都是 next/link 的客户端导航，组件实例不会重建：
     // 依赖 pathname 让观察器和新一页的入场编排跟着重绑。
@@ -1775,8 +2056,7 @@ export function ShopMascots() {
   useEffect(() => {
     if (hidden) return;
     for (const kind of KINDS) {
-      const text = bubbles[kind];
-      if (!text) continue;
+      if (!bubbles[kind]) continue;
       const node = nodesRef.current[kind];
       const bubble = node?.querySelector<HTMLElement>(".shop-mascot-bubble");
       if (!bubble) continue;
@@ -1803,55 +2083,94 @@ export function ShopMascots() {
 
   if (hidden) return null;
 
-  const mascot = (kind: Kind) => (
-    <div
-      key={kind}
-      ref={setNode(kind)}
-      className={`shop-mascot shop-mascot-${kind}`}
-      data-state={poses[kind].state}
-      role="button"
-      tabIndex={0}
-      aria-label={LABELS[kind]}
-      onClick={() => apiRef.current?.activate(kind)}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          apiRef.current?.activate(kind);
-        }
-      }}
-      onMouseEnter={() => apiRef.current?.hover(kind, true)}
-      onMouseLeave={() => apiRef.current?.hover(kind, false)}
-    >
-      <span ref={setLift(kind)} className="shop-mascot-lift" aria-hidden="true">
-        <span ref={setStance(kind)} className="shop-mascot-stance">
-          <span className="shop-mascot-breathe">
-            {/* 剧目状态走字符串透传：P1 的类型已含 type/build/music/juggle，
-                两边的落地顺序不同时这层 cast 让消费端先编译通过。 */}
-            <ShopMascotIdlePose
-              kind={kind}
-              eyes={poses[kind].eyes}
-              state={poses[kind].state as ShopMascotState}
-            />
+  /** 气泡按钮：跳详情走客户端路由，详情页的下单提示只滚页面。 */
+  const runAction = (kind: Kind, action: BubbleAction) => {
+    hideBubble(kind, 0);
+    if ("href" in action) {
+      router.push(action.href);
+      return;
+    }
+    const target = buyHintTarget();
+    if (!target) return;
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    target.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "center" });
+  };
+
+  const mascot = (kind: Kind) => {
+    const bubble = bubbles[kind];
+    const action = bubble?.action ?? null;
+    return (
+      <div
+        key={kind}
+        ref={setNode(kind)}
+        className={`shop-mascot shop-mascot-${kind}`}
+        data-state={poses[kind].state}
+        role="button"
+        tabIndex={0}
+        aria-label={LABELS[kind]}
+        onClick={() => apiRef.current?.activate(kind)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            apiRef.current?.activate(kind);
+          }
+        }}
+        onMouseEnter={() => apiRef.current?.hover(kind, true)}
+        onMouseLeave={() => apiRef.current?.hover(kind, false)}
+      >
+        <span ref={setLift(kind)} className="shop-mascot-lift" aria-hidden="true">
+          <span ref={setStance(kind)} className="shop-mascot-stance">
+            <span className="shop-mascot-breathe">
+              {/* 剧目状态走字符串透传：P1 的类型已含 type/build/music/juggle，
+                  两边的落地顺序不同时这层 cast 让消费端先编译通过。 */}
+              <ShopMascotIdlePose
+                kind={kind}
+                eyes={poses[kind].eyes}
+                state={poses[kind].state as ShopMascotState}
+              />
+            </span>
           </span>
         </span>
-      </span>
-      <span className="shop-mascot-think" aria-hidden="true">
-        <i />
-        <i />
-        <i />
-      </span>
-      <span className="shop-mascot-zzz" aria-hidden="true">
-        <span>Z</span>
-        <span>z</span>
-        <span>z</span>
-      </span>
-      {bubbles[kind] ? (
-        <span className="shop-mascot-bubble" aria-hidden="true">
-          {bubbles[kind]}
+        <span className="shop-mascot-think" aria-hidden="true">
+          <i />
+          <i />
+          <i />
         </span>
-      ) : null}
-    </div>
-  );
+        <span className="shop-mascot-zzz" aria-hidden="true">
+          <span>Z</span>
+          <span>z</span>
+          <span>z</span>
+        </span>
+        {bubble ? (
+          <span
+            className={action ? "shop-mascot-bubble has-act" : "shop-mascot-bubble"}
+            // 纯装饰的气泡对读屏隐藏；带按钮的要能读出来，按钮才是有语义的。
+            aria-hidden={action ? undefined : true}
+            // 气泡浮在卡片上方，带按钮时整块吃掉点击，别让点空处穿透到下面的卡片。
+            onClick={action ? (event) => event.stopPropagation() : undefined}
+          >
+            {bubble.text}
+            {action ? (
+              <button
+                type="button"
+                className="shop-mascot-bubble-act"
+                onClick={(event) => {
+                  // 按钮长在桌宠的点击区里：这一下只归按钮，不触发底下的桌宠动作。
+                  event.preventDefault();
+                  event.stopPropagation();
+                  runAction(kind, action);
+                }}
+                onKeyDown={(event) => event.stopPropagation()}
+                onPointerDown={(event) => event.stopPropagation()}
+              >
+                {action.label}
+              </button>
+            ) : null}
+          </span>
+        ) : null}
+      </div>
+    );
+  };
 
   return (
     <>

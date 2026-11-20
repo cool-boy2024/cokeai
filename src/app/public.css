@@ -6497,6 +6497,50 @@ body {
   content: "";
 }
 
+/* 带按钮的气泡整块接指针：它浮在卡片上方，点空白处不该穿透到下面的卡片去。 */
+.shop-mascot-bubble.has-act {
+  pointer-events: auto;
+}
+
+/* 气泡里的动作按钮：气泡本体不吃指针（pointer-events: none），只有按钮接点击，
+   所以按钮压不到下面的卡片，也不会把气泡变成一个巨大的可点区域。 */
+.shop-mascot-bubble-act {
+  display: block;
+  width: 100%;
+  min-height: 30px;
+  margin: 7px 0 0;
+  padding: 5px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--paper);
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.3;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  cursor: pointer;
+  pointer-events: auto;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color 140ms ease, border-color 140ms ease, transform 140ms ease;
+}
+
+.shop-mascot-bubble-act:hover {
+  border-color: rgba(255, 255, 255, 0.42);
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.shop-mascot-bubble-act:active {
+  transform: scale(0.97);
+  background: rgba(255, 255, 255, 0.26);
+}
+
+.shop-mascot-bubble-act:focus-visible {
+  outline: 2px solid var(--paper);
+  outline-offset: 2px;
+}
+
 @keyframes shop-mascot-bubble-in {
   from {
     opacity: 0;
@@ -6546,6 +6590,15 @@ body {
     padding: 7px 11px;
     border-radius: 15px;
     font-size: 11.5px;
+  }
+
+  /* 小屏上的按钮按 40px 触达区做，手指点得中。 */
+  .shop-mascot-bubble-act {
+    min-height: 40px;
+    margin-top: 6px;
+    padding: 8px 10px;
+    border-radius: 9px;
+    font-size: 12px;
   }
 }
 
