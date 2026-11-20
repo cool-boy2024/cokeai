@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { SUPPLIER_PLACEHOLDER, sanitizeSupplierCopy } from "@/lib/shop/sanitize";
 import { ShopMascotIdlePose } from "./ShopMascotArt";
 import type { ShopMascotEyes, ShopMascotKind, ShopMascotState } from "./ShopMascotArt";
@@ -26,17 +26,30 @@ const BLINK_MAX_MS = 6000;
 const SACCADE_MIN_MS = 1500;
 const SACCADE_MAX_MS = 4000;
 const DOZE_MS = 120_000;
-const INTERACTION_MIN_MS = 70_000;
-const INTERACTION_MAX_MS = 110_000;
-const INTERACTION_SESSION_MAX = 6;
+/** 第一场互动 12-20s 内必来一次，之后 25-45s 冷却，每会话最多 10 场。 */
+const FIRST_INTERACTION_MIN_MS = 12_000;
+const FIRST_INTERACTION_MAX_MS = 20_000;
+const INTERACTION_MIN_MS = 25_000;
+const INTERACTION_MAX_MS = 45_000;
+const INTERACTION_RETRY_MS = 3000;
+const INTERACTION_SESSION_MAX = 10;
+/** 详情页入场：三只间隔 150ms 从屏幕左缘依次跳进来。 */
+const ENTRY_STAGGER_MS = 150;
 const SPARK_BUDGET = 2;
+const CARD_GAP = 12;
+const SLOT_GAP = 10;
 const INTERACTION_KEY = "cokeai:mascot-interactions";
 const SPARK_KEY = "cokeai:mascot-sparkles";
+const POS_KEY = "cokeai:mascot-pos";
+const PATH_KEY = "cokeai:mascot-path";
 const PAID_KEY = "cokeai:shop-paid-at";
 const PAID_WINDOW_MS = 30_000;
 const CARD_SELECTOR = "a.shop-row, a.shop-product-card";
+/** 后台页不挂桌宠，公开页全程跟着客户走。 */
+const HIDDEN_PREFIXES = ["/admin", "/dashboard"];
+/** 商品详情页：/shop/<slug>，购买须知 / 结账 / 订单这些固定段不算。 */
+const DETAIL_PATH = /^\/shop\/(?!terms(?:\/|$)|checkout(?:\/|$)|orders(?:\/|$))[^/]+\/?$/;
 
-/** 气泡离视口左右边缘至少留这么多，量出来再位移。 */
 type CardInfo = {
   name: string;
   price: string | null;
@@ -44,13 +57,21 @@ type CardInfo = {
   sales: string | null;
 };
 
-type Pose = { state: ShopMascotState; eyes: ShopMascotEyes };
+/** 闲置剧目用的状态；P1 已把它们并进 ShopMascotState，这里留个别名让消费端读得懂。 */
+type ActState = ShopMascotState | "type" | "build" | "music" | "juggle";
+
+type Pose = { state: ActState; eyes: ShopMascotEyes };
+
+/** 只跨页记坐标；姿态（尤其睡眠）不落库，回到页面一律从 idle 重新开始。 */
+type StoredSpot = { x: number; y: number };
 
 const IDLE_POSE: Pose = { state: "idle", eyes: "open" };
 
 type Runtime = {
   x: number;
   y: number;
+  /** 认领落点相对卡片顶边的偏移，滚动时靠它只改 y，不乱换边。 */
+  offsetY: number;
   target: HTMLElement | null;
   hovering: boolean;
   patrolTimer: number;
@@ -81,10 +102,45 @@ const PHOTO_LINES: Record<Kind, string> = {
   grok: "咔嚓！",
 };
 
+const FIGHT_LINES: Record<Kind, string[]> = {
+  claude: ["我的用户更多！", "这单我先接的"],
+  gpt: ["就你这销量？", "云宝比你快一步"],
+  grok: ["别吵，看数据", "我的延迟更低"],
+};
+
+const MAKE_UP_LINES: Record<Kind, string[]> = {
+  claude: ["不吵了，一起发财", "握手，分你一半"],
+  gpt: ["行吧，你也不差", "和好～"],
+  grok: ["数据都不错，收工", "和气生财"],
+};
+
+/** 详情页没有本家品牌时的收尾话术，只让巡游员开口。 */
+const NO_BRAND_LINES = ["没我们仨的 logo，我押它好卖", "不是我的柜台，但值得看看"];
+
+const DETAIL_LINES: Record<Kind, string> = {
+  claude: "这件我代言的",
+  gpt: "我家的货，放心拍",
+  grok: "这件我盯着",
+};
+
 const LABELS: Record<Kind, string> = {
   claude: "星芒侠：带你看 Claude 商品",
   gpt: "云宝：带你看 ChatGPT 商品",
   grok: "小黑球：带你看 Grok 商品",
+};
+
+/** 闲置剧目：每只错开顺序和起始相位，画面里三只不会同时做同一件事。 */
+const ACT_PLAN: Record<Kind, readonly ActState[]> = {
+  claude: ["build", "type", "music"],
+  gpt: ["music", "type", "build"],
+  grok: ["juggle", "music", "type"],
+};
+
+const ACT_EYES: Partial<Record<ActState, ShopMascotEyes>> = {
+  type: "open",
+  build: "open",
+  music: "happy",
+  juggle: "happy",
 };
 
 /**
@@ -139,17 +195,25 @@ function pick<T>(list: readonly T[]): T {
   return list[Math.floor(Math.random() * list.length)];
 }
 
-/** 商品卡没有 data-category：按标题 + 品牌关键词归类，命中几个算几个。 */
-function cardKinds(card: HTMLElement): Kind[] {
-  const name = card.querySelector("h3")?.textContent || "";
-  const brand =
-    card.querySelector(".shop-row-kicker span, .shop-product-brand")?.textContent || "";
-  const haystack = `${name} ${brand}`.toLowerCase();
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max);
+}
+
+function kindsFromText(text: string): Kind[] {
+  const haystack = text.toLowerCase();
   const kinds: Kind[] = [];
   if (/claude|anthropic/.test(haystack)) kinds.push("claude");
   if (/gpt|openai|chatgpt|codex/.test(haystack)) kinds.push("gpt");
   if (/grok|\bxai\b|x\.ai/.test(haystack)) kinds.push("grok");
   return kinds;
+}
+
+/** 商品卡没有 data-category：按标题 + 品牌关键词归类，命中几个算几个。 */
+function cardKinds(card: HTMLElement): Kind[] {
+  const name = card.querySelector("h3")?.textContent || "";
+  const brand =
+    card.querySelector(".shop-row-kicker span, .shop-product-brand")?.textContent || "";
+  return kindsFromText(`${name} ${brand}`);
 }
 
 function readCard(card: HTMLElement): CardInfo {
@@ -163,10 +227,77 @@ function readCard(card: HTMLElement): CardInfo {
   return { name, price, warranty, sales };
 }
 
+/** 详情页的标题 / 质保 / 品牌；标题也走供应商文案清洗。 */
+function readDetail(): { name: string; warranty: string | null; kinds: Kind[] } {
+  const meta = document.querySelector<HTMLElement>(".shop-detail-meta");
+  const rawName =
+    meta?.querySelector("h1")?.textContent?.trim() ||
+    document.querySelector("h1")?.textContent?.trim() ||
+    "";
+  const name = sanitizeSupplierCopy(rawName) || "这件商品";
+  const brand = meta?.querySelector(".shop-product-brand")?.textContent || "";
+  const subtitle = meta?.querySelector("p")?.textContent || "";
+  const badges = document.querySelector<HTMLElement>(".shop-detail-badges")?.textContent || "";
+  const warranty = badges.match(/质保\s*[0-9]+\s*天|首登质保|无质保/)?.[0] ?? null;
+  return { name, warranty, kinds: kindsFromText(`${brand} ${rawName} ${subtitle}`) };
+}
+
+function isDetailPath(pathname: string): boolean {
+  return DETAIL_PATH.test(pathname);
+}
+
+function hiddenOnPath(pathname: string): boolean {
+  return HIDDEN_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  );
+}
+
+function readStoredSpots(): Record<Kind, StoredSpot> | null {
+  try {
+    const raw = window.sessionStorage.getItem(POS_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<Record<Kind, StoredSpot>>;
+    const next = {} as Record<Kind, StoredSpot>;
+    for (const kind of KINDS) {
+      const spot = parsed[kind];
+      if (!spot || !Number.isFinite(spot.x) || !Number.isFinite(spot.y)) return null;
+      next[kind] = spot;
+    }
+    return next;
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredSpots(spots: Record<Kind, StoredSpot>): void {
+  try {
+    window.sessionStorage.setItem(POS_KEY, JSON.stringify(spots));
+  } catch {
+    // 隐私模式写不进去，位置只留在内存里。
+  }
+}
+
+function readStoredPath(): string {
+  try {
+    return window.sessionStorage.getItem(PATH_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function writeStoredPath(pathname: string): void {
+  try {
+    window.sessionStorage.setItem(PATH_KEY, pathname);
+  } catch {
+    // 同上，导航来源记不住就按普通入场处理。
+  }
+}
+
 function newRuntime(): Runtime {
   return {
     x: 0,
     y: 0,
+    offsetY: 0,
     target: null,
     hovering: false,
     patrolTimer: 0,
@@ -243,16 +374,23 @@ export function ShopMascots() {
     }, delay);
   }, []);
 
+  // 只跟 pathname：useSearchParams 在根 layout 里会逼静态页整页转客户端渲染，
+  // 分类 / 搜索换页由下面的卡片同步兜住。
   const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const navKey = `${pathname}?${searchParams.toString()}`;
+  const hidden = hiddenOnPath(pathname);
 
   useEffect(() => {
+    if (hidden) return;
     const runtime = runtimeRef.current;
     const nodes = nodesRef.current;
     const reducedQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
     const mobileQuery = window.matchMedia("(max-width: 767px)");
     const claims = new Map<Element, Kind>();
+    const lastPose: Record<Kind, Pose> = {
+      claude: IDLE_POSE,
+      gpt: IDLE_POSE,
+      grok: IDLE_POSE,
+    };
     let disposed = false;
     let reconcileTimer = 0;
     let resizeTimer = 0;
@@ -261,10 +399,14 @@ export function ShopMascots() {
     let idleTimer = 0;
     let interactionTimer = 0;
     let interacting = false;
+    let interactionGen = 0;
     let sleeping = false;
     let sparkUsed = 0;
     let lastActivity = 0;
     let interactionCount = 0;
+    let enteringDetail = false;
+    // 入场跳进来这几秒先不安排互动，别让「碰头问好」截掉详情页的介绍气泡。
+    let interactionBlockedUntil = 0;
 
     try {
       interactionCount = Number(window.sessionStorage.getItem(INTERACTION_KEY) ?? "0") || 0;
@@ -310,10 +452,25 @@ export function ShopMascots() {
     };
     readBottomInset();
 
-    /** 角色下沿的可用最低点：留出边距和安全区。 */
+    // 移动端商品页有吸底购买栏，那是客户最该点到的按钮，角色底边要让开。
+    let buyBar = 0;
+    const readBuyBar = () => {
+      const el = document.querySelector<HTMLElement>(".shop-mobile-buy");
+      if (!el || el.classList.contains("is-hidden")) {
+        buyBar = 0;
+        return;
+      }
+      const rect = el.getBoundingClientRect();
+      const { vh } = viewport();
+      buyBar = rect.height > 2 && rect.bottom > vh - 4 ? rect.height : 0;
+    };
+    readBuyBar();
+
+    /** 角色下沿的可用最低点：留出边距、安全区和移动端购买栏。 */
     const bottomBaseline = () => {
       const { vh } = viewport();
-      return Math.max(EDGE_GAP, vh - EDGE_GAP - mascotSize() - bottomInset);
+      const guard = Math.max(bottomInset, buyBar);
+      return Math.max(EDGE_GAP, vh - EDGE_GAP - mascotSize() - guard);
     };
 
     const supportBox = () => {
@@ -353,9 +510,29 @@ export function ShopMascots() {
       };
     };
 
+    /**
+     * 落点最终闸门：常驻守位 / 认领侧位 / 待机位出点统一夹进 [8, vw-size-8]，
+     * 球体右缘永远留在视口内，不再依赖各选点函数各自的边界判断。
+     * 夹取后若压到客服按钮，避让优先级更高，抬回按钮上方。
+     * （详情页入场 snap 到左缘外是有意为之，那条路径不走这里。）
+     */
+    const pinInsideViewport = (spot: MascotPoint): MascotPoint => {
+      const size = mascotSize();
+      const { vw } = viewport();
+      const x = clamp(spot.x, 8, Math.max(8, vw - size - 8));
+      const box = supportBox();
+      if (box && hitsSupport(x, spot.y, size, box)) {
+        const { minY, maxY } = limits();
+        return { x, y: clamp(box.top - size - 10, minY, maxY) };
+      }
+      return { x, y: spot.y };
+    };
+
+    const onDetail = () => isDetailPath(pathname);
+
     // 三只角色的待机位：星芒侠占左下、云宝居中、小黑球占右下。
     // 谁都不会压在右下角客服按钮上，也都会让开刘海屏底部的 Home 指示条。
-    const idleSpot = (kind: Kind) => {
+    const cornerSpot = (kind: Kind) => {
       const { vw } = viewport();
       const size = mascotSize();
       const { maxX } = limits();
@@ -363,51 +540,69 @@ export function ShopMascots() {
       if (kind === "grok") x = maxX;
       else if (kind === "gpt") x = Math.round(vw / 2 - size / 2);
       x = Math.min(Math.max(x, EDGE_GAP), maxX);
-      let y = bottomBaseline();
-      const box = supportBox();
-      if (box && hitsSupport(x, y, size)) y = Math.max(EDGE_GAP, box.top - size - 10);
-      return { x, y };
+      // 待机位也统一过最终闸门（含客服按钮避让）。
+      return pinInsideViewport({ x, y: bottomBaseline() });
     };
 
-    const spotNearCard = (kind: Kind, rect: DOMRect) => {
+    const detailAnchor = () => {
+      const node =
+        document.querySelector<HTMLElement>(".shop-detail-main") ??
+        document.querySelector<HTMLElement>(".shop-detail");
+      return node?.getBoundingClientRect() ?? null;
+    };
+
+    // 详情页守位：优先蹲在商品卡左侧的栏间留白里（设计稿的「侧边探头看」），
+    // 三只竖着排开，卡里的标题、价格、下单面板全都不会被挡。
+    // 窄屏没有这段留白时，退回商品卡正下方的一排，仍然避开 CTA 与客服按钮。
+    const detailSpot = (kind: Kind): MascotPoint => {
       const size = mascotSize();
       const { minX, maxX, minY, maxY } = limits();
-      // 星芒侠站卡片左侧的栏间留白，云宝和小黑球站右侧留白。
-      const leftSpot = rect.left - size - 12;
-      const rightSpot = Math.min(rect.right + 12, maxX);
-      const leftOk = leftSpot >= EDGE_GAP - 4;
-      const rightOk = rect.right + 12 <= maxX + 8;
-      const wantLeft = kind === "claude";
-      let x = rightSpot;
-      if (wantLeft && leftOk) x = leftSpot;
-      else if (!wantLeft && rightOk) x = rightSpot;
-      else if (leftOk) x = leftSpot;
-      x = Math.min(Math.max(x, minX), maxX);
-      let y = rect.top + Math.min(72, Math.max(0, rect.height / 2 - size / 2));
-      y = Math.min(Math.max(y, minY), maxY);
-      for (const other of KINDS) {
-        if (other === kind) continue;
-        if (Math.hypot(x - runtime[other].x, y - runtime[other].y) < size + 12) {
-          y = Math.min(Math.max(y - size - 16, minY), maxY);
-        }
-      }
-      // 右下角的落点可能正好压住客服按钮，跟待机位一样往上让开。
+      const { vw } = viewport();
+      const order: Record<Kind, number> = { claude: 0, gpt: 1, grok: 2 };
+      const cover =
+        document.querySelector<HTMLElement>(".shop-detail-cover")?.getBoundingClientRect() ?? null;
+      const anchor = detailAnchor();
+      const leftEdge = cover?.left ?? anchor?.left ?? 0;
+      const rightEdge = cover?.right ?? anchor?.right ?? vw;
+      const gutter = leftEdge - size - CARD_GAP;
+      const top = cover ? clamp(cover.top + 6, minY, maxY) : minY;
+      const stackFits = cover ? top + 2 * (size + 10) <= maxY : false;
       const box = supportBox();
-      if (box && hitsSupport(x, y, size, box)) {
-        y = Math.min(Math.max(box.top - size - 10, minY), maxY);
+
+      if (stackFits && gutter >= minX - 2) {
+        const spot = {
+          x: clamp(gutter, minX, maxX),
+          y: clamp(top + order[kind] * (size + 10), minY, maxY),
+        };
+        if (!box || !hitsSupport(spot.x, spot.y, size, box)) return pinInsideViewport(spot);
       }
-      return { x, y };
+
+      const left = clamp(leftEdge + 4, minX, maxX);
+      const right = clamp(rightEdge - size - 4, left, maxX);
+      const x =
+        kind === "claude"
+          ? left
+          : kind === "grok"
+            ? right
+            : Math.round((left + right) / 2);
+      let y = maxY;
+      if (box && hitsSupport(x, y, size, box)) {
+        y = clamp(box.top - size - 10, minY, maxY);
+      }
+      return pinInsideViewport({ x, y: clamp(y, minY, maxY) });
     };
 
-    const heroCard = (kind: Kind): HTMLElement | null => {
-      const cards = Array.from(document.querySelectorAll<HTMLElement>(CARD_SELECTOR));
-      return cards.find((card) => cardKinds(card).includes(kind)) ?? null;
-    };
+    const homeSpot = (kind: Kind) => (onDetail() ? detailSpot(kind) : cornerSpot(kind));
 
     const moveTo = (
       kind: Kind,
       spot: MascotPoint,
-      options: { drift?: boolean; onLand?: (at: MascotPoint) => void; onDone?: (at: MascotPoint) => void } = {},
+      options: {
+        drift?: boolean;
+        hop?: boolean;
+        onLand?: (at: MascotPoint) => void;
+        onDone?: (at: MascotPoint) => void;
+      } = {},
     ) => {
       const traveler = travelers[kind];
       if (!traveler) return;
@@ -425,12 +620,13 @@ export function ShopMascots() {
     };
 
     const sendHome = (kind: Kind, animate: boolean) => {
-      const spot = idleSpot(kind);
+      const spot = homeSpot(kind);
       if (animate) moveTo(kind, spot);
       else snapTo(kind, spot);
     };
 
     const setPose = (kind: Kind, patch: Partial<Pose>) => {
+      lastPose[kind] = { ...lastPose[kind], ...patch };
       setPoses((prev) => {
         const current = prev[kind];
         const next = { ...current, ...patch };
@@ -440,7 +636,7 @@ export function ShopMascots() {
     };
 
     // 状态不硬切：表情 + 姿态整体换过去，hold 到了再回 idle，过渡交给造型层。
-    const poseFor = (kind: Kind, state: ShopMascotState, eyes: ShopMascotEyes, hold = 0) => {
+    const poseFor = (kind: Kind, state: ActState, eyes: ShopMascotEyes, hold = 0) => {
       window.clearTimeout(runtime[kind].poseTimer);
       setPose(kind, { state, eyes });
       if (hold > 0) {
@@ -470,10 +666,109 @@ export function ShopMascots() {
       showBubble(kind, pick(bubbleLines(readCard(card))));
     };
 
-    const jumpToCard = (kind: Kind, card: HTMLElement) => {
-      const rect = card.getBoundingClientRect();
-      const spot = spotNearCard(kind, rect);
+    const jumpToCard = (kind: Kind, card: HTMLElement, spot: MascotPoint) => {
       moveTo(kind, spot, { onLand: () => announceCard(kind, card) });
+    };
+
+    // 详情页入场后的介绍：只有本家品牌开口，品牌对不上就让巡游员说句俏皮话。
+    const detailIntro = (kind: Kind) => {
+      const info = readDetail();
+      if (info.kinds.includes(kind)) {
+        const head = `${DETAIL_LINES[kind]} · ${shortName(info.name, 12)}`;
+        showBubble(kind, info.warranty ? `${head} · ${info.warranty}` : head, 4800);
+        return;
+      }
+      if (info.kinds.length === 0 && kind === "grok") {
+        showBubble("grok", pick(NO_BRAND_LINES), 4600);
+      }
+    };
+
+    /**
+     * 卡片侧位候选：只在自己这张卡片的竖向范围内取点，左右两侧各给上/中/下三条 lane；
+     * 同一张卡挤三只时再往卡上方 / 下方各让一个位。任何候选都不会漂到邻卡的侧边，
+     * 这是上一版「小黑球站到别人卡旁」的根因。
+     */
+    const cardSlots = (kind: Kind, rect: DOMRect): MascotPoint[] => {
+      const size = mascotSize();
+      const { minX, maxX, minY, maxY } = limits();
+      const lane = (x: number, y: number): MascotPoint[] => {
+        if (x < minX - 2 || x > maxX + 2) return [];
+        return [{ x: clamp(x, minX, maxX), y: clamp(y, minY, maxY) }];
+      };
+      const top = clamp(rect.top + 8, minY, maxY);
+      const middle = clamp(rect.top + rect.height / 2 - size / 2, minY, maxY);
+      const bottom = clamp(rect.bottom - size - 8, minY, maxY);
+      const left = rect.left - size - CARD_GAP;
+      const right = rect.right + CARD_GAP;
+      const leftLanes = [
+        ...lane(left, top),
+        ...lane(left, middle),
+        ...lane(left, bottom),
+      ];
+      const rightLanes = [
+        ...lane(right, top),
+        ...lane(right, middle),
+        ...lane(right, bottom),
+      ];
+      // 星芒侠优先站左侧栏间留白，云宝和小黑球优先站右侧。
+      const sides = kind === "claude" ? [...leftLanes, ...rightLanes] : [...rightLanes, ...leftLanes];
+      const extra = [
+        ...lane(rect.left + 4, rect.top - size - 8),
+        ...lane(rect.left + 4, rect.bottom + 8),
+      ];
+      return [...sides, ...extra];
+    };
+
+    const spotNearCard = (
+      kind: Kind,
+      rect: DOMRect,
+      occupied: MascotPoint[],
+      blockers: DOMRect[],
+    ): MascotPoint => {
+      const size = mascotSize();
+      const box = supportBox();
+      const slots = cardSlots(kind, rect);
+      const taken = (slot: MascotPoint) =>
+        occupied.some((point) => Math.hypot(slot.x - point.x, slot.y - point.y) < size + SLOT_GAP) ||
+        (box ? hitsSupport(slot.x, slot.y, size, box) : false) ||
+        // 双列卡片时，侧位很可能正好压在隔壁那张卡上：压邻卡的候选一律不要。
+        blockers.some(
+          (other) =>
+            slot.x + size > other.left - 4 &&
+            slot.x < other.right + 4 &&
+            slot.y + size > other.top - 4 &&
+            slot.y < other.bottom + 4,
+        );
+      const free = slots.find((slot) => !taken(slot));
+      if (free) return pinInsideViewport(free);
+      // 全被占住时宁可贴着自己这张卡，也不挪到邻卡旁边去站。
+      let best = slots[0];
+      let bestCost = Number.POSITIVE_INFINITY;
+      for (const slot of slots) {
+        let cost =
+          Math.hypot(slot.x - runtime[kind].x, slot.y - runtime[kind].y);
+        for (const point of occupied) {
+          cost += Math.max(
+            0,
+            size + SLOT_GAP - Math.hypot(slot.x - point.x, slot.y - point.y),
+          ) * 2;
+        }
+        for (const other of blockers) {
+          if (
+            slot.x + size > other.left &&
+            slot.x < other.right &&
+            slot.y + size > other.top &&
+            slot.y < other.bottom
+          ) {
+            cost += 400;
+          }
+        }
+        if (cost < bestCost) {
+          bestCost = cost;
+          best = slot;
+        }
+      }
+      return pinInsideViewport(best);
     };
 
     const randomSpot = (kind: Kind) => {
@@ -507,6 +802,7 @@ export function ShopMascots() {
     const canAct = (kind: Kind) =>
       !disposed &&
       !isStatic() &&
+      !enteringDetail &&
       !sleeping &&
       !interacting &&
       !runtime[kind].hovering &&
@@ -515,19 +811,21 @@ export function ShopMascots() {
     const schedulePatrol = (kind: Kind) => {
       const rt = runtime[kind];
       window.clearTimeout(rt.patrolTimer);
-      // 9-15s 一次抛物线巡逻跳；已认领商品时守在商品旁，不抢镜。
+      // 9-15s 一次抛物线巡逻跳；认领了商品就守在商品旁，详情页原地蹲守，都不抢镜。
       rt.patrolTimer = window.setTimeout(
         () => {
-          if (canAct(kind) && !rt.target) moveTo(kind, randomSpot(kind));
+          if (canAct(kind) && !rt.target && !onDetail()) moveTo(kind, randomSpot(kind));
           schedulePatrol(kind);
         },
         PATROL_MIN_MS + Math.random() * (PATROL_MAX_MS - PATROL_MIN_MS),
       );
     };
 
-    // 闲置剧目：思考泡 / 云宝敲字 / 星芒侠炫技（每会话最多两次）。
+    // 闲置剧目：搭货 / 敲字 / 哼歌 / 抛球轮换，三只的相位和顺序都错开。
+    const actIndex: Record<Kind, number> = { claude: 0, gpt: 1, grok: 2 };
+
     const performAct = (kind: Kind) => {
-      if (kind === "claude" && sparkUsed < SPARK_BUDGET) {
+      if (kind === "claude" && sparkUsed < SPARK_BUDGET && Math.random() < 0.3) {
         sparkUsed += 1;
         try {
           window.sessionStorage.setItem(SPARK_KEY, String(sparkUsed));
@@ -547,20 +845,13 @@ export function ShopMascots() {
         }
         return;
       }
-      if (kind === "gpt") {
-        const node = nodes[kind];
-        poseFor(kind, "think", "open", 1900);
-        if (node) {
-          node.classList.add("is-typing");
-          window.clearTimeout(runtime[kind].classTimer);
-          runtime[kind].classTimer = window.setTimeout(
-            () => node.classList.remove("is-typing"),
-            2000,
-          );
-        }
-        return;
+      const plan = ACT_PLAN[kind];
+      const state = plan[actIndex[kind] % plan.length];
+      actIndex[kind] += 1;
+      poseFor(kind, state, ACT_EYES[state] ?? "open", 2200 + Math.random() * 1100);
+      if (state === "juggle") {
+        spawnSparks(fxRef.current, runtime[kind].x + mascotSize() / 2, runtime[kind].y + 8, 2);
       }
-      poseFor(kind, "think", "open", 2400 + Math.random() * 600);
     };
 
     const scheduleAct = (kind: Kind) => {
@@ -638,47 +929,154 @@ export function ShopMascots() {
     const canInteract = () =>
       !disposed &&
       !interacting &&
+      !enteringDetail &&
       !sleeping &&
+      performance.now() >= interactionBlockedUntil &&
       interactionCount < INTERACTION_SESSION_MAX &&
       document.visibilityState === "visible" &&
       !editing() &&
       KINDS.every(onScreen);
 
-    const endInteraction = () => {
-      interacting = false;
+    const alive = (gen: number) => !disposed && gen === interactionGen;
+
+    const resetPoses = () => {
+      for (const kind of KINDS) poseFor(kind, IDLE_POSE.state, IDLE_POSE.eyes);
+    };
+
+    const bumpInteractionCount = () => {
       interactionCount += 1;
       try {
         window.sessionStorage.setItem(INTERACTION_KEY, String(interactionCount));
       } catch {
         // 隐私模式下 sessionStorage 不可写，计数留在内存里就够了。
       }
+    };
+
+    const endInteraction = (gen: number) => {
+      if (!alive(gen)) return;
+      interactionGen += 1;
+      interacting = false;
+      bumpInteractionCount();
+      resetPoses();
       scheduleInteraction();
       // 互动期间发生的 resize / 视口变化压在这里补算，别等下一次滚动。
       scheduleReconcile();
     };
 
+    // 点击任意一只立即结束互动：让出编排，三只 hop 回各自的位置。
+    const skipInteraction = () => {
+      if (!interacting) return;
+      interactionGen += 1;
+      interacting = false;
+      bumpInteractionCount();
+      resetPoses();
+      for (const kind of KINDS) {
+        hideBubble(kind, 0);
+        sendHome(kind, true);
+      }
+      scheduleInteraction();
+      scheduleReconcile();
+    };
+
     // 碰头问好：一只 hop 过去，双双 squash，各冒一句话，再 hop 回原位。
-    const greet = () => {
+    const greet = (gen: number) => {
       const [a, b] = otherTwo();
       const size = mascotSize();
       const home = { x: runtime[a].x, y: runtime[a].y };
       const spot = clampSpot(runtime[b].x - size - 8, runtime[b].y, size);
       moveTo(a, spot, {
+        hop: true,
         onLand: () => {
+          if (!alive(gen)) return;
           squash(a);
           squash(b);
           showBubble(a, pick(GREET_LINES[a]), 2200);
           showBubble(b, pick(GREET_LINES[b]), 2200);
           window.setTimeout(() => {
-            if (disposed) return;
-            moveTo(a, home, { onDone: endInteraction });
+            if (!alive(gen)) return;
+            moveTo(a, home, { onDone: () => endInteraction(gen) });
           }, 1700);
         },
       });
     };
 
+    // 打架：互推两轮 → 弹开 → 再撞一次 → 和好碰头撒星。全程 hop，不瞬移。
+    const fight = (gen: number) => {
+      const [a, b] = otherTwo();
+      const size = mascotSize();
+      const homeA = { x: runtime[a].x, y: runtime[a].y };
+      const homeB = { x: runtime[b].x, y: runtime[b].y };
+      const baseY = Math.min(homeA.y, homeB.y);
+      const midX = (homeA.x + homeB.x) / 2;
+      const center = clampSpot(midX - size / 2, baseY, size);
+      const gap = size + 4;
+      const contactA = clampSpot(center.x - gap, center.y, size);
+      const contactB = clampSpot(center.x + gap, center.y, size);
+      const apartA = clampSpot(center.x - gap * 2.6, center.y, size);
+      const apartB = clampSpot(center.x + gap * 2.6, center.y, size);
+      const meetA = clampSpot(center.x - gap * 0.9, center.y, size);
+      const meetB = clampSpot(center.x + gap * 0.9, center.y, size);
+
+      const rush = (left: MascotPoint, right: MascotPoint, done: () => void) => {
+        let landed = 0;
+        const onLand = () => {
+          landed += 1;
+          if (landed < 2 || !alive(gen)) return;
+          done();
+        };
+        moveTo(a, left, { hop: true, onLand });
+        moveTo(b, right, { hop: true, onLand });
+      };
+
+      const clash = (next: () => void) => {
+        rush(contactA, contactB, () => {
+          squash(a);
+          squash(b);
+          spawnSparks(fxRef.current, center.x + size / 2, center.y + size * 0.55, 2);
+          showBubble(a, pick(FIGHT_LINES[a]), 2000);
+          showBubble(b, pick(FIGHT_LINES[b]), 2000);
+          window.setTimeout(() => {
+            if (!alive(gen)) return;
+            next();
+          }, 950);
+        });
+      };
+
+      // 第一轮：冲过去撞一下。
+      clash(() => {
+        // 双方弹开，喘口气。
+        rush(apartA, apartB, () => {
+          if (!alive(gen)) return;
+          window.setTimeout(() => {
+            if (!alive(gen)) return;
+            // 第二轮：再撞一次，各自再回一句。
+            clash(() => {
+              // 和好：碰头 squash + 星星。
+              rush(meetA, meetB, () => {
+                squash(a);
+                squash(b);
+                spawnSparks(fxRef.current, center.x + size / 2, center.y + 6, 3);
+                showBubble(a, pick(MAKE_UP_LINES[a]), 2200);
+                showBubble(b, pick(MAKE_UP_LINES[b]), 2200);
+                window.setTimeout(() => {
+                  if (!alive(gen)) return;
+                  let back = 0;
+                  const done = () => {
+                    back += 1;
+                    if (back === 2) endInteraction(gen);
+                  };
+                  moveTo(a, homeA, { onDone: done });
+                  moveTo(b, homeB, { onDone: done });
+                }, 1400);
+              });
+            });
+          }, 760);
+        });
+      });
+    };
+
     // Grok 巡场：小黑球绕两只一圈，两条视线跟着它转，落地撒两颗星。
-    const grokPatrol = () => {
+    const grokPatrol = (gen: number) => {
       const center = {
         x: (runtime.claude.x + runtime.gpt.x) / 2,
         y: (runtime.claude.y + runtime.gpt.y) / 2,
@@ -707,18 +1105,19 @@ export function ShopMascots() {
       };
 
       const step = (index: number) => {
-        if (disposed) return;
+        if (!alive(gen)) return;
         const point = points[index];
         watch(point.x + size / 2);
         moveTo("grok", point, {
           drift: true,
           onLand: () => {
+            if (!alive(gen)) return;
             if (index === 1 || index === 3) {
               spawnSparks(fxRef.current, point.x + size / 2, point.y + 10, 1);
             }
             if (index === points.length - 1) {
               watch(null);
-              moveTo("grok", home, { onDone: endInteraction });
+              moveTo("grok", home, { onDone: () => endInteraction(gen) });
               return;
             }
             step(index + 1);
@@ -731,25 +1130,27 @@ export function ShopMascots() {
     };
 
     // 戳觉：一只打盹，另一只 hop 过去戳一下，惊醒跳起再 「!」。
-    const poke = () => {
+    const poke = (gen: number) => {
       const [sleeper, poker] = otherTwo();
       const size = mascotSize();
       poseFor(sleeper, "sleep", "closed");
       showBubble(sleeper, "Zzz…", 1800);
       window.setTimeout(() => {
-        if (disposed) return;
+        if (!alive(gen)) return;
         const home = { x: runtime[poker].x, y: runtime[poker].y };
         const spot = clampSpot(runtime[sleeper].x + size + 6, runtime[sleeper].y, size);
         moveTo(poker, spot, {
+          hop: true,
           onLand: () => {
+            if (!alive(gen)) return;
             poseFor(sleeper, "alert", "wide");
             squash(sleeper);
             showBubble(sleeper, "！", 1400);
             showBubble(poker, "嘿，别睡～", 1800);
             window.setTimeout(() => {
-              if (disposed) return;
+              if (!alive(gen)) return;
               poseFor(sleeper, "idle", "open");
-              moveTo(poker, home, { onDone: endInteraction });
+              moveTo(poker, home, { onDone: () => endInteraction(gen) });
             }, 1500);
           },
         });
@@ -757,7 +1158,7 @@ export function ShopMascots() {
     };
 
     // 合影庆祝：三只同屏各撒星星（下单成功后 30s 内优先）。
-    const photo = () => {
+    const photo = (gen: number) => {
       const size = mascotSize();
       for (const kind of KINDS) {
         poseFor(kind, "cheer", "happy");
@@ -766,44 +1167,60 @@ export function ShopMascots() {
         spawnSparks(fxRef.current, runtime[kind].x + size / 2, runtime[kind].y + 6, 2);
       }
       window.setTimeout(() => {
-        if (disposed) return;
-        for (const kind of KINDS) poseFor(kind, "idle", "open");
-        endInteraction();
+        if (!alive(gen)) return;
+        endInteraction(gen);
       }, 2600);
     };
 
     const runInteraction = () => {
+      interactionGen += 1;
+      const gen = interactionGen;
+      interacting = true;
       if (isStatic()) {
         // reduced-motion / 移动端：只留同时冒出的气泡对，不做位移。
         const [a, b] = otherTwo();
         showBubble(a, pick(GREET_LINES[a]), 2200);
         showBubble(b, pick(GREET_LINES[b]), 2200);
-        endInteraction();
+        endInteraction(gen);
         return;
       }
-      interacting = true;
-      // 下单成功后 30s 内优先拍合影，其余时间随机碰头 / 巡场 / 戳觉。
+      // 每会话第一场固定「碰头问好」，让客户先看见三只会打招呼。
+      if (interactionCount === 0) {
+        greet(gen);
+        return;
+      }
+      // 下单成功后 30s 内优先拍合影。
+      if (Date.now() - paidTimestamp() < PAID_WINDOW_MS && Math.random() < 0.7) {
+        photo(gen);
+        return;
+      }
       const roll = Math.random();
-      if (Date.now() - paidTimestamp() < PAID_WINDOW_MS) photo();
-      else if (roll < 0.4) greet();
-      else if (roll < 0.72) grokPatrol();
-      else poke();
+      if (roll < 0.3) fight(gen);
+      else if (roll < 0.52) greet(gen);
+      else if (roll < 0.76) grokPatrol(gen);
+      else poke(gen);
     };
 
-    const scheduleInteraction = (
-      delay = INTERACTION_MIN_MS + Math.random() * (INTERACTION_MAX_MS - INTERACTION_MIN_MS),
-    ) => {
+    const scheduleInteraction = (delay?: number) => {
       window.clearTimeout(interactionTimer);
+      if (interactionCount >= INTERACTION_SESSION_MAX) return;
+      const wait =
+        delay ??
+        (interactionCount === 0
+          ? FIRST_INTERACTION_MIN_MS +
+            Math.random() * (FIRST_INTERACTION_MAX_MS - FIRST_INTERACTION_MIN_MS)
+          : INTERACTION_MIN_MS + Math.random() * (INTERACTION_MAX_MS - INTERACTION_MIN_MS));
       interactionTimer = window.setTimeout(
         () => {
           if (disposed) return;
           if (!canInteract()) {
-            scheduleInteraction();
+            // 客户在打字 / 页面在后台：不消耗场次，过几秒再试。
+            scheduleInteraction(INTERACTION_RETRY_MS);
             return;
           }
           runInteraction();
         },
-        delay,
+        wait,
       );
     };
 
@@ -852,30 +1269,109 @@ export function ShopMascots() {
       }, delay);
     };
 
-    const cards = Array.from(document.querySelectorAll<HTMLElement>(CARD_SELECTOR));
     const visibility = new Map<Element, number>();
+    const observed = new Set<Element>();
+    let observeRetries = 0;
+
+    /**
+     * 卡片集合是活的：换页 / 换分类 / 搜索后 React 会换掉整批 <a>，
+     * 老元素继续被观察就会让新卡永远认领不到，所以每次 reconcile 先对齐一遍。
+     */
+    const syncCards = () => {
+      const live = Array.from(document.querySelectorAll<HTMLElement>(CARD_SELECTOR));
+      const liveSet = new Set<Element>(live);
+      for (const card of live) {
+        if (observed.has(card)) continue;
+        observer?.observe(card);
+        observed.add(card);
+      }
+      for (const card of observed) {
+        if (liveSet.has(card)) continue;
+        observer?.unobserve(card);
+        observed.delete(card);
+        visibility.delete(card);
+        claims.delete(card);
+      }
+    };
+
+    // 详情页守位：入场结束后只做轻微归位，不抢镜。
+    const holdDetail = () => {
+      for (const kind of KINDS) {
+        if (travelers[kind]?.busy || runtime[kind].hovering) continue;
+        const spot = detailSpot(kind);
+        if (Math.abs(spot.x - runtime[kind].x) > 28 || Math.abs(spot.y - runtime[kind].y) > 28) {
+          moveTo(kind, spot);
+        }
+      }
+    };
 
     const reconcile = () => {
-      if (disposed || isStatic() || interacting) return;
+      if (disposed || isStatic() || interacting || enteringDetail) return;
+      if (onDetail()) {
+        holdDetail();
+        return;
+      }
+      readBuyBar();
+      syncCards();
+      // 刚换上来的一批卡片还没上报可见比例时先别急着让角色回家，
+      // 等一两拍再认领；重试有上限，卡片全在折叠线以下时不会空转。
+      const anyVisible = Array.from(visibility.values()).some((ratio) => ratio > 0);
+      if (!anyVisible && observed.size > 0 && observeRetries < 2) {
+        observeRetries += 1;
+        scheduleReconcile(260);
+        return;
+      }
+      observeRetries = 0;
       // 布局各量一次再排序，比较器里不反复读 getBoundingClientRect。
       const ordered = Array.from(visibility.entries())
         .filter(([card, ratio]) => ratio > 0 && card.isConnected)
         .map(([card]) => {
           const el = card as HTMLElement;
-          return { el, top: el.getBoundingClientRect().top };
+          return { el, rect: el.getBoundingClientRect() };
         })
-        .sort((a, b) => a.top - b.top)
-        .map((entry) => entry.el);
+        .sort((a, b) => a.rect.top - b.rect.top);
+
+      const assignment = new Map<Kind, { el: HTMLElement; rect: DOMRect } | null>();
+      for (const kind of KINDS) {
+        const next =
+          ordered.find((card) => {
+            const owner = claims.get(card.el);
+            return cardKinds(card.el).includes(kind) && (!owner || owner === kind);
+          }) ?? null;
+        assignment.set(kind, next);
+      }
+
+      // 落点统一规划：按 KINDS 顺序给每只挑一个互不重叠的侧位，
+      // 后面的那只避开前面已经定下的点，也不会把别人挤到邻卡去。
+      const planned = new Map<Kind, MascotPoint | null>();
+      const taken: MascotPoint[] = [];
+      for (const kind of KINDS) {
+        const card = assignment.get(kind) ?? null;
+        if (!card) {
+          planned.set(kind, null);
+          continue;
+        }
+        const occupied = taken.concat(
+          KINDS.filter((other) => other !== kind).map((other) => ({
+            x: runtime[other].x,
+            y: runtime[other].y,
+          })),
+        );
+        const blockers = ordered
+          .filter((entry) => entry.el !== card.el)
+          .map((entry) => entry.rect);
+        const spot = spotNearCard(kind, card.rect, occupied, blockers);
+        runtime[kind].offsetY = spot.y - card.rect.top;
+        taken.push(spot);
+        planned.set(kind, spot);
+      }
 
       for (const kind of KINDS) {
         const rt = runtime[kind];
-        const next =
-          ordered.find((card) => {
-            const owner = claims.get(card);
-            return cardKinds(card).includes(kind) && (!owner || owner === kind);
-          }) ?? null;
-
-        if (!next) {
+        const card = assignment.get(kind) ?? null;
+        const next = card?.el ?? null;
+        const spot = planned.get(kind) ?? null;
+        if (!next || !spot) {
           if (rt.target) {
             claims.delete(rt.target);
             rt.target = null;
@@ -883,12 +1379,22 @@ export function ShopMascots() {
           }
           continue;
         }
-        if (rt.target === next) continue;
+        if (rt.target === next) {
+          // 同一张卡，但落点被新来的那只占了：跟着挪一格，不换个卡站。
+          if (
+            !rt.hovering &&
+            !travelers[kind]?.busy &&
+            (Math.abs(spot.x - rt.x) > 12 || Math.abs(spot.y - rt.y) > 12)
+          ) {
+            moveTo(kind, spot);
+          }
+          continue;
+        }
         if (rt.hovering) continue;
         if (rt.target) claims.delete(rt.target);
         claims.set(next, kind);
         rt.target = next;
-        jumpToCard(kind, next);
+        jumpToCard(kind, next, spot);
       }
     };
 
@@ -910,24 +1416,20 @@ export function ShopMascots() {
             { threshold: [0, 0.2, 0.6, 1], rootMargin: "-88px 0px -18% 0px" },
           );
 
-    const observeCards = () => {
-      observer?.disconnect();
-      visibility.clear();
-      for (const card of cards) observer?.observe(card);
-    };
-
     const followTarget = () => {
       if (scrollFrame) return;
       scrollFrame = window.requestAnimationFrame(() => {
         scrollFrame = 0;
-        if (disposed || isStatic() || interacting) return;
+        if (disposed || isStatic() || interacting || enteringDetail || onDetail()) return;
+        const { minY, maxY } = limits();
         for (const kind of KINDS) {
           const rt = runtime[kind];
           if (!rt.target || rt.hovering || travelers[kind]?.busy) continue;
-          const spot = spotNearCard(kind, rt.target.getBoundingClientRect());
-          if (Math.abs(spot.x - rt.x) > 24 || Math.abs(spot.y - rt.y) > 24) {
-            moveTo(kind, spot);
-          }
+          // 竖向滚动只改 y：沿着认领时记下的卡片内偏移走，不重新选边，
+          // 既不会滑到邻卡，也省掉每帧的风水计算。
+          const rect = rt.target.getBoundingClientRect();
+          const y = Math.min(Math.max(rect.top + rt.offsetY, minY), maxY);
+          if (Math.abs(y - rt.y) > 24) moveTo(kind, { x: rt.x, y });
         }
       });
     };
@@ -938,6 +1440,7 @@ export function ShopMascots() {
       followTarget();
       window.clearTimeout(scrollTimer);
       scrollTimer = window.setTimeout(() => {
+        readBuyBar();
         followTarget();
         scheduleReconcile(140);
       }, 160);
@@ -948,7 +1451,9 @@ export function ShopMascots() {
       resizeTimer = window.setTimeout(() => {
         // 互动编排靠 onLand 串动作，重排时别把正在走的位移掐断。
         if (disposed || interacting) return;
+        enteringDetail = false;
         readBottomInset();
+        readBuyBar();
         for (const kind of KINDS) {
           const rt = runtime[kind];
           if (rt.target) claims.delete(rt.target);
@@ -982,10 +1487,29 @@ export function ShopMascots() {
       }
     };
 
+    const heroCard = (kind: Kind): HTMLElement | null => {
+      const cards = Array.from(document.querySelectorAll<HTMLElement>(CARD_SELECTOR));
+      return cards.find((card) => cardKinds(card).includes(kind)) ?? null;
+    };
+
     const activate = (kind: Kind) => {
+      // 互动中点击任意一只：立刻收场，三只 hop 回原位。
+      if (interacting) {
+        skipInteraction();
+        return;
+      }
       const rt = runtime[kind];
       // 正在位移时不插播蹦跳，避免两段 squash 动画打架。
       if (!travelers[kind]?.busy) travelers[kind]?.bounce();
+      if (onDetail()) {
+        // 详情页没有卡片可跳：把客户带到下单面板前。
+        showBubble(kind, `${DETAIL_LINES[kind]}，下单在这边`, 2600);
+        document.querySelector<HTMLElement>(".shop-buy-panel")?.scrollIntoView({
+          behavior: reducedQuery.matches ? "auto" : "smooth",
+          block: "center",
+        });
+        return;
+      }
       const card = rt.target ?? heroCard(kind);
       showBubble(
         kind,
@@ -1020,11 +1544,76 @@ export function ShopMascots() {
 
     apiRef.current = { activate, hover };
 
+    /**
+     * 详情页入场：三只先挪到屏幕左缘外，再间隔 150ms 一只接一只沿弧线 hop 进来，
+     * 落到商品卡左栏的守位上，各自冒一句商品介绍。
+     */
+    const enterDetail = (stored: Record<Kind, StoredSpot> | null) => {
+      enteringDetail = true;
+      interactionBlockedUntil = performance.now() + 14_000;
+      KINDS.forEach((kind, index) => {
+        const spot = detailSpot(kind);
+        const { minY, maxY } = limits();
+        const startY = clamp(stored?.[kind]?.y ?? spot.y, minY, maxY);
+        snapTo(kind, { x: -(mascotSize() + 26), y: startY });
+        window.setTimeout(() => {
+          if (disposed) return;
+          if (isStatic()) {
+            snapTo(kind, spot);
+            detailIntro(kind);
+            if (index === KINDS.length - 1) enteringDetail = false;
+            return;
+          }
+          moveTo(kind, spot, {
+            hop: true,
+            onDone: () => {
+              if (disposed) return;
+              detailIntro(kind);
+              if (index === KINDS.length - 1) {
+                enteringDetail = false;
+                scheduleReconcile(200);
+              }
+            },
+          });
+        }, ENTRY_STAGGER_MS * index + 40);
+      });
+      // 兜底：入场中途被 resize 拦住时 onDone 不会来，别把认领和互动一直锁着。
+      window.setTimeout(() => {
+        if (disposed) return;
+        enteringDetail = false;
+        scheduleReconcile(200);
+      }, ENTRY_STAGGER_MS * KINDS.length + 4200);
+    };
+
     // 换页重绑时先把姿态收回待机，别让上一页被打断的 Zzz / 惊吓跨页残留。
     for (const kind of KINDS) setPose(kind, IDLE_POSE);
-    for (const kind of KINDS) sendHome(kind, false);
     for (const kind of KINDS) nodes[kind]?.classList.add("is-ready");
-    observeCards();
+
+    const stored = readStoredSpots();
+    const previousPath = readStoredPath();
+    writeStoredPath(pathname);
+
+    if (onDetail() && previousPath !== pathname) {
+      enterDetail(stored);
+    } else if (!onDetail() && isDetailPath(previousPath)) {
+      // 从详情页回到列表：先落回刚才的坐标，再让认领逻辑 hop 过去，中间不闪。
+      for (const kind of KINDS) {
+        const point = stored?.[kind] ?? runtime[kind];
+        snapTo(kind, clampSpot(point.x, point.y, mascotSize()));
+      }
+      scheduleReconcile(360);
+    } else if (stored) {
+      // 整页刷新：坐标接着上次的站，不从头归位。
+      // 姿态不跟着坐标恢复：离开前哪怕正打盹，回来也是上面重置好的 idle，
+      // 重新计满 2 分钟无操作才打盹，不会跨页一进来就睡着。
+      for (const kind of KINDS) {
+        snapTo(kind, clampSpot(stored[kind].x, stored[kind].y, mascotSize()));
+      }
+      scheduleReconcile(400);
+    } else {
+      for (const kind of KINDS) sendHome(kind, false);
+    }
+
     for (const kind of KINDS) {
       schedulePatrol(kind);
       scheduleAct(kind);
@@ -1043,6 +1632,15 @@ export function ShopMascots() {
     window.addEventListener("cokeai:order-paid", onPaid);
     reducedQuery.addEventListener("change", onMotionChange);
     mobileQuery.addEventListener("change", onResize);
+
+    // 换分类 / 搜索 / 懒加载都会换掉卡片节点，主容器一变动就重新对一遍账。
+    const mutations =
+      typeof MutationObserver === "undefined"
+        ? null
+        : new MutationObserver(() => scheduleReconcile(320));
+    const cardHost = document.querySelector("main") ?? document.body;
+    mutations?.observe(cardHost, { childList: true, subtree: true });
+
     // 首屏已有商品卡在视野里时，不必等滚动才联动。
     scheduleReconcile(400);
 
@@ -1050,6 +1648,17 @@ export function ShopMascots() {
       disposed = true;
       apiRef.current = null;
       observer?.disconnect();
+      mutations?.disconnect();
+      // 离开这一页前记下坐标，跨页回来 / 刷新时接着站。
+      // 只记坐标：lastPose 里的睡眠 / 剧目状态是本页的临时演出，不写进快照。
+      const snapshot = {} as Record<Kind, StoredSpot>;
+      for (const kind of KINDS) {
+        snapshot[kind] = {
+          x: Math.round(runtime[kind].x),
+          y: Math.round(runtime[kind].y),
+        };
+      }
+      writeStoredSpots(snapshot);
       window.removeEventListener("scroll", onScroll);
       window.removeEventListener("resize", onResize);
       window.removeEventListener("pointerdown", onActivity);
@@ -1079,7 +1688,6 @@ export function ShopMascots() {
         nodes[kind]?.classList.remove(
           "is-ready",
           "is-blink",
-          "is-typing",
           "is-sparkle",
         );
         liftRef.current[kind]?.classList.remove("is-hop", "is-drift");
@@ -1093,12 +1701,14 @@ export function ShopMascots() {
       }
       for (const kind of KINDS) window.clearTimeout(bubbleTimers.current[kind]);
     };
-    // 分页 / 切分类 / 搜索都是 next/link 的客户端导航，组件实例不会重建：
-    // 依赖 URL 让整段观察器跟着换页重绑，新一页的卡片才会被认领。
-  }, [showBubble, hideBubble, navKey]);
+    // 分页 / 进商品详情 / 回列表都是 next/link 的客户端导航，组件实例不会重建：
+    // 依赖 pathname 让观察器和新一页的入场编排跟着重绑。
+    // 只切 query 的分类和搜索由 MutationObserver 里的卡片同步兜住。
+  }, [showBubble, hideBubble, pathname, hidden]);
 
   // grok 的视线跟鼠标：弹簧插值，页面隐藏或静止时停掉 rAF。
   useEffect(() => {
+    if (hidden) return;
     const node = nodesRef.current.grok;
     if (!node) return;
     const reducedQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -1158,11 +1768,12 @@ export function ShopMascots() {
       node.style.setProperty("--m-eye-x", "0px");
       node.style.setProperty("--m-eye-y", "0px");
     };
-  }, []);
+  }, [hidden]);
 
   // 气泡可能顶到视口边缘：先量出实际位置往内推，推好了再挂 is-visible 上屏，
   // 不然气泡会先在屏幕外出现再横跳一下。
   useEffect(() => {
+    if (hidden) return;
     for (const kind of KINDS) {
       const text = bubbles[kind];
       if (!text) continue;
@@ -1178,7 +1789,7 @@ export function ShopMascots() {
       bubble.style.setProperty("--bubble-shift", `${Math.round(shift)}px`);
       bubble.classList.add("is-visible");
     }
-  }, [bubbles]);
+  }, [bubbles, hidden]);
 
   const setNode = (kind: Kind) => (el: HTMLDivElement | null) => {
     nodesRef.current[kind] = el;
@@ -1189,6 +1800,8 @@ export function ShopMascots() {
   const setStance = (kind: Kind) => (el: HTMLSpanElement | null) => {
     stanceRef.current[kind] = el;
   };
+
+  if (hidden) return null;
 
   const mascot = (kind: Kind) => (
     <div
@@ -1212,7 +1825,13 @@ export function ShopMascots() {
       <span ref={setLift(kind)} className="shop-mascot-lift" aria-hidden="true">
         <span ref={setStance(kind)} className="shop-mascot-stance">
           <span className="shop-mascot-breathe">
-            <ShopMascotIdlePose kind={kind} eyes={poses[kind].eyes} state={poses[kind].state} />
+            {/* 剧目状态走字符串透传：P1 的类型已含 type/build/music/juggle，
+                两边的落地顺序不同时这层 cast 让消费端先编译通过。 */}
+            <ShopMascotIdlePose
+              kind={kind}
+              eyes={poses[kind].eyes}
+              state={poses[kind].state as ShopMascotState}
+            />
           </span>
         </span>
       </span>
