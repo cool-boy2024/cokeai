@@ -191,7 +191,7 @@ function limitedResponse(request: NextRequest, resetSeconds: number): NextRespon
   });
 }
 
-export async function proxy(request: NextRequest): Promise<NextResponse> {
+async function guard(request: NextRequest): Promise<NextResponse> {
   const { pathname } = request.nextUrl;
 
   // Slugs written before the neutral rename still start with a supplier
@@ -332,6 +332,32 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   const response = NextResponse.next();
   response.headers.set("x-ratelimit-remaining", String(result.remaining));
   if (strict) response.headers.set("x-security-mode", "strict");
+  return response;
+}
+
+/** Pages whose anonymous HTML may wait 30s at the Cloudflare edge. */
+const EDGE_CACHE_PATHS = new Set(["/", "/shop"]);
+
+// Kept as a literal so the middleware does not pull @/lib/auth (bcrypt, pg).
+const SESSION_COOKIE_NAME = "cokeai_session";
+
+function applyEdgeCache(request: NextRequest, response: NextResponse): void {
+  if (request.method !== "GET") return;
+  if (!EDGE_CACHE_PATHS.has(request.nextUrl.pathname)) return;
+  // RSC prefetches send no text/html and must never be served from the edge.
+  if (!(request.headers.get("accept") || "").includes("text/html")) return;
+  // Logged-in responses carry per-user state; only anonymous HTML is cacheable.
+  if (request.cookies.get(SESSION_COOKIE_NAME)) return;
+  if (response.status !== 200) return;
+
+  const value = "public, s-maxage=30, stale-while-revalidate=120";
+  response.headers.set("CDN-Cache-Control", value);
+  response.headers.set("Cloudflare-CDN-Cache-Control", value);
+}
+
+export async function proxy(request: NextRequest): Promise<NextResponse> {
+  const response = await guard(request);
+  applyEdgeCache(request, response);
   return response;
 }
 
