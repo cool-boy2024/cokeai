@@ -5,6 +5,16 @@ import { getManualAlipaySettings } from "@/lib/payments/settings";
 import { PUBLIC_API_SALES_ENABLED } from "@/lib/public-features";
 import { fixedWindowLimit } from "@/lib/rate-limit";
 import { recordSecurityEventOnce } from "@/lib/security";
+import {
+  clientIp,
+  json,
+  MAX_CONTENT,
+  MAX_HISTORY,
+  readMessages,
+  SUPPORT_EMAIL,
+  wantsHandoff,
+  type ChatMessage,
+} from "@/lib/support-chat";
 import { listUserShopOrders } from "@/lib/shop/orders";
 import { getGatewayModel, getUpstreamKey, upstreamChatUrl } from "@/lib/upstream";
 
@@ -13,9 +23,6 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 const SUPPORT_MODEL = "deepseek-flash";
-const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || "support@cokeai.cc.cd";
-const MAX_HISTORY = 8;
-const MAX_CONTENT = 600;
 
 const ORDER_STATUS_LABEL: Record<string, string> = {
   pending_payment: "待支付",
@@ -28,38 +35,7 @@ const ORDER_STATUS_LABEL: Record<string, string> = {
   refunded: "已退款",
 };
 
-type ChatMessage = { role: "user" | "assistant"; content: string };
 
-function json(body: unknown, status = 200): Response {
-  return Response.json(body, {
-    status,
-    headers: { "Cache-Control": "no-store" },
-  });
-}
-
-function clientIp(request: Request): string {
-  const forwarded =
-    request.headers.get("cf-connecting-ip") ||
-    request.headers.get("x-forwarded-for") ||
-    "";
-  return forwarded.split(",")[0].trim() || "local";
-}
-
-function readMessages(value: unknown): ChatMessage[] | null {
-  if (!Array.isArray(value)) return null;
-  const messages: ChatMessage[] = [];
-  for (const item of value) {
-    if (!item || typeof item !== "object") continue;
-    const role = (item as { role?: unknown }).role;
-    const content = (item as { content?: unknown }).content;
-    if (role !== "user" && role !== "assistant") continue;
-    if (typeof content !== "string") continue;
-    const trimmed = content.trim();
-    if (!trimmed) continue;
-    messages.push({ role, content: trimmed.slice(0, MAX_CONTENT) });
-  }
-  return messages.slice(-MAX_HISTORY);
-}
 
 function offlineReply(): Response {
   return json({
@@ -158,6 +134,15 @@ export async function POST(request: Request): Promise<Response> {
   const messages = readMessages((payload as { messages?: unknown })?.messages);
   if (!messages || messages.length === 0 || messages[messages.length - 1].role !== "user") {
     return json({ error: "请提供要咨询的问题。" }, 400);
+  }
+
+  // 顾客点名要人工时不浪费一次上游调用，让前台直接亮出转人工入口。
+  if (wantsHandoff(messages)) {
+    return json({
+      reply:
+        "好的，正在为你转接人工客服。点击下面的「转人工」按钮提交本次对话，运营会尽快跟进。",
+      handoffHint: true,
+    });
   }
 
   // Inject the logged-in user's recent orders so the AI can answer
