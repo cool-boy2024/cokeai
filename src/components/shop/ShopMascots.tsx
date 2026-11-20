@@ -107,6 +107,9 @@ type Runtime = {
 
 const CLICK_LINE = "跟着我看好货 →";
 
+/** 认领到的卡片没货时只说这一句：不催、不承诺补货时间。 */
+const NO_STOCK_LINE = "这件暂时没货，看看别的～";
+
 const FALLBACK_LINES = ["点我直接看", "热卖中！点我看看", CLICK_LINE];
 
 /** 没有 Grok 商品可认领时，小黑球当快乐巡游员，不硬造商品关联。 */
@@ -247,6 +250,22 @@ function readCard(card: HTMLElement): CardInfo {
   const sales =
     card.querySelector(".shop-row-sales, .shop-product-sales")?.textContent?.trim() ?? null;
   return { name, price, warranty, sales };
+}
+
+/** 没货文案：售罄 / 补货 / 缺货 / 约满 / 暂无。徽章和下单区共用这一条规则。 */
+const OUT_OF_STOCK_TEXT = /售罄|补货|缺货|约满|暂无/;
+
+/**
+ * 卡片有没有货。绿色 / 黄色可用性徽章算有货；`.is-sold-out` 或徽章文案命中
+ * 没货词算没货。两边都有信号时按没货算：宁可不带路，也不把客户送到没货的卡片。
+ */
+function cardInStock(card: HTMLElement): boolean {
+  const inStock = !!card.querySelector(".shop-badge-green, .shop-badge-yellow");
+  const badges = Array.from(card.querySelectorAll<HTMLElement>(".shop-badge"));
+  const soldOut =
+    !!card.querySelector(".is-sold-out") ||
+    badges.some((badge) => OUT_OF_STOCK_TEXT.test(badge.textContent || ""));
+  return inStock && !soldOut;
 }
 
 /** 详情页的标题 / 质保 / 品牌；标题也走供应商文案清洗。 */
@@ -829,7 +848,8 @@ export function ShopMascots() {
      * 互斥也在这里判：认领追问和点桌宠两条路共用同一个入口，
      * 别的桌宠按钮还挂着就直接放弃，不弹第二颗。
      */
-    const runGuide = (kind: Kind, href: string): boolean => {
+    const runGuide = (kind: Kind, href: string, card?: HTMLElement | null): boolean => {
+      if (card && !cardInStock(card)) return false;
       if (!guidePath) return false;
       if (otherActionUp(kind)) return false;
       if (!recordGuide(kind, href)) return false;
@@ -853,9 +873,11 @@ export function ShopMascots() {
         if (current !== null && current !== intro) return;
         // 卡片被换掉（换分类 / 搜索）后就不再属于这只了，别带客户去旧货。
         if (!card.isConnected || runtime[kind].target !== card) return;
+        // 没货的卡片不追问，也不记带路配额（记账在 runGuide 里）。
+        if (!cardInStock(card)) return;
         const href = card.getAttribute("href");
         if (!href || !href.startsWith("/")) return;
-        runGuide(kind, href);
+        runGuide(kind, href, card);
       }, after + GUIDE_DELAY_MIN_MS + Math.random() * (GUIDE_DELAY_MAX_MS - GUIDE_DELAY_MIN_MS));
     };
 
@@ -880,7 +902,12 @@ export function ShopMascots() {
         ) {
           return;
         }
-        if (!buyHintTarget()) return;
+        const buy = buyHintTarget();
+        if (!buy) return;
+        // 下单区写着补货中 / 缺货时不给「带我去下单」按钮，免得把客户带去点不动的按钮。
+        if (buy.querySelector(".is-sold-out") || OUT_OF_STOCK_TEXT.test(buy.textContent || "")) {
+          return;
+        }
         if (!recordGuide(kind, `detail:${pathname}:${kind}`)) return;
         showBubble(kind, "就在这页，往下滑下单 ↓", GUIDE_HOLD_MS, {
           label: "带我去下单 ↓",
@@ -1746,16 +1773,18 @@ export function ShopMascots() {
       // 移动端和减少动效的静态模式不走卡片认领，点桌宠是客户唯一的入口：
       // 这里也问一句要不要带路，配额和认领后那一次共用。
       // 别的桌宠按钮还挂着时 runGuide 会拒掉：只留一句普通台词，也不再滚页面，
-      // 免得把人家那颗按钮连带收掉。
+      // 免得把人家那颗按钮连带收掉。没货的卡片同样不带路，只换一句柔和台词。
       const otherBusy = otherActionUp(kind);
+      const inStock = card ? cardInStock(card) : true;
       const href = card?.getAttribute("href") ?? "";
-      const guided = href.startsWith("/") ? runGuide(kind, href) : false;
+      const guided = href.startsWith("/") && inStock ? runGuide(kind, href, card) : false;
       if (!guided) {
-        showBubble(
-          kind,
-          card ? CLICK_LINE : pick(kind === "grok" ? GROK_ROAM_LINES : FALLBACK_LINES),
-          2600,
-        );
+        const line = !card
+          ? pick(kind === "grok" ? GROK_ROAM_LINES : FALLBACK_LINES)
+          : inStock
+            ? CLICK_LINE
+            : NO_STOCK_LINE;
+        showBubble(kind, line, 2600);
         if (otherBusy) return;
         // 点一下就把商品带到眼前；静态模式直接跳，不要长距离平滑滚动。
         // 已经弹出带路按钮时不再滚：滚动会把刚冒出来的按钮收掉。
