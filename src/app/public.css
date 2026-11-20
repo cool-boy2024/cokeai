@@ -5898,6 +5898,429 @@ body {
   font-weight: 600;
 }
 
+/* Sidebar「最近上新」：紧凑行，整行可点。 */
+.public-main .shop-side-recent {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.public-main .shop-side-recent .shop-side-title {
+  margin-bottom: 4px;
+}
+
+.public-main .shop-side-recent-list {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.public-main .shop-side-recent-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  padding: 4px 5px;
+  border-radius: var(--radius-sm);
+  transition: background-color var(--dur-color) var(--ease-out-quint);
+}
+
+.public-main .shop-side-recent-item:hover {
+  background: var(--paper);
+}
+
+.public-main .shop-side-recent-cover {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  width: 44px;
+  height: 44px;
+  flex: none;
+  border-radius: 9px;
+  background: var(--paper-deep);
+}
+
+.public-main .shop-side-recent-cover .shop-cover {
+  position: absolute;
+  inset: 0;
+  height: 100%;
+  padding: 0;
+  align-items: center;
+  justify-content: center;
+}
+
+.public-main .shop-side-recent-cover .shop-cover-label {
+  font-size: 16px;
+  letter-spacing: -0.04em;
+}
+
+.public-main .shop-side-recent-cover .shop-cover-caption,
+.public-main .shop-side-recent-cover .shop-cover-orbit {
+  display: none;
+}
+
+.public-main .shop-side-recent-cover .shop-cover-muse-mark {
+  width: 24px;
+  height: 24px;
+}
+
+.public-main .shop-side-recent-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.public-main .shop-side-recent-copy strong {
+  overflow: hidden;
+  color: var(--ink-soft);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  line-height: 17px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.public-main .shop-side-recent-item:hover strong {
+  color: var(--ink);
+}
+
+.public-main .shop-side-recent-price {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 15px;
+}
+
+.public-main .shop-side-recent-more {
+  margin-top: 4px;
+  padding: 3px 5px;
+  color: var(--green);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.public-main .shop-side-recent-more:hover {
+  text-decoration: underline;
+}
+
+/* --------------------------------------------------------------------------
+   小店桌宠：星芒墨镜侠（Claude）与小绿花（GPT）
+   外层由 JS 写成 translate3d 定位置；跳跃、待机、彩蛋各占一层，
+   这样 squash & stretch 不会和位移动画互相覆盖。
+   -------------------------------------------------------------------------- */
+
+:root {
+  /* 桌宠用 JS 写 translate3d 定位，env() 在 JS 里读不到，先转成变量交给它。 */
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.shop-mascot {
+  position: fixed;
+  /* 低于吸顶 header（60）和客服弹窗（140），滚动时让导航盖住。 */
+  z-index: 55;
+  top: 0;
+  left: 0;
+  width: 84px;
+  height: 84px;
+  opacity: 0;
+  pointer-events: auto;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  will-change: transform;
+  transition: transform 340ms cubic-bezier(0.33, 0.9, 0.4, 1), opacity 240ms linear;
+}
+
+.shop-mascot.is-ready {
+  opacity: 1;
+}
+
+.shop-mascot:focus-visible {
+  border-radius: 50%;
+  outline: 2px solid var(--green);
+  outline-offset: 4px;
+}
+
+.shop-mascot-hop,
+.shop-mascot-idle,
+.shop-mascot-mood {
+  display: block;
+  width: 100%;
+  height: 100%;
+  transform-origin: 50% 90%;
+}
+
+/* 待机弹跳：2.4s 一个小循环，落地时轻微压扁，跳起来略微拉长。 */
+.shop-mascot-idle {
+  animation: shop-mascot-idle 2.4s cubic-bezier(0.37, 0.03, 0.35, 1) infinite;
+}
+
+.shop-mascot-gpt .shop-mascot-idle {
+  animation-delay: -1.05s;
+  animation-duration: 2.6s;
+}
+
+.shop-mascot.is-jumping .shop-mascot-hop {
+  animation: shop-mascot-hop var(--hop-ms, 420ms) cubic-bezier(0.3, 0.7, 0.4, 1);
+}
+
+/* 起跳瞬间待机动画让位，避免两段位移叠在一起发飘。 */
+.shop-mascot.is-jumping .shop-mascot-idle {
+  animation-play-state: paused;
+}
+
+/* hover 停住待机，只留下眨眼。 */
+.shop-mascot:hover .shop-mascot-idle,
+.shop-mascot:hover .shop-mascot-mood {
+  animation-play-state: paused;
+}
+
+.shop-mascot-art {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  filter: drop-shadow(0 8px 14px rgba(22, 22, 21, 0.18));
+  transition: transform 200ms var(--ease-out-quint);
+}
+
+.shop-mascot:hover .shop-mascot-art {
+  transform: translateY(-2px) scale(1.06);
+}
+
+.shop-mascot-eye {
+  transform-box: fill-box;
+  transform-origin: 50% 55%;
+  animation: shop-mascot-blink 5.4s ease-in-out infinite;
+}
+
+.shop-mascot:hover .shop-mascot-eye {
+  animation-duration: 1.2s;
+}
+
+/* 待机彩蛋：每 20-30s 随机歪头 / 原地小转圈 / 左右摇摆。 */
+.shop-mascot.is-tilt .shop-mascot-mood {
+  animation: shop-mascot-tilt 1.4s cubic-bezier(0.34, 0.9, 0.4, 1);
+}
+
+.shop-mascot.is-spin .shop-mascot-mood {
+  animation: shop-mascot-spin 1.4s cubic-bezier(0.42, 0.02, 0.42, 1);
+}
+
+.shop-mascot.is-sway .shop-mascot-mood {
+  animation: shop-mascot-sway 1.4s cubic-bezier(0.34, 0.9, 0.4, 1);
+}
+
+@keyframes shop-mascot-idle {
+  0%,
+  100% {
+    transform: translateY(0) scaleY(1);
+  }
+  38% {
+    transform: translateY(-4px) scaleY(1.02);
+  }
+  54% {
+    transform: translateY(-5px) scaleY(1.01);
+  }
+  78% {
+    transform: translateY(0) scaleY(0.975);
+  }
+}
+
+@keyframes shop-mascot-hop {
+  0% {
+    transform: translateY(0) scale(1, 1);
+  }
+  12% {
+    transform: translateY(0) scale(1.06, 0.9);
+  }
+  38% {
+    transform: translateY(-34%) scale(0.94, 1.1);
+  }
+  62% {
+    transform: translateY(-30%) scale(0.97, 1.04);
+  }
+  84% {
+    transform: translateY(0) scale(1.08, 0.9);
+  }
+  100% {
+    transform: translateY(0) scale(1, 1);
+  }
+}
+
+@keyframes shop-mascot-blink {
+  0%,
+  88%,
+  100% {
+    transform: scaleY(1);
+  }
+  91% {
+    transform: scaleY(0.08);
+  }
+  94% {
+    transform: scaleY(1);
+  }
+  96% {
+    transform: scaleY(0.12);
+  }
+}
+
+@keyframes shop-mascot-tilt {
+  0%,
+  100% {
+    transform: rotate(0deg) translateX(0);
+  }
+  26% {
+    transform: rotate(-13deg) translateX(-2px);
+  }
+  64% {
+    transform: rotate(-11deg) translateX(-2px);
+  }
+}
+
+@keyframes shop-mascot-spin {
+  0% {
+    transform: rotate(0deg) scale(1);
+  }
+  40% {
+    transform: rotate(180deg) scale(1.06);
+  }
+  100% {
+    transform: rotate(360deg) scale(1);
+  }
+}
+
+@keyframes shop-mascot-sway {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  20% {
+    transform: rotate(9deg);
+  }
+  45% {
+    transform: rotate(-8deg);
+  }
+  70% {
+    transform: rotate(5deg);
+  }
+  88% {
+    transform: rotate(-3deg);
+  }
+}
+
+.shop-mascot-bubble {
+  position: absolute;
+  bottom: calc(100% + 12px);
+  left: 50%;
+  /* 绝对定位的气泡默认按 84px 的容器宽度收缩，先取内容宽度再受 max-width 限制。 */
+  width: max-content;
+  max-width: 220px;
+  padding: 9px 15px;
+  border-radius: 18px;
+  background: var(--ink);
+  box-shadow: 0 14px 30px -16px rgba(22, 22, 21, 0.55);
+  color: var(--paper);
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1.45;
+  text-align: center;
+  white-space: normal;
+  /* 名称和价格分两行时长度更均匀，不会孤零零留下一个英文词。 */
+  text-wrap: balance;
+  pointer-events: none;
+  /* JS 量完 --bubble-shift 才挂 is-visible，气泡不会先歪着出现再横跳。 */
+  visibility: hidden;
+  transform: translateX(calc(-50% + var(--bubble-shift, 0px)));
+}
+
+.shop-mascot-bubble.is-visible {
+  visibility: visible;
+  animation: shop-mascot-bubble-in 200ms ease-out both;
+}
+
+.shop-mascot-bubble::after {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  margin-left: -6px;
+  border: 6px solid transparent;
+  border-top-color: var(--ink);
+  /* 尾巴也圆一点，和气泡的圆角统一。 */
+  border-radius: 0 0 3px 3px;
+  content: "";
+}
+
+@keyframes shop-mascot-bubble-in {
+  from {
+    opacity: 0;
+    transform: translateX(calc(-50% + var(--bubble-shift, 0px))) translateY(6px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(calc(-50% + var(--bubble-shift, 0px))) translateY(0) scale(1);
+  }
+}
+
+@media (max-width: 767px) {
+  .shop-mascot {
+    width: 48px;
+    height: 48px;
+  }
+
+  /* 移动端只静态站位：待机、眨眼、跳跃和彩蛋全部停掉，跟 JS 里的
+     isStatic() 判断对齐，省电也避免小屏上晃。 */
+  .shop-mascot-idle,
+  .shop-mascot.is-jumping .shop-mascot-hop,
+  .shop-mascot.is-tilt .shop-mascot-mood,
+  .shop-mascot.is-spin .shop-mascot-mood,
+  .shop-mascot.is-sway .shop-mascot-mood,
+  .shop-mascot-eye,
+  .shop-mascot:hover .shop-mascot-eye,
+  .shop-mascot-bubble.is-visible {
+    animation: none;
+  }
+
+  .shop-mascot-bubble {
+    max-width: 168px;
+    padding: 7px 11px;
+    border-radius: 15px;
+    font-size: 11.5px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shop-mascot,
+  .shop-mascot-art {
+    transition: opacity 200ms linear;
+  }
+
+  .shop-mascot-idle,
+  .shop-mascot.is-jumping .shop-mascot-hop,
+  .shop-mascot.is-tilt .shop-mascot-mood,
+  .shop-mascot.is-spin .shop-mascot-mood,
+  .shop-mascot.is-sway .shop-mascot-mood,
+  .shop-mascot-eye,
+  .shop-mascot:hover .shop-mascot-eye,
+  .shop-mascot-bubble.is-visible {
+    animation: none;
+  }
+
+  .shop-mascot:hover .shop-mascot-art {
+    transform: none;
+  }
+}
+
 .public-main .shop-market-main {
   display: grid;
   gap: 28px;
