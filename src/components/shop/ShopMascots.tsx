@@ -260,16 +260,33 @@ function readCard(card: HTMLElement): CardInfo {
   return { name, price, warranty, sales };
 }
 
-/** 没货文案：售罄 / 补货 / 缺货 / 约满 / 暂无。徽章和下单区共用这一条规则。 */
+/** 卡片没货文案：售罄 / 补货 / 缺货 / 约满 / 暂无。「预定」不在内，预定算有货。 */
 const OUT_OF_STOCK_TEXT = /售罄|补货|缺货|约满|暂无/;
 
 /**
- * 卡片有没有货。绿色 / 黄色可用性徽章算有货；`.is-sold-out` 或徽章文案命中
- * 没货词算没货。两边都有信号时按没货算：宁可不带路，也不把客户送到没货的卡片。
+ * 下单区的没货文案。口径比卡片窄：预定单的购买区会写「预定单提醒」，
+ * 不能把预定客户挡在「带我去下单」外面，只认真的点不动的几种。
+ */
+const DETAIL_OUT_OF_STOCK_TEXT = /缺货|补货中|售罄/;
+
+/**
+ * 卡片有没有货。绿色 / 黄色可用性徽章算有货，预定单也算有货——供应商按
+ * 预定顺序发货，按钮照样能点。`.is-sold-out` 或徽章文案命中没货词算没货。
+ * 两边都有信号时按没货算：宁可不带路，也不把客户送到没货的卡片。
  */
 function cardInStock(card: HTMLElement): boolean {
-  const inStock = !!card.querySelector(".shop-badge-green, .shop-badge-yellow");
   const badges = Array.from(card.querySelectorAll<HTMLElement>(".shop-badge"));
+  // 卡片上还挂着配送 / 质保 / 时效徽章，带 data-availability 的那颗才是库存徽章。
+  const availability =
+    badges.find((badge) => badge.hasAttribute("data-availability")) ??
+    badges.find((badge) => (badge.textContent || "").includes("预定")) ??
+    null;
+  const preorder =
+    !!availability &&
+    (availability.getAttribute("data-preorder") === "1" ||
+      (availability.textContent || "").includes("预定"));
+  const inStock =
+    preorder || !!card.querySelector(".shop-badge-green, .shop-badge-yellow");
   const soldOut =
     !!card.querySelector(".is-sold-out") ||
     badges.some((badge) => OUT_OF_STOCK_TEXT.test(badge.textContent || ""));
@@ -955,7 +972,11 @@ export function ShopMascots() {
         const buy = buyHintTarget();
         if (!buy) return;
         // 下单区写着补货中 / 缺货时不给「带我去下单」按钮，免得把客户带去点不动的按钮。
-        if (buy.querySelector(".is-sold-out") || OUT_OF_STOCK_TEXT.test(buy.textContent || "")) {
+        // 预定单的购买区只是提示「预定单提醒」，不在这条规则里。
+        if (
+          buy.querySelector(".is-sold-out") ||
+          DETAIL_OUT_OF_STOCK_TEXT.test(buy.textContent || "")
+        ) {
           return;
         }
         if (!recordGuide(kind, `detail:${pathname}:${kind}`)) return;

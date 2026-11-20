@@ -26,7 +26,11 @@ export function AvailabilityBadge({
         ? "shop-badge-yellow"
         : "shop-badge-muted";
   return (
-    <span className={`shop-badge ${tone} ${className}`.trim()}>
+    <span
+      className={`shop-badge ${tone} ${className}`.trim()}
+      data-availability={availability}
+      data-preorder={preorder ? "1" : "0"}
+    >
       <i />
       {availabilityLabel(availability, preorder)}
     </span>
