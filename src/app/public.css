@@ -6738,6 +6738,100 @@ body {
   font-weight: 400;
 }
 
+/* 最近上新：主列顶部一条细横条，与列表同一套排版语言。 */
+.public-main .shop-recent-strip {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 14px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.public-main .shop-recent-strip-label {
+  flex: none;
+  margin: 0;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+}
+
+.public-main .shop-recent-strip-list {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  gap: 18px;
+  margin: 0;
+  padding: 2px 2px;
+  overflow-x: auto;
+  list-style: none;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+}
+
+.public-main .shop-recent-strip-list::-webkit-scrollbar {
+  display: none;
+}
+
+.public-main .shop-recent-strip-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink);
+  font-size: 12.5px;
+  text-decoration: none;
+  white-space: nowrap;
+  opacity: 0.82;
+  transition: opacity var(--dur-color) var(--ease-out-quint);
+}
+
+.public-main .shop-recent-strip-item:hover {
+  opacity: 1;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--line);
+}
+
+.public-main .shop-recent-strip-cover {
+  display: block;
+  width: 24px;
+  height: 24px;
+  flex: none;
+  overflow: hidden;
+  border-radius: 6px;
+}
+
+.public-main .shop-recent-strip-cover > * {
+  width: 100%;
+  height: 100%;
+}
+
+.public-main .shop-recent-strip-name {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.public-main .shop-recent-strip-price {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.public-main .shop-recent-strip-more {
+  flex: none;
+  font-size: 12px;
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.public-main .shop-recent-strip-more:hover {
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .public-main .shop-section-head {
   display: flex;
   align-items: baseline;

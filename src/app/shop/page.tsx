@@ -13,7 +13,7 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { Pagination } from "@/components/Pagination";
 import { ProductCard } from "@/components/shop/ProductCard";
 import { ProductRow } from "@/components/shop/ProductRow";
-import { RecentSidebar } from "@/components/shop/RecentSidebar";
+import { RecentStrip } from "@/components/shop/RecentStrip";
 import { ShopFeaturedCard } from "@/components/shop/ShopFeaturedCard";
 import { AvailabilityLegend } from "@/components/shop/ShopBadges";
 import { getCurrentUser } from "@/lib/auth";
@@ -237,8 +237,6 @@ export default async function ShopPage({
               })}
             </nav>
 
-            <RecentSidebar products={recent} />
-
             <div className="shop-side-help">
               <Question size={18} />
               <strong>不确定选哪个？</strong>
@@ -264,6 +262,8 @@ export default async function ShopPage({
               </p>
               <AvailabilityLegend />
             </div>
+
+            <RecentStrip products={recent} />
 
             {hot.length > 0 ? (
               <section className="shop-hot" aria-label={trending?.label || "热销"}>
