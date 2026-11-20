@@ -6625,6 +6625,12 @@ body {
 }
 
 @media (max-width: 767px) {
+  /* 移动端不显示桌宠：它们在这里只静态站位、不会跳也不会互动，
+     MascotLoader 也直接跳过不挂载；这条规则兜住「桌面宽→缩到手机」的 resize。 */
+  .shop-mascot {
+    display: none;
+  }
+
   .shop-mascot {
     width: 48px;
     height: 48px;

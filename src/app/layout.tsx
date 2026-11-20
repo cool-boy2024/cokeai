@@ -7,7 +7,7 @@ import { SupportWidget } from "@/components/SupportWidget";
 import { VisitBeacon } from "@/components/VisitBeacon";
 import { config } from "@/lib/config";
 import { PUBLIC_API_SALES_ENABLED } from "@/lib/public-features";
-import { ShopMascots } from "@/components/shop/ShopMascots";
+import { MascotLoader } from "@/components/shop/MascotLoader";
 import "./globals.css";
 import "./v2.css";
 import "./public.css";
@@ -81,7 +81,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <NavProgress />
         <MotionLayer />
         {/* 桌宠全站挂载：从 /shop 进商品详情也不断档，后台页自己会隐藏。 */}
-        <ShopMascots />
+        <MascotLoader />
         <SupportWidget
           supportEmail={process.env.SUPPORT_EMAIL || "support@cokeai.cc.cd"}
         />
