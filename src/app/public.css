@@ -5898,6 +5898,119 @@ body {
   font-weight: 600;
 }
 
+/* Sidebar「最近上新」：紧凑行，整行可点。 */
+.public-main .shop-side-recent {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.public-main .shop-side-recent .shop-side-title {
+  margin-bottom: 4px;
+}
+
+.public-main .shop-side-recent-list {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.public-main .shop-side-recent-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  padding: 4px 5px;
+  border-radius: var(--radius-sm);
+  transition: background-color var(--dur-color) var(--ease-out-quint);
+}
+
+.public-main .shop-side-recent-item:hover {
+  background: var(--paper);
+}
+
+.public-main .shop-side-recent-cover {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  width: 44px;
+  height: 44px;
+  flex: none;
+  border-radius: 9px;
+  background: var(--paper-deep);
+}
+
+.public-main .shop-side-recent-cover .shop-cover {
+  position: absolute;
+  inset: 0;
+  height: 100%;
+  padding: 0;
+  align-items: center;
+  justify-content: center;
+}
+
+.public-main .shop-side-recent-cover .shop-cover-label {
+  font-size: 16px;
+  letter-spacing: -0.04em;
+}
+
+.public-main .shop-side-recent-cover .shop-cover-caption,
+.public-main .shop-side-recent-cover .shop-cover-orbit {
+  display: none;
+}
+
+.public-main .shop-side-recent-cover .shop-cover-muse-mark {
+  width: 24px;
+  height: 24px;
+}
+
+.public-main .shop-side-recent-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.public-main .shop-side-recent-copy strong {
+  overflow: hidden;
+  color: var(--ink-soft);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  line-height: 17px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.public-main .shop-side-recent-item:hover strong {
+  color: var(--ink);
+}
+
+.public-main .shop-side-recent-price {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 15px;
+}
+
+.public-main .shop-side-recent-more {
+  margin-top: 4px;
+  padding: 3px 5px;
+  color: var(--green);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.public-main .shop-side-recent-more:hover {
+  text-decoration: underline;
+}
+
 .public-main .shop-market-main {
   display: grid;
   gap: 28px;

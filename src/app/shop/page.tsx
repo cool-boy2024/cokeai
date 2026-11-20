@@ -13,6 +13,7 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { Pagination } from "@/components/Pagination";
 import { ProductCard } from "@/components/shop/ProductCard";
 import { ProductRow } from "@/components/shop/ProductRow";
+import { RecentSidebar } from "@/components/shop/RecentSidebar";
 import { ShopFeaturedCard } from "@/components/shop/ShopFeaturedCard";
 import { AvailabilityLegend } from "@/components/shop/ShopBadges";
 import { getCurrentUser } from "@/lib/auth";
@@ -236,6 +237,8 @@ export default async function ShopPage({
               })}
             </nav>
 
+            <RecentSidebar products={recent} />
+
             <div className="shop-side-help">
               <Question size={18} />
               <strong>不确定选哪个？</strong>
@@ -261,20 +264,6 @@ export default async function ShopPage({
               </p>
               <AvailabilityLegend />
             </div>
-
-            {!query && recent.length > 0 ? (
-              <section className="shop-recommend shop-recent" aria-label="最近上新">
-                <div className="shop-section-head">
-                  <h2>最近上新</h2>
-                  <span>按上架时间排序</span>
-                </div>
-                <div className="shop-recommend-grid">
-                  {recent.map((product) => (
-                    <ProductCard product={product} key={`recent-${product.id}`} />
-                  ))}
-                </div>
-              </section>
-            ) : null}
 
             {hot.length > 0 ? (
               <section className="shop-hot" aria-label={trending?.label || "热销"}>
