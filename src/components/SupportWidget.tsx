@@ -20,7 +20,7 @@ const GREETING =
   "你好，我是 CokeAI 客服。商品咨询、下单和发货进度的问题都可以问我。";
 
 const HANDOFF_STORAGE_KEY = "cokeai_handoff_ticket";
-const POLL_INTERVAL_MS = 8_000;
+const POLL_INTERVAL_MS = 5_000;
 
 type HandoffResponse = {
   status?: string;
@@ -153,7 +153,7 @@ export function SupportWidget({ supportEmail }: { supportEmail: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 人工模式下轮询运营回复。
+  // 人工模式下轮询运营回复：面板打开/切回标签页时立即拉一次，之后定时。
   useEffect(() => {
     if (mode !== "human" || !ticketId || !open || ticketClosed) return;
     let cancelled = false;
@@ -164,10 +164,13 @@ export function SupportWidget({ supportEmail }: { supportEmail: string }) {
         if (result?.closed) setTicketClosed(true);
       });
     };
+    tick();
     const timer = setInterval(tick, POLL_INTERVAL_MS);
+    document.addEventListener("visibilitychange", tick);
     return () => {
       cancelled = true;
       clearInterval(timer);
+      document.removeEventListener("visibilitychange", tick);
     };
   }, [mode, ticketId, open, ticketClosed, refreshHandoff]);
 

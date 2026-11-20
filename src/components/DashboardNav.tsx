@@ -90,7 +90,8 @@ export function DashboardNav({
         const count = badges?.[item.href] || 0;
         // Support tickets are the one entry whose count changes while the
         // operator is inside the section, so it renders its own live badge.
-        const live = admin && item.href === "/admin/support";
+        const live = item.href === (admin ? "/admin/support" : "/dashboard/support");
+        const badgeEndpoint = admin ? "/api/admin/support/unread" : "/api/support/unread";
         return (
           <Link
             key={item.href}
@@ -100,7 +101,7 @@ export function DashboardNav({
             <Icon />
             <span className={live ? "sidebar-label-badged" : undefined}>
               {item.label}
-              {live ? <LiveNavBadge count={count} /> : null}
+              {live ? <LiveNavBadge count={count} endpoint={badgeEndpoint} /> : null}
             </span>
             {!live && count > 0 ? (
               <span className="nav-count" aria-label={`${count} 个待处理`}>
