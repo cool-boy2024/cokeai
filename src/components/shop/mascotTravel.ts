@@ -34,6 +34,8 @@ export type TravelRequest = {
   to: MascotPoint;
   /** 强制飘移（跨栏、绕场）；不传按距离自动选。 */
   drift?: boolean;
+  /** 强制 hop 链（打架对冲、入场跳进来）；距离再远也一路跳，不切飘移。 */
+  hop?: boolean;
   /** 最后一跳落地时触发，互动编排靠它串动作。 */
   onLand?: (at: MascotPoint) => void;
   /** 整段位移结束时触发。 */
@@ -236,7 +238,7 @@ export function createTraveler(options: TravelerOptions): Traveler {
       return;
     }
     running = true;
-    if (request.drift || distance >= HOP_MAX_DISTANCE) drift(request, from);
+    if (request.drift || (!request.hop && distance >= HOP_MAX_DISTANCE)) drift(request, from);
     else hop(request, from);
   };
 

@@ -13,7 +13,7 @@ import {
  * 付款动画等后续组件直接 import 这里的角色本体；
  * 新的姿态（例如庆祝合体）也加在本文件里，避免造型散落各处。
  *
- * 三只角色：claude = 官方星芒 logomark，gpt = 云宝素材，grok = 小黑球。
+ * 三只角色：claude = 橙色像素蟹，gpt = 云宝素材，grok = 小黑球。
  * 视线跟随读外层写的 --m-eye-x / --m-eye-y，眨眼由外层 .is-blink 触发；
  * 动画样式全部写在本文件的 <style> 里，不依赖 public.css。
  */
@@ -21,7 +21,16 @@ export type ShopMascotKind = "claude" | "gpt" | "grok";
 
 export type ShopMascotEyes = "open" | "happy" | "closed" | "wide" | "droop";
 
-export type ShopMascotState = "idle" | "think" | "cheer" | "sleep" | "alert";
+export type ShopMascotState =
+  | "idle"
+  | "think"
+  | "cheer"
+  | "sleep"
+  | "alert"
+  | "type"
+  | "build"
+  | "music"
+  | "juggle";
 
 export type ShopMascotArtProps = {
   /** 默认沿用桌宠的 .shop-mascot-art，换上下文时可覆盖。 */
@@ -35,43 +44,15 @@ export type ShopMascotArtProps = {
 /** 造型画布尺寸：三个角色共用 96×96 的 viewBox。 */
 export const MASCOT_VIEWBOX = "0 0 96 96";
 
-/** 坐标取三位小数：服务端和浏览器的 Math.sin 末位不同，不圆整会触发 hydration 不匹配。 */
-function round(value: number) {
-  return Number(value.toFixed(3));
-}
-
-/** 12 道圆头射线：长短交替 + 整体略歪，保持官方星芒的放射节奏。 */
-export const STAR_RAYS = [
-  { angle: -90, length: 31 },
-  { angle: -60, length: 25 },
-  { angle: -30, length: 30 },
-  { angle: 0, length: 24 },
-  { angle: 30, length: 30 },
-  { angle: 60, length: 25 },
-  { angle: 90, length: 31 },
-  { angle: 120, length: 26 },
-  { angle: 150, length: 29 },
-  { angle: 180, length: 23 },
-  { angle: 210, length: 30 },
-  { angle: 240, length: 26 },
-] as const;
-
-const STAR_MARK = { x: 48, y: 48 };
-
-function rayPoint(angle: number, radius: number) {
-  const rad = (angle * Math.PI) / 180;
-  return {
-    x: round(STAR_MARK.x + Math.cos(rad) * radius),
-    y: round(STAR_MARK.y + Math.sin(rad) * radius),
-  };
-}
-
 const CLOUD_FADE_MS = 300;
 
 /**
  * state → 云宝素材。juggling / dozing 系列是脚本驱动的导出文件，
  * <img> 里脚本不执行，静态帧只剩空白或纸飞机；cheer / sleep 因此改用
  * 能静态渲染的素材，脚本版文件仍随仓库一起放在 public/mascots/cloudling/。
+ * type / build / music / juggle 同样只挑 <img> 下能静态出图的文件：
+ * idle-reading（阅读/干活）、mini-happy（替代缺席的 building 与只剩纸飞机的
+ * juggling）。仓库目前没有 cloudling-building.svg，所以 build 落到 mini-happy。
  */
 const CLOUD_SRC: Record<ShopMascotState, string> = {
   idle: "/mascots/cloudling/cloudling-idle.svg",
@@ -79,6 +60,10 @@ const CLOUD_SRC: Record<ShopMascotState, string> = {
   cheer: "/mascots/cloudling/cloudling-mini-happy.svg",
   sleep: "/mascots/cloudling/cloudling-mini-sleep.svg",
   alert: "/mascots/cloudling/cloudling-error.svg",
+  type: "/mascots/cloudling/cloudling-idle-reading.svg",
+  build: "/mascots/cloudling/cloudling-mini-happy.svg",
+  music: "/mascots/cloudling/cloudling-idle.svg",
+  juggle: "/mascots/cloudling/cloudling-mini-happy.svg",
 };
 
 /** 每个素材的 viewBox / 留白不同，放大倍数用来把云朵统一到约 50px 视觉宽度。 */
@@ -86,6 +71,7 @@ const CLOUD_ZOOM: Record<string, number> = {
   "/mascots/cloudling/cloudling-idle.svg": 2.6,
   "/mascots/cloudling/cloudling-attention.svg": 2.6,
   "/mascots/cloudling/cloudling-error.svg": 2.6,
+  "/mascots/cloudling/cloudling-idle-reading.svg": 2.6,
   "/mascots/cloudling/cloudling-mini-happy.svg": 1.45,
   "/mascots/cloudling/cloudling-mini-sleep.svg": 1.45,
 };
@@ -146,40 +132,112 @@ const MASCOT_CSS = `
   transform: scaleY(0.08);
 }
 
-/* 星芒：核心与芒体一起慢转，转速随状态变化。 */
-.sma-claude-turn {
+/* 像素蟹：蟹身、钳子、道具都是 rect 拼装，只允许直角或 1px 圆角。 */
+.sma-crab-crab {
   transform-box: view-box;
-  transform-origin: 48px 48px;
+  transform-origin: 48px 68px;
+  transition: transform 220ms cubic-bezier(0.3, 0.9, 0.4, 1);
 }
-.sma-claude-halo {
-  opacity: 0.32;
-  transition: opacity 420ms ease;
-}
-.sma-claude--idle .sma-claude-turn { animation: sma-claude-turn 46s linear infinite; }
-.sma-claude--idle .sma-claude-halo { animation: sma-claude-halo 4.8s ease-in-out infinite; }
-.sma-claude--think .sma-claude-turn { animation: sma-claude-turn 16s linear infinite; }
-.sma-claude--think .sma-claude-halo { opacity: 0.58; }
-.sma-claude--cheer .sma-claude-turn { animation: sma-claude-turn 3.4s linear infinite; }
-.sma-claude--cheer .sma-claude-halo { animation: sma-claude-halo-cheer 1.6s ease-in-out infinite; }
-.sma-claude--sleep .sma-claude-turn { opacity: 0.66; }
-.sma-claude--sleep .sma-claude-halo { opacity: 0.12; }
-.sma-claude--alert .sma-claude-halo { animation: sma-claude-halo-alert 1.1s ease-in-out 2; }
+.sma-claude--idle .sma-crab-crab { animation: sma-crab-bob 3.8s ease-in-out infinite; }
+.sma-claude--think .sma-crab-crab { animation: sma-crab-tilt 5.4s ease-in-out infinite; }
+.sma-claude--type .sma-crab-crab { transform: translateY(2px) rotate(-4deg); }
+.sma-claude--build .sma-crab-crab { animation: sma-crab-work 1.1s ease-in-out infinite; }
+.sma-claude--music .sma-crab-crab { animation: sma-crab-sway 760ms ease-in-out infinite; }
+.sma-claude--cheer .sma-crab-crab { animation: sma-crab-hop 1.1s cubic-bezier(0.3, 0.9, 0.4, 1) infinite; }
+.sma-claude--sleep .sma-crab-crab { transform: translateY(5px) scaleY(0.86); }
+.sma-claude--alert .sma-crab-crab { animation: sma-crab-jolt 620ms cubic-bezier(0.3, 0.9, 0.4, 1) infinite; }
 
-@keyframes sma-claude-turn {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+/* 自动眨眼挂在外层，外层 .is-blink 的 scaleY 仍作用在 [data-m-eyes] 上，互不覆盖。 */
+.sma-crab-autoblink {
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
 }
-@keyframes sma-claude-halo {
-  0%, 100% { opacity: 0.26; }
-  50% { opacity: 0.44; }
+.sma-claude--idle .sma-crab-autoblink { animation: sma-crab-blink 6.4s linear infinite; }
+
+.sma-crab-bubble {
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
 }
-@keyframes sma-claude-halo-cheer {
-  0%, 100% { opacity: 0.5; }
-  45% { opacity: 0.92; }
+.sma-claude--think .sma-crab-bubble { animation: sma-crab-bubble 3.2s ease-in-out infinite; }
+.sma-claude--type .sma-crab-claw--l { animation: sma-crab-tap 420ms ease-in-out infinite; }
+.sma-claude--type .sma-crab-claw--r { animation: sma-crab-tap 420ms ease-in-out 210ms infinite; }
+.sma-claude--cheer .sma-crab-star { animation: sma-crab-star 1.4s ease-out infinite; }
+
+.sma-crab-hammer {
+  transform-box: view-box;
+  transform-origin: 78px 52px;
 }
-@keyframes sma-claude-halo-alert {
-  0%, 100% { opacity: 0.3; }
-  40% { opacity: 0.95; }
+.sma-claude--build .sma-crab-hammer { animation: sma-crab-hammer 1.1s cubic-bezier(0.4, 0, 0.2, 1) infinite; }
+
+.sma-crab-ball {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+}
+.sma-claude--juggle .sma-crab-ball--a { animation: sma-crab-toss-a 1.25s ease-in-out infinite; }
+.sma-claude--juggle .sma-crab-ball--b { animation: sma-crab-toss-b 1.25s ease-in-out 300ms infinite; }
+.sma-claude--juggle .sma-crab-ball--c { animation: sma-crab-toss-c 1.25s ease-in-out 600ms infinite; }
+
+@keyframes sma-crab-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2.2px); }
+}
+@keyframes sma-crab-blink {
+  0%, 94%, 100% { transform: scaleY(1); }
+  96% { transform: scaleY(0.12); }
+}
+@keyframes sma-crab-tilt {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(-6deg); }
+}
+@keyframes sma-crab-work {
+  0%, 100% { transform: translateY(0); }
+  55% { transform: translateY(1.6px) scaleY(0.98); }
+}
+@keyframes sma-crab-sway {
+  0%, 100% { transform: rotate(-4deg); }
+  50% { transform: rotate(4deg); }
+}
+@keyframes sma-crab-hop {
+  0%, 100% { transform: translateY(0) scaleY(1); }
+  18% { transform: translateY(0) scaleY(0.92); }
+  46% { transform: translateY(-7px) scaleY(1.04); }
+  72% { transform: translateY(0) scaleY(0.96); }
+}
+@keyframes sma-crab-jolt {
+  0%, 100% { transform: translateY(0) scaleY(1); }
+  30% { transform: translateY(-5px) scaleY(1.05); }
+  64% { transform: translateY(0) scaleY(0.95); }
+}
+@keyframes sma-crab-tap {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+@keyframes sma-crab-bubble {
+  0%, 100% { opacity: 0.85; transform: translateY(0) scale(0.96); }
+  50% { opacity: 1; transform: translateY(-2px) scale(1); }
+}
+@keyframes sma-crab-hammer {
+  0%, 12% { transform: rotate(0deg); }
+  52% { transform: rotate(-32deg); }
+  66% { transform: rotate(-2deg); }
+  82%, 100% { transform: rotate(0deg); }
+}
+@keyframes sma-crab-star {
+  0% { opacity: 0; transform: scale(0.4); }
+  30% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: translateY(-7px) scale(0.85); }
+}
+@keyframes sma-crab-toss-a {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(4px, -9px); }
+}
+@keyframes sma-crab-toss-b {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(0, -12px); }
+}
+@keyframes sma-crab-toss-c {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(-4px, -9px); }
 }
 
 /* 小黑球：待机轻微浮动，思考亮轨道，开心撒星，睡觉冒 Zzz。 */
@@ -211,6 +269,39 @@ const MASCOT_CSS = `
 }
 .sma-grok-zzz { animation: sma-grok-zzz 3.2s ease-in-out infinite; }
 
+/* type：面前一块像素键盘，眼球左右扫；build：球顶扳手敲两下；
+   music：轨道环亮起 + 球下波形律动 + 球体左右摇；juggle：球顶抛三颗彩球。 */
+.sma-grok-scan {
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+}
+.sma-grok--type .sma-grok-scan { animation: sma-grok-scan 1.4s steps(4, end) infinite; }
+.sma-grok--type .sma-grok-key { animation: sma-grok-key 600ms steps(2, end) infinite; }
+
+.sma-grok-wrench {
+  transform-box: view-box;
+  transform-origin: 48px 28px;
+}
+.sma-grok--build .sma-grok-wrench {
+  animation: sma-grok-wrench 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.sma-grok--music .sma-grok-ball { animation: sma-grok-sway 900ms ease-in-out infinite; }
+.sma-grok--music .sma-grok-orbit { opacity: 0.5; }
+.sma-grok--music .sma-grok-wave {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: sma-grok-wave 900ms ease-in-out infinite;
+}
+
+.sma-grok-juggle {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+}
+.sma-grok--juggle .sma-grok-juggle--a { animation: sma-grok-toss-a 1.2s ease-in-out infinite; }
+.sma-grok--juggle .sma-grok-juggle--b { animation: sma-grok-toss-b 1.2s ease-in-out 300ms infinite; }
+.sma-grok--juggle .sma-grok-juggle--c { animation: sma-grok-toss-c 1.2s ease-in-out 600ms infinite; }
+
 @keyframes sma-grok-bob {
   0%, 100% { transform: translateY(0) scaleY(1); }
   45% { transform: translateY(-2.4px) scaleY(1.02); }
@@ -234,16 +325,64 @@ const MASCOT_CSS = `
   0%, 100% { opacity: 0.35; transform: translateY(0); }
   50% { opacity: 0.9; transform: translateY(-2px); }
 }
+@keyframes sma-grok-scan {
+  0%, 100% { transform: translateX(-4px); }
+  50% { transform: translateX(4px); }
+}
+@keyframes sma-grok-key {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 1; }
+}
+@keyframes sma-grok-wrench {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  18% { transform: translateY(-2px) rotate(-24deg); }
+  34% { transform: translateY(4px) rotate(6deg); }
+  50% { transform: translateY(-2px) rotate(-24deg); }
+  66% { transform: translateY(4px) rotate(6deg); }
+  82% { transform: translateY(0) rotate(0deg); }
+}
+@keyframes sma-grok-sway {
+  0%, 100% { transform: rotate(-4deg); }
+  50% { transform: rotate(4deg); }
+}
+@keyframes sma-grok-wave {
+  0%, 100% { transform: scaleY(0.55); opacity: 0.55; }
+  50% { transform: scaleY(1); opacity: 1; }
+}
+@keyframes sma-grok-toss-a {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(5px, -10px); }
+}
+@keyframes sma-grok-toss-b {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(0, -13px); }
+}
+@keyframes sma-grok-toss-c {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(-5px, -10px); }
+}
 
 @media (prefers-reduced-motion: reduce) {
-  .sma-claude-turn,
-  .sma-claude-halo,
+  .sma-crab-crab,
+  .sma-crab-autoblink,
+  .sma-crab-bubble,
+  .sma-crab-claw--l,
+  .sma-crab-claw--r,
+  .sma-crab-hammer,
+  .sma-crab-star,
+  .sma-crab-ball,
   .sma-grok-ball,
   .sma-grok-orbit-spin,
   .sma-grok-spark,
-  .sma-grok-zzz { animation: none; }
+  .sma-grok-zzz,
+  .sma-grok-scan,
+  .sma-grok-key,
+  .sma-grok-wrench,
+  .sma-grok-wave,
+  .sma-grok-juggle { animation: none; }
   .sma-art [data-m-gaze],
   .sma-art [data-m-eyes] { transition: none; }
+  .sma-crab-crab { transition: none; }
 }
 `;
 
@@ -251,17 +390,113 @@ function MascotStyle() {
   return <style>{MASCOT_CSS}</style>;
 }
 
-/** 官方星芒 logomark：12 瓣圆头芒体 + 中央圆核，无卡通脸；只用辉光和转速表达状态。 */
+const CRAB = {
+  shell: "#E8825A",
+  light: "#F2A57F",
+  shade: "#C9633F",
+  dark: "#2A1B16",
+  hat: "#FFD166",
+  hatShade: "#DFA733",
+  phone: "#5AA9E6",
+  phoneShade: "#3F7FBF",
+  steel: "#C7CEDB",
+  steelLight: "#E4E9F2",
+  wood: "#8A5A3C",
+  key: "#F3D9C7",
+} as const;
+
+/** 像素脸的五个眼态，全部用 rect 拼：happy 是像素 ⌒，closed 是横杠，droop 用同色眼皮压住上半截。 */
+function ClaudeEyes({ eyes }: { eyes: ShopMascotEyes }) {
+  if (eyes === "happy") {
+    return (
+      <g fill={CRAB.dark}>
+        <rect x="35.2" y="50" width="2.6" height="2.6" />
+        <rect x="37.8" y="47.6" width="2.6" height="2.6" />
+        <rect x="40.4" y="47.6" width="2.6" height="2.6" />
+        <rect x="43" y="50" width="2.6" height="2.6" />
+        <rect x="50.4" y="50" width="2.6" height="2.6" />
+        <rect x="53" y="47.6" width="2.6" height="2.6" />
+        <rect x="55.6" y="47.6" width="2.6" height="2.6" />
+        <rect x="58.2" y="50" width="2.6" height="2.6" />
+      </g>
+    );
+  }
+  if (eyes === "closed") {
+    return (
+      <g fill={CRAB.dark}>
+        <rect x="37.6" y="49.4" width="6.6" height="2.6" />
+        <rect x="52" y="49.4" width="6.6" height="2.6" />
+      </g>
+    );
+  }
+  if (eyes === "wide") {
+    return (
+      <g fill={CRAB.dark}>
+        <rect x="37" y="45.6" width="6.4" height="7.2" />
+        <rect x="52.6" y="45.6" width="6.4" height="7.2" />
+      </g>
+    );
+  }
+  if (eyes === "droop") {
+    return (
+      <g>
+        <rect x="38" y="47.6" width="5.2" height="5.2" fill={CRAB.dark} />
+        <rect x="52.8" y="47.6" width="5.2" height="5.2" fill={CRAB.dark} />
+        {/* 眼皮用蟹身同色，只露出下缘形成下垂 */}
+        <rect x="37.2" y="45.4" width="6.8" height="3.6" fill={CRAB.shell} />
+        <rect x="52" y="45.4" width="6.8" height="3.6" fill={CRAB.shell} />
+      </g>
+    );
+  }
+  return (
+    <g fill={CRAB.dark}>
+      <rect x="38" y="47.4" width="5.2" height="5.2" />
+      <rect x="52.8" y="47.4" width="5.2" height="5.2" />
+    </g>
+  );
+}
+
+function CrabStar({
+  x,
+  y,
+  color,
+  delay,
+}: {
+  x: number;
+  y: number;
+  color: string;
+  delay: number;
+}) {
+  return (
+    <g transform={`translate(${x} ${y})`}>
+      <g className="sma-crab-star" style={{ animationDelay: `${delay}ms` }} fill={color}>
+        <rect x="-2" y="-7" width="4" height="14" />
+        <rect x="-7" y="-2" width="14" height="4" />
+      </g>
+    </g>
+  );
+}
+
+/** 像素 Z：7×10 的方块字，睡眠时用三档大小飘在头顶。 */
+function CrabZ({ x, y, scale, opacity }: { x: number; y: number; scale: number; opacity: number }) {
+  return (
+    <g transform={`translate(${x} ${y}) scale(${scale})`} fill={CRAB.shade} opacity={opacity}>
+      <rect x="0" y="0" width="7" height="2" />
+      <rect x="4.6" y="2" width="2" height="2" />
+      <rect x="3" y="4" width="2" height="2" />
+      <rect x="1.4" y="6" width="2" height="2" />
+      <rect x="0" y="8" width="7" height="2" />
+    </g>
+  );
+}
+
+/** 橙色像素蟹：蟹身、钳子、道具全部 rect 拼装；三球只在 juggle 时出现，平时没有腿也没有常驻球。 */
 export function ClaudeMascotArt({
   className = "shop-mascot-art",
+  eyes = "open",
   state = "idle",
 }: ShopMascotArtProps = {}) {
-  // 同一页面会同时挂多份星芒（页脚桌宠/合体动画等）。渐变 id 必须逐实例唯一，
-  // 否则 url(#id) 会解析到别的实例的 <defs>（该实例隐藏时填充整体失效）。
-  const uid = useId().replace(/:/g, "");
-  const rayId = `sma-claude-ray-${uid}`;
-  const coreId = `sma-claude-core-${uid}`;
-  const haloId = `sma-claude-halo-${uid}`;
+  const eyeState: ShopMascotEyes = state === "sleep" ? "closed" : eyes;
   return (
     <>
       <MascotStyle />
@@ -273,77 +508,160 @@ export function ClaudeMascotArt({
         data-m-kind="claude"
         data-m-state={state}
       >
-        <defs>
-          <linearGradient
-            id={rayId}
-            x1="24"
-            y1="20"
-            x2="74"
-            y2="78"
-            gradientUnits="userSpaceOnUse"
-          >
-            <stop offset="0" stopColor="#F2AC90" />
-            <stop offset="0.52" stopColor="#D97757" />
-            <stop offset="1" stopColor="#B9583A" />
-          </linearGradient>
-          <radialGradient id={coreId} cx="0.36" cy="0.3" r="0.82">
-            <stop offset="0" stopColor="#FBD5BC" />
-            <stop offset="0.5" stopColor="#E88F6C" />
-            <stop offset="1" stopColor="#CE6A4A" />
-          </radialGradient>
-          <radialGradient id={haloId} cx="0.5" cy="0.5" r="0.5">
-            <stop offset="0.42" stopColor="#D97757" stopOpacity="0.5" />
-            <stop offset="1" stopColor="#D97757" stopOpacity="0" />
-          </radialGradient>
-        </defs>
-        <circle
-          className="sma-claude-halo"
-          cx="48"
-          cy="48"
-          r="34"
-          fill={`url(#${haloId})`}
-        />
-        <g data-m-gaze>
-          <g className="sma-claude-turn">
-            <g
-              className="sma-claude-rays"
-              fill="none"
-              stroke={`url(#${rayId})`}
-              strokeWidth="5.6"
-              strokeLinecap="round"
-            >
-              {STAR_RAYS.map((ray) => {
-                const inner = rayPoint(ray.angle, 5);
-                const outer = rayPoint(ray.angle, ray.length * 1.15);
-                return (
-                  <line
-                    key={ray.angle}
-                    x1={inner.x}
-                    y1={inner.y}
-                    x2={outer.x}
-                    y2={outer.y}
-                  />
-                );
-              })}
+        {state === "think" ? (
+          <g className="sma-crab-bubble">
+            <rect
+              x="53"
+              y="35"
+              width="4.5"
+              height="4.5"
+              fill="#FFF6EF"
+              stroke={CRAB.shell}
+              strokeWidth="1.4"
+            />
+            <rect
+              x="58"
+              y="30"
+              width="5.5"
+              height="5.5"
+              fill="#FFF6EF"
+              stroke={CRAB.shell}
+              strokeWidth="1.4"
+            />
+            <rect
+              x="60"
+              y="5"
+              width="28"
+              height="22"
+              rx="1.5"
+              fill="#FFF6EF"
+              stroke={CRAB.shell}
+              strokeWidth="1.6"
+            />
+            <g fill={CRAB.dark}>
+              <rect x="69" y="10" width="10" height="4" />
+              <rect x="75" y="14" width="4" height="5" />
+              <rect x="72" y="17" width="5" height="4" />
+              <rect x="72" y="24" width="4" height="4" />
             </g>
-            <circle
-              className="sma-claude-core"
-              cx="48"
-              cy="48"
-              r="10.5"
-              fill={`url(#${coreId})`}
-            />
-            <circle
-              cx="48"
-              cy="48"
-              r="9.8"
-              fill="none"
-              stroke="#FFFFFF"
-              strokeOpacity="0.16"
-              strokeWidth="1.1"
-            />
           </g>
+        ) : null}
+
+        <g className="sma-crab-crab">
+          {state === "build" ? (
+            <g>
+              <rect x="45" y="29" width="6" height="3" fill={CRAB.hatShade} />
+              <rect x="33" y="31" width="30" height="6" rx="1" fill={CRAB.hat} />
+              <rect x="33" y="34" width="30" height="2" fill={CRAB.hatShade} />
+              <rect x="28" y="37" width="40" height="4" rx="1" fill={CRAB.hat} />
+            </g>
+          ) : null}
+
+          {state === "music" ? (
+            <g>
+              <rect x="26" y="34" width="44" height="4" rx="1" fill={CRAB.phoneShade} />
+              <rect x="26" y="36" width="4" height="5" fill={CRAB.phoneShade} />
+              <rect x="66" y="36" width="4" height="5" fill={CRAB.phoneShade} />
+              <rect x="22" y="39" width="8" height="10" rx="1.5" fill={CRAB.phone} />
+              <rect x="66" y="39" width="8" height="10" rx="1.5" fill={CRAB.phone} />
+            </g>
+          ) : null}
+
+          <g className="sma-crab-claw sma-crab-claw--l">
+            <rect x="22" y="52" width="7" height="4" fill={CRAB.shade} />
+            <rect x="11" y="45" width="11" height="5" fill={CRAB.shell} />
+            <rect x="11" y="56" width="11" height="5" fill={CRAB.shell} />
+            <rect x="18" y="48" width="8" height="11" fill={CRAB.shell} />
+            <rect x="18" y="56" width="8" height="3" fill={CRAB.shade} />
+          </g>
+
+          <g className="sma-crab-claw sma-crab-claw--r">
+            <rect x="67" y="52" width="7" height="4" fill={CRAB.shade} />
+            <rect x="74" y="45" width="11" height="5" fill={CRAB.shell} />
+            <rect x="74" y="56" width="11" height="5" fill={CRAB.shell} />
+            <rect x="70" y="48" width="8" height="11" fill={CRAB.shell} />
+            <rect x="70" y="56" width="8" height="3" fill={CRAB.shade} />
+            {state === "build" ? (
+              <g className="sma-crab-hammer">
+                <rect x="76" y="32" width="4" height="20" fill={CRAB.wood} />
+                <rect x="69" y="24" width="18" height="8" rx="1" fill={CRAB.steel} />
+                <rect x="69" y="24" width="18" height="3" fill={CRAB.steelLight} />
+              </g>
+            ) : null}
+          </g>
+
+          <rect x="32" y="41" width="32" height="3" fill={CRAB.shell} />
+          <rect x="28" y="44" width="40" height="16" fill={CRAB.shell} />
+          <rect x="31" y="60" width="34" height="8" fill={CRAB.shell} />
+          <rect x="32" y="45" width="11" height="3" fill={CRAB.light} />
+          <rect x="31" y="64" width="34" height="4" fill={CRAB.shade} />
+
+          <g data-m-gaze>
+            <g className="sma-crab-autoblink">
+              <g data-m-eyes>
+                <ClaudeEyes eyes={eyeState} />
+              </g>
+            </g>
+          </g>
+          <rect x="45" y="57" width="6" height="2.5" rx="0.8" fill={CRAB.dark} />
         </g>
+
+        {state === "type" ? (
+          <g>
+            <rect x="22" y="76" width="52" height="13" rx="1.5" fill={CRAB.dark} />
+            {[79, 84].map((row) => (
+              <g key={row}>
+                {[0, 1, 2, 3, 4, 5].map((col) => (
+                  <rect
+                    key={col}
+                    x={25 + col * 8}
+                    y={row}
+                    width="6"
+                    height="3.5"
+                    fill={CRAB.key}
+                  />
+                ))}
+              </g>
+            ))}
+          </g>
+        ) : null}
+
+        {state === "juggle" ? (
+          <g>
+            <g className="sma-crab-ball sma-crab-ball--a">
+              <rect x="26" y="18" width="7" height="7" rx="1" fill="#7CB342" />
+            </g>
+            <g className="sma-crab-ball sma-crab-ball--b">
+              <rect x="40" y="16" width="7" height="7" rx="1" fill="#FFD166" />
+            </g>
+            <g className="sma-crab-ball sma-crab-ball--c">
+              <rect x="54" y="18" width="7" height="7" rx="1" fill="#EF5350" />
+            </g>
+          </g>
+        ) : null}
+
+        {state === "cheer" ? (
+          <g>
+            <CrabStar x={18} y={30} color="#FFD166" delay={0} />
+            <CrabStar x={77} y={26} color="#FFB74D" delay={260} />
+            <CrabStar x={69} y={38} color="#FFD166" delay={520} />
+          </g>
+        ) : null}
+
+        {state === "sleep" ? (
+          <g>
+            <CrabZ x={61} y={23} scale={1.6} opacity={0.95} />
+            <CrabZ x={73} y={14} scale={1.1} opacity={0.75} />
+            <CrabZ x={81} y={8} scale={0.8} opacity={0.55} />
+          </g>
+        ) : null}
+
+        {state === "alert" ? (
+          <g fill="#E8533F">
+            <rect x="45.5" y="8" width="5" height="13" />
+            <rect x="45.5" y="24" width="5" height="5" />
+          </g>
+        ) : null}
       </svg>
     </>
   );
@@ -456,11 +774,70 @@ export function GrokMascotArt({
           />
           <ellipse cx="34.4" cy="33" rx="3.8" ry="2.4" fill="#FFFFFF" opacity="0.18" transform="rotate(-32 34.4 33)" />
           <g data-m-gaze>
-            <g data-m-eyes>
-              <GrokEyes eyes={eyeState} bodyId={bodyId} />
+            <g className="sma-grok-scan">
+              <g data-m-eyes>
+                <GrokEyes eyes={eyeState} bodyId={bodyId} />
+              </g>
             </g>
           </g>
         </g>
+        {state === "build" ? (
+          <g className="sma-grok-wrench">
+            <rect x="45.5" y="16" width="5" height="18" fill="#AEB7C6" />
+            <rect x="38" y="8" width="6" height="10" fill="#AEB7C6" />
+            <rect x="38" y="8" width="20" height="5" fill="#AEB7C6" />
+            <rect x="52" y="8" width="6" height="10" fill="#AEB7C6" />
+            <rect x="38" y="8" width="20" height="2" fill={CRAB.steelLight} />
+          </g>
+        ) : null}
+        {state === "type" ? (
+          <g className="sma-grok-keyboard">
+            <rect
+              x="24"
+              y="80"
+              width="48"
+              height="11"
+              rx="1.5"
+              fill="#2B2F3A"
+              stroke="#7C8499"
+              strokeOpacity="0.35"
+            />
+            {[82.5, 86.5].map((row, rowIndex) => (
+              <g key={row}>
+                {[0, 1, 2, 3, 4, 5].map((col) => (
+                  <rect
+                    key={col}
+                    className="sma-grok-key"
+                    x={27 + col * 7}
+                    y={row}
+                    width="5"
+                    height="3"
+                    fill="#8B93A8"
+                    style={{ animationDelay: `${(rowIndex * 3 + col) * 60}ms` }}
+                  />
+                ))}
+              </g>
+            ))}
+          </g>
+        ) : null}
+        {state === "music" ? (
+          <path
+            className="sma-grok-wave"
+            d="M20 88 q4 -7 8 0 t8 0 t8 0 t8 0 t8 0 t8 0"
+            fill="none"
+            stroke="#8BE9FF"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeOpacity="0.9"
+          />
+        ) : null}
+        {state === "juggle" ? (
+          <g>
+            <circle className="sma-grok-juggle sma-grok-juggle--a" cx="38" cy="16" r="4" fill="#7CB342" />
+            <circle className="sma-grok-juggle sma-grok-juggle--b" cx="48" cy="13" r="4" fill="#FFD166" />
+            <circle className="sma-grok-juggle sma-grok-juggle--c" cx="58" cy="16" r="4" fill="#EF5350" />
+          </g>
+        ) : null}
         <g className="sma-grok-orbit" fill="none">
           <ellipse
             cx="48"

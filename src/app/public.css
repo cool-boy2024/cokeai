@@ -6135,11 +6135,6 @@ body {
   animation: shop-mascot-sparkle 1100ms cubic-bezier(0.34, 1.2, 0.4, 1);
 }
 
-/* 云宝敲字：小幅度、有节奏地点头。 */
-.shop-mascot.is-typing .shop-mascot-stance {
-  animation: shop-mascot-type 620ms steps(3, end) infinite;
-}
-
 .shop-mascot-art {
   display: block;
   width: 100%;
@@ -6400,21 +6395,6 @@ body {
   }
 }
 
-@keyframes shop-mascot-type {
-  0% {
-    transform: rotate(var(--m-lean, 0deg)) translateY(0) scale(1, 1);
-  }
-  33% {
-    transform: rotate(var(--m-lean, 0deg)) translateY(-1px) scale(1.03, 0.97);
-  }
-  66% {
-    transform: rotate(var(--m-lean, 0deg)) translateY(1px) scale(0.98, 1.02);
-  }
-  100% {
-    transform: rotate(var(--m-lean, 0deg)) translateY(0) scale(1, 1);
-  }
-}
-
 @keyframes shop-mascot-think-dot {
   0%,
   100% {
@@ -6544,7 +6524,6 @@ body {
   .shop-mascot-stance.is-land,
   .shop-mascot-stance.is-bounce,
   .shop-mascot-stance.is-wake,
-  .shop-mascot.is-typing .shop-mascot-stance,
   .shop-mascot.is-sparkle .shop-mascot-breathe,
   .shop-mascot-think i,
   .shop-mascot-zzz span,
@@ -6584,7 +6563,6 @@ body {
   .shop-mascot-stance.is-land,
   .shop-mascot-stance.is-bounce,
   .shop-mascot-stance.is-wake,
-  .shop-mascot.is-typing .shop-mascot-stance,
   .shop-mascot.is-sparkle .shop-mascot-breathe,
   .shop-mascot-think i,
   .shop-mascot-zzz span,
