@@ -54,6 +54,17 @@ export function SiteFooter() {
               ? "数字商品为人工发货 · API 按实际用量计费"
               : "数字商品为人工发货 · 质保按商品标注"}
           </span>
+          <span>
+            桌宠素材 Cloudling ©{" "}
+            <a
+              href="https://github.com/rullerzhou-afk/clawd-on-desk"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              clawd-on-desk
+            </a>
+            {" · AGPL-3.0"}
+          </span>
         </div>
       </div>
     </footer>

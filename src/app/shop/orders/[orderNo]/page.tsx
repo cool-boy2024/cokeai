@@ -8,6 +8,7 @@ import { AutoRefresh } from "@/components/shop/AutoRefresh";
 import { CancelOrderButton } from "@/components/shop/CancelOrderButton";
 import { DeliveryReveal } from "@/components/shop/DeliveryReveal";
 import { OrderTimeline } from "@/components/shop/OrderTimeline";
+import { PaymentVictory } from "@/components/shop/PaymentVictory";
 import { getCurrentUser } from "@/lib/auth";
 import { config } from "@/lib/config";
 import { USDT_NETWORKS, networkForProvider } from "@/lib/payments/networks";
@@ -76,6 +77,8 @@ export default async function ShopOrderPage({
           </div>
 
           <OrderTimeline status={order.status} />
+
+          <PaymentVictory orderNo={order.order_no} status={order.status} />
 
           <div className="shop-order-grid">
             <section className="shop-panel">
