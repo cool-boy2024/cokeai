@@ -19,7 +19,7 @@ export type ShopSalesDisplay = {
   remaining: number | null;
   /** 货源标了「充足」但没有具体件数。客户仍然想知道「有货」。 */
   abundant: boolean;
-  /** 货源确实没货（remaining === 0）。 */
+  /** 货源确实没货（remaining === 0），预定单除外。 */
   soldOut: boolean;
 };
 
@@ -42,11 +42,23 @@ export function normalizeSupplierStock(stock: unknown): number {
   return -1;
 }
 
+/**
+ * 上游库存 0 是否按售罄拦住购买。预定单（CEO：预定不是没货）保持可买；
+ * 现货库存 0 仍然不可买。
+ */
+export function supplierStockSoldOut(supplierStock: number, preorder = false): boolean {
+  if (preorder) return false;
+  const stock = Number.isFinite(supplierStock) ? Math.trunc(supplierStock) : -1;
+  return stock === 0;
+}
+
 export function salesDisplay(input: {
   /** 上游累计已售。 */
   supplierSold: number;
   /** 上游当前库存；-1 = 充足。 */
   supplierStock: number;
+  /** 预定单：库存 0 仍可买，页面也不展示已售罄。 */
+  preorder?: boolean;
 }): ShopSalesDisplay {
   const sold = Number.isFinite(input.supplierSold)
     ? Math.max(0, Math.trunc(input.supplierSold))
@@ -59,7 +71,7 @@ export function salesDisplay(input: {
     // 负数（含 -1）表示「充足」，没有具体剩余件数可展示。
     remaining: stock >= 0 ? stock : null,
     abundant: stock < 0,
-    soldOut: stock === 0,
+    soldOut: supplierStockSoldOut(stock, Boolean(input.preorder)),
   };
 }
 
@@ -74,8 +86,8 @@ export function productAvailabilityState(input: {
   preorder?: boolean;
   soldOut?: boolean;
 }): "available" | "unavailable" {
-  if (input.soldOut) return "unavailable";
   if (input.preorder) return "available";
+  if (input.soldOut) return "unavailable";
   return input.availability === "in_stock" || input.availability === "low_stock"
     ? "available"
     : "unavailable";

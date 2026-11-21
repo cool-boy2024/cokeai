@@ -5,10 +5,18 @@ import { getManualAlipaySettings } from "@/lib/payments/settings";
 import { claimPersonalAlipayReceipt } from "@/lib/payments/receipts";
 import { decryptSecret, encryptSecret } from "@/lib/crypto";
 import { query, toNumber, withTransaction } from "@/lib/db";
+import {
+  applyCreditOpById,
+  enqueueAdjustment,
+  getLatestShopBalanceOp,
+  shopBalanceOpBlocksClose,
+} from "@/lib/gateway-credits";
 import { isPurchasable, type ShopInputField } from "./copy";
 import { getMembershipInfo, memberPriceMicros } from "./membership";
 import { notifyShopOpsOnce } from "./ops-alert";
+import { preorderSql } from "./preorder";
 import { sanitizeSupplierCopy } from "./sanitize";
+import { supplierStockSoldOut } from "./sales-display";
 
 export type ShopOrderStatus =
   | "pending_payment"
@@ -215,10 +223,11 @@ export async function createShopOrder(input: {
       eta_max_minutes: number;
       qty_max: number;
       supplier_stock: number;
+      preorder: boolean;
     }>(
       `SELECT id, slug, name, brand, price_micros, status, availability,
               pricing_review_required, input_fields, eta_max_minutes,
-              supplier_stock, $2::int AS qty_max
+              supplier_stock, ${preorderSql()} AS preorder, $2::int AS qty_max
          FROM shop_products
         WHERE id = $1
         FOR UPDATE`,
@@ -238,15 +247,22 @@ export async function createShopOrder(input: {
       [product.id],
     );
     const hasVariants = Number(variantCount.rows[0]?.count || 0) > 0;
-    let variant: { id: string; label: string; price_micros: string | number; availability: string } | null = null;
+    let variant: {
+      id: string;
+      label: string;
+      price_micros: string | number;
+      availability: string;
+      preorder_manual: boolean;
+    } | null = null;
     if (input.variantId) {
       const variantResult = await client.query<{
         id: string;
         label: string;
         price_micros: string | number;
         availability: string;
+        preorder_manual: boolean;
       }>(
-        `SELECT id, label, price_micros, availability
+        `SELECT id, label, price_micros, availability, preorder_manual
            FROM shop_product_variants
           WHERE id = $1 AND product_id = $2 AND active = TRUE
           FOR UPDATE`,
@@ -256,14 +272,19 @@ export async function createShopOrder(input: {
       if (!variant) throw new Error("规格不存在或已下架，请刷新后重试");
     }
     if (hasVariants && !variant) throw new Error("请选择商品规格");
-    if (!isPurchasable(variant ? variant.availability : product.availability)) {
-      throw new Error("商品暂时缺货");
+    const preorder = Boolean(product.preorder) || Boolean(variant?.preorder_manual);
+    const availability = variant ? variant.availability : product.availability;
+    if (!isPurchasable(availability)) {
+      // 预定单在上游库存 0 / out_of_stock 时仍可买；运营主动暂停的除外。
+      if (!(preorder && availability === "out_of_stock")) {
+        throw new Error("商品暂时缺货");
+      }
     }
 
-    // 货源库存是唯一的售卖上限：上游没货我们就卖不了。商品行已经
-    // FOR UPDATE，同一时刻的并发下单会在这里排队，不会超卖。
+    // 货源库存是现货的售卖上限。预定单（CEO：预定不是没货）在库存 0 时
+    // 仍接受订单。商品行已经 FOR UPDATE，并发下单会在这里排队。
     const supplierStock = Number(product.supplier_stock ?? -1);
-    if (supplierStock === 0) {
+    if (supplierStockSoldOut(supplierStock, preorder)) {
       throw new Error("货源已售罄，正在补货，请稍后再来");
     }
     if (supplierStock > 0 && (input.qty || 1) > supplierStock) {
@@ -658,7 +679,24 @@ export async function markShopOrderPaid(input: {
       return { id: order.id, status: order.status, alreadyPaid: true };
     }
     if (["cancelled", "expired", "refunded", "refund_pending"].includes(order.status)) {
-      throw new Error("ORDER_CLOSED");
+      // 余额已扣但订单被取消/过期：同一事务里恢复并入账，避免「钱扣了、单关了」。
+      const debit =
+        input.provider === "balance" && ["cancelled", "expired"].includes(order.status)
+          ? await getLatestShopBalanceOp(order.id, client)
+          : null;
+      if (debit?.status !== "applied") {
+        throw new Error("ORDER_CLOSED");
+      }
+      await client.query(
+        `INSERT INTO shop_order_events (order_id, actor_type, event, note)
+         VALUES ($1, 'system', 'reopened', $2)`,
+        [
+          order.id,
+          order.status === "expired"
+            ? "余额已扣款，恢复已过期订单以便入账"
+            : "余额已扣款，恢复已取消订单以便入账",
+        ],
+      );
     }
     if (input.paidAmountMicros !== undefined) {
       const expected = toNumber(order.amount_micros);
@@ -972,8 +1010,12 @@ export async function cancelShopOrder(input: {
   reason?: string;
 }): Promise<void> {
   await withTransaction(async (client) => {
-    const result = await client.query<{ status: string; user_id: string }>(
-      `SELECT status, user_id FROM shop_orders WHERE id = $1 FOR UPDATE`,
+    const result = await client.query<{
+      status: string;
+      user_id: string;
+      payment_provider: string;
+    }>(
+      `SELECT status, user_id, payment_provider FROM shop_orders WHERE id = $1 FOR UPDATE`,
       [input.orderId],
     );
     const order = result.rows[0];
@@ -983,6 +1025,12 @@ export async function cancelShopOrder(input: {
     if (order.status === "cancelled") return;
     if (order.status !== "pending_payment") {
       throw new Error("只有待支付的订单可以直接取消；已付款的订单请走退款");
+    }
+    if (order.payment_provider === "balance") {
+      const debit = await getLatestShopBalanceOp(input.orderId, client);
+      if (shopBalanceOpBlocksClose(debit)) {
+        throw new Error("余额支付处理中，无法取消订单");
+      }
     }
 
     await client.query(
@@ -1049,22 +1097,42 @@ export async function refundShopOrder(input: {
   reason: string;
   providerRef?: string;
 }): Promise<void> {
+  let creditOpId: string | null = null;
   await withTransaction(async (client) => {
-    const order = await client.query<{ status: string; amount_micros: string | number }>(
-      `SELECT status, amount_micros FROM shop_orders WHERE id = $1 FOR UPDATE`,
+    const order = await client.query<{
+      status: string;
+      amount_micros: string | number;
+      payment_provider: string;
+      user_id: string;
+    }>(
+      `SELECT status, amount_micros, payment_provider, user_id
+         FROM shop_orders WHERE id = $1 FOR UPDATE`,
       [input.orderId],
     );
     const row = order.rows[0];
     if (!row) throw new Error("订单不存在");
+    // 重复登记：已经退过款的单直接返回，保持幂等。
     if (row.status === "refunded") return;
+    if (!["paid", "procuring", "delivered", "refund_pending"].includes(row.status)) {
+      throw new Error("当前订单状态不允许退款");
+    }
 
-    await client.query(
+    const amountMicros = Math.trunc(input.amountMicros);
+    const orderAmountMicros = toNumber(row.amount_micros);
+    if (!Number.isFinite(amountMicros) || amountMicros <= 0) {
+      throw new Error("退款金额必须大于 0");
+    }
+    if (amountMicros > orderAmountMicros) {
+      throw new Error("退款金额不能超过订单金额");
+    }
+    const refund = await client.query<{ id: string }>(
       `INSERT INTO shop_refunds
          (order_id, amount_micros, reason, provider, provider_ref, status, admin_id, completed_at)
-       VALUES ($1, $2, $3, 'manual', $4, 'completed', $5, now())`,
+       VALUES ($1, $2, $3, 'manual', $4, 'completed', $5, now())
+       RETURNING id`,
       [
         input.orderId,
-        Math.min(input.amountMicros, toNumber(row.amount_micros)),
+        amountMicros,
         input.reason.slice(0, 1000),
         input.providerRef || null,
         input.adminId,
@@ -1085,7 +1153,26 @@ export async function refundShopOrder(input: {
        VALUES ($1, 'admin', $2, 'refunded', $3)`,
       [input.orderId, input.adminId, input.reason.slice(0, 1000)],
     );
+
+    // 余额支付的退款走同一套 gateway_balance_ops 出箱：正向 adjustment，
+    // reference 绑 orderId+refundId，UNIQUE(reference) 保证同一笔退款不会加两次。
+    if (row.payment_provider === "balance" && amountMicros > 0) {
+      const op = await enqueueAdjustment(
+        {
+          userId: row.user_id,
+          amountMicros,
+          reference: `cokeai-shop-refund:${input.orderId}:${refund.rows[0].id}`,
+        },
+        client,
+      );
+      creditOpId = op.id;
+    }
   });
+
+  // apply 走独立连接，必须等退款事务提交后才能看到 pending 流水。
+  if (creditOpId) {
+    await applyCreditOpById(creditOpId);
+  }
 }
 
 export async function revealShopDelivery(input: {

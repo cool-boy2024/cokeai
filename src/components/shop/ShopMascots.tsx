@@ -63,6 +63,9 @@ const PAID_WINDOW_MS = 30_000;
 const CARD_SELECTOR = "a.shop-row, a.shop-product-card";
 /** 后台页不挂桌宠，公开页全程跟着客户走。 */
 const HIDDEN_PREFIXES = ["/admin", "/dashboard"];
+/** 结账和订单页把桌宠缩小靠边，不挡表单和交付内容。 */
+const QUIET_PATH = /^\/shop\/(?:checkout|orders)(?:\/|$)/;
+const QUIET_SIZE = 48;
 /** 商品详情页：/shop/<slug>，购买须知 / 结账 / 订单这些固定段不算。 */
 const DETAIL_PATH = /^\/shop\/(?!terms(?:\/|$)|checkout(?:\/|$)|orders(?:\/|$))[^/]+\/?$/;
 
@@ -312,6 +315,10 @@ function isDetailPath(pathname: string): boolean {
   return DETAIL_PATH.test(pathname);
 }
 
+function quietOnPath(pathname: string): boolean {
+  return QUIET_PATH.test(pathname);
+}
+
 function hiddenOnPath(pathname: string): boolean {
   return HIDDEN_PREFIXES.some(
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
@@ -551,7 +558,7 @@ export function ShopMascots() {
     const runtime = runtimeRef.current;
     const nodes = nodesRef.current;
     const reducedQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const mobileQuery = window.matchMedia("(max-width: 767px)");
+    const mobileQuery = window.matchMedia("(max-width: 1100px)");
     const claims = new Map<Element, Kind>();
     const lastPose: Record<Kind, Pose> = {
       claude: IDLE_POSE,
@@ -583,9 +590,13 @@ export function ShopMascots() {
       sparkUsed = 0;
     }
 
-    // 移动端和「减少动态效果」都只做静态站立，区别是移动端仍占三个角。
+    // 平板及以下和「减少动态效果」都只做静态站立；窄屏由 CSS 整段隐藏。
     const isStatic = () => reducedQuery.matches || mobileQuery.matches;
-    const mascotSize = () => (mobileQuery.matches ? MOBILE_SIZE : DESKTOP_SIZE);
+    const isQuiet = () => quietOnPath(window.location.pathname);
+    const mascotSize = () => {
+      if (mobileQuery.matches) return MOBILE_SIZE;
+      return isQuiet() ? QUIET_SIZE : DESKTOP_SIZE;
+    };
 
     const travelers = {} as Record<Kind, Traveler | null>;
     for (const kind of KINDS) {
@@ -771,7 +782,23 @@ export function ShopMascots() {
       return pinInsideViewport({ x, y: clamp(y, minY, maxY) });
     };
 
-    const homeSpot = (kind: Kind) => (onDetail() ? detailSpot(kind) : cornerSpot(kind));
+    // 结账 / 订单：三只缩小后贴右缘竖排，让开表单和交付区。
+    const quietSpot = (kind: Kind): MascotPoint => {
+      const size = mascotSize();
+      const { minY, maxY, maxX } = limits();
+      const order: Record<Kind, number> = { claude: 0, gpt: 1, grok: 2 };
+      const box = supportBox();
+      let y = minY + order[kind] * (size + 8);
+      if (box && hitsSupport(maxX, y, size, box)) {
+        y = clamp(box.top - size - 10, minY, maxY);
+      }
+      return pinInsideViewport({ x: maxX, y: clamp(y, minY, maxY) });
+    };
+
+    const homeSpot = (kind: Kind) => {
+      if (isQuiet()) return quietSpot(kind);
+      return onDetail() ? detailSpot(kind) : cornerSpot(kind);
+    };
 
     const moveTo = (
       kind: Kind,
@@ -857,6 +884,7 @@ export function ShopMascots() {
     // 那里才知道是直接放弃还是排队等对方收摊。
     const guideAllowed = (kind: Kind) =>
       !disposed &&
+      !isQuiet() &&
       !onDetail() &&
       !enteringDetail &&
       !interacting &&
@@ -1130,6 +1158,7 @@ export function ShopMascots() {
 
     const canAct = (kind: Kind) =>
       !disposed &&
+      !isQuiet() &&
       !isStatic() &&
       !enteringDetail &&
       !sleeping &&
@@ -1250,6 +1279,7 @@ export function ShopMascots() {
 
     const canInteract = () =>
       !disposed &&
+      !isQuiet() &&
       !interacting &&
       !enteringDetail &&
       !sleeping &&
@@ -1838,6 +1868,7 @@ export function ShopMascots() {
     };
 
     const activate = (kind: Kind) => {
+      if (isQuiet()) return;
       // 互动中点击任意一只：立刻收场，三只 hop 回原位。
       if (interacting) {
         skipInteraction();
@@ -2112,7 +2143,7 @@ export function ShopMascots() {
     const node = nodesRef.current.grok;
     if (!node) return;
     const reducedQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const mobileQuery = window.matchMedia("(max-width: 767px)");
+    const mobileQuery = window.matchMedia("(max-width: 1100px)");
     let frame = 0;
     let currentX = 0;
     let currentY = 0;
@@ -2222,9 +2253,9 @@ export function ShopMascots() {
       <div
         key={kind}
         ref={setNode(kind)}
-        className={`shop-mascot shop-mascot-${kind}`}
+        className={`shop-mascot shop-mascot-${kind}${quietOnPath(pathname) ? " is-quiet" : ""}`}
         data-state={poses[kind].state}
-        role="button"
+        role="group"
         tabIndex={0}
         aria-label={LABELS[kind]}
         onClick={() => apiRef.current?.activate(kind)}
@@ -2263,6 +2294,8 @@ export function ShopMascots() {
         {bubble ? (
           <span
             className={action ? "shop-mascot-bubble has-act" : "shop-mascot-bubble"}
+            // 带按钮时用 group 包真 <button>，不用 dialog 再套 role=button。
+            role={action ? "group" : undefined}
             // 纯装饰的气泡对读屏隐藏；带按钮的要能读出来，按钮才是有语义的。
             aria-hidden={action ? undefined : true}
             // 气泡浮在卡片上方，带按钮时整块吃掉点击，别让点空处穿透到下面的卡片。

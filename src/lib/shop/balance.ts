@@ -1,4 +1,3 @@
-import { query } from "@/lib/db";
 import { isSub2ApiConfigured } from "@/lib/sub2api/client";
 import {
   applyCreditOpById,
@@ -10,9 +9,11 @@ import {
   SHOP_BALANCE_REVERSED,
   SHOP_BALANCE_REVERSAL_FAILED,
   shopBalanceAttempt,
+  shopBalanceOpBlocksClose,
   shopBalanceReference,
   type CreditOp,
 } from "@/lib/gateway-credits";
+import { query, withTransaction } from "@/lib/db";
 import { markShopOrderPaid } from "./orders";
 import { notifyShopOpsOnce } from "./ops-alert";
 

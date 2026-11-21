@@ -43,25 +43,22 @@ const userItems = [
 // but they are no longer part of the operator's navigation.
 const adminItems = [
   { href: "/admin/shop", label: "小店概览", icon: LayoutDashboard },
-  { href: "/admin/shop/analytics", label: "经营看板", icon: BarChart3 },
-  { href: "/admin/metrics", label: "API 指标", icon: Activity },
-  // Security stays near the overview on purpose: it is the first stop during
-  // an incident, and it must remain inside the initial viewport (the mobile
-  // nav scrolls horizontally, so trailing items are effectively hidden).
-  { href: "/admin/security", label: "安全", icon: ShieldCheck },
   { href: "/admin/shop/orders", label: "订单", icon: ReceiptText },
-  { href: "/admin/shop/reconcile", label: "到账核对", icon: ScanSearch },
-  { href: "/admin/shop/products", label: "商品", icon: Store },
-  { href: "/admin/shop/eval", label: "上架评测", icon: FlaskConical },
   { href: "/admin/support", label: "工单", icon: Headphones },
-  { href: "/admin/payments", label: "收款设置", icon: CreditCard },
+  { href: "/admin/shop/products", label: "商品", icon: Store },
+  { href: "/admin/shop/reconcile", label: "到账核对", icon: ScanSearch },
   { href: "/admin/shop/queue", label: "采购队列", icon: ClipboardList },
-  { href: "/admin/shop/deposits", label: "USDT 到账", icon: Wallet },
+  { href: "/admin/shop/analytics", label: "经营看板", icon: BarChart3 },
   { href: "/admin/shop/sources", label: "货源", icon: PackageSearch },
   { href: "/admin/users", label: "用户", icon: Users },
-  { href: "/admin/visitors", label: "访客", icon: UserPlus },
   { href: "/admin/announcements", label: "公告", icon: Megaphone },
+  { href: "/admin/payments", label: "收款设置", icon: CreditCard },
+  { href: "/admin/shop/deposits", label: "USDT 到账", icon: Wallet },
+  { href: "/admin/visitors", label: "访客", icon: UserPlus },
   { href: "/admin/help", label: "帮助中心", icon: BookOpen },
+  { href: "/admin/metrics", label: "API 指标", icon: Activity },
+  { href: "/admin/security", label: "安全", icon: ShieldCheck },
+  { href: "/admin/shop/eval", label: "上架评测", icon: FlaskConical },
 ];
 
 function isActive(href: string, pathname: string): boolean {

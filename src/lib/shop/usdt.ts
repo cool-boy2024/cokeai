@@ -169,6 +169,7 @@ async function checkShopDepositBeforeExpiry(
       requiredConfirmations: USDT_NETWORKS[network].requiredConfirmations,
       expiresAt: deposit.expires_at,
       receivedAt: latest?.receivedAt,
+      toleranceUsdt: amountToleranceUsdt(toNumber(deposit.expected_usdt)),
     });
     await query(
       `UPDATE shop_usdt_deposits

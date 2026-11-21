@@ -441,7 +441,8 @@ export function toProduct(
     coverUrl: item.cover ? absoluteHttpUrl(item.cover, source.base) : null,
     imageUrls,
     helpArticleIds: extras?.helpArticleIds ?? [],
-    // 展示用：上游公开的已售与库存，每次同步刷新。
+    // 展示用：上游公开的已售与库存，每次同步刷新。预定单也保留上游的 0，
+    // 不改写成「充足」——可买与否看 preorder，不看把库存抹掉。
     supplierSold: Math.max(0, Math.trunc(Number(item.order_sold ?? 0)) || 0),
     supplierStock: normalizeSupplierStock(item.stock),
     ...detectWarranty(text),

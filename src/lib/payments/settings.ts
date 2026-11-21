@@ -31,7 +31,16 @@ async function readSettings(channel: Channel) {
     "SELECT enabled, payload_encrypted FROM payment_settings WHERE channel = $1", [channel],
   );
   const row = result.rows[0];
-  return row ? { enabled: row.enabled, data: JSON.parse(decryptSecret(row.payload_encrypted)) as Record<string, string> } : null;
+  if (!row) return null;
+  // A rotated APP_ENCRYPTION_KEY, or a dump restored onto another machine,
+  // cannot open the ciphertext. Treat that row as absent so product pages,
+  // checkout, and the payments screen fall back to env instead of 500.
+  try {
+    return { enabled: row.enabled, data: JSON.parse(decryptSecret(row.payload_encrypted)) as Record<string, string> };
+  } catch (error) {
+    console.error(`[payments] ${channel} settings unreadable, using env defaults`, error);
+    return null;
+  }
 }
 
 export async function getManualAlipaySettings(): Promise<ManualAlipaySettings> {

@@ -29,6 +29,14 @@ export function ShopRing({ products }: { products: PublicShopProduct[] }) {
       (item): item is HTMLDivElement => Boolean(item),
     );
     if (!stage || !layer || items.length < 2) return;
+    // public.css hides .shop-ring-stage below 1101px. Skip the GSAP ticker
+    // rather than spinning a 0×0 ring; do not run a scaled-down 3D on phones.
+    if (
+      !stage.offsetParent ||
+      !window.matchMedia("(min-width: 1101px)").matches
+    ) {
+      return;
+    }
 
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const section = stage.closest<HTMLElement>(".shop-collection");

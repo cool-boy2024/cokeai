@@ -351,6 +351,7 @@ async function checkDepositBeforeExpiry(deposit: {
       requiredConfirmations: USDT_NETWORKS[network].requiredConfirmations,
       expiresAt: deposit.expires_at,
       receivedAt: latest?.receivedAt,
+      toleranceUsdt: amountToleranceUsdt(toNumber(deposit.expected_usdt)),
     });
     await query(
       `UPDATE usdt_deposits
@@ -648,8 +649,9 @@ export function evaluateUsdtDeposit(input: {
 
   const expected = round6(Math.max(0, input.expectedUsdt));
   const received = round6(Math.max(0, input.receivedUsdt));
-  // Collect the full quote: underpayments never become successful orders.
-  const tolerance = 0;
+  // Exchange fees shave a fraction off the quoted amount. Callers pass the
+  // operator tolerance (bps / flat USDT). Omit it and the quote must be exact.
+  const tolerance = round6(Math.max(0, input.toleranceUsdt ?? 0));
   const enough = expected > 0 && received + tolerance >= expected;
   const overpaid = enough && received > expected + tolerance;
   const pastExpiry = Number.isFinite(expiresAt) && now > expiresAt;
@@ -731,6 +733,7 @@ export async function scanUsdtDeposits(limit = 50): Promise<{
         requiredConfirmations: USDT_NETWORKS[network].requiredConfirmations,
         expiresAt: deposit.expires_at,
         receivedAt: latest?.receivedAt,
+        toleranceUsdt: amountToleranceUsdt(expected),
       });
 
       // Atomic claim: only the worker that transitions the row out of a

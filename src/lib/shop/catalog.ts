@@ -138,6 +138,7 @@ function hydrate(row: RawProduct): PublicShopProduct {
     sales: salesDisplay({
       supplierSold: Number(row.supplier_sold || 0),
       supplierStock: Number(row.supplier_stock ?? -1),
+      preorder: Boolean(row.preorder),
     }),
     image_url: null,
     description_images: [],

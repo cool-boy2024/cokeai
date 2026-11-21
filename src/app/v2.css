@@ -810,6 +810,88 @@ tbody tr:hover {
   white-space: nowrap;
 }
 
+/* 运营表里需要整段看完的格子：不换行、不截断。表格超出视口时由 .table-scroll 横滑。 */
+.cell-full {
+  white-space: nowrap;
+}
+
+.app-shell .table-scroll {
+  overflow-x: auto;
+}
+
+.app-shell .table-scroll table {
+  width: 100%;
+}
+
+/* 小店订单：固定列宽吃满主栏，1440 起不横滑。 */
+.app-shell .table-scroll--orders table {
+  table-layout: fixed;
+}
+
+.app-shell .table-scroll--orders th,
+.app-shell .table-scroll--orders td {
+  padding: 10px 8px;
+}
+
+/* 商品名、支付方式：只在空格或标点处换行，不把「美国号」从中间拆开。 */
+.app-shell .table-scroll td.cell-full {
+  white-space: normal;
+  overflow-wrap: normal;
+  word-break: keep-all;
+  line-break: strict;
+}
+
+/* 邮箱等无空格拉丁串：格子内断开，不压进邻列。 */
+.app-shell .table-scroll td.cell-soft {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* 超长交易号：只在自己的格子里断开，不压到「状态」。 */
+.app-shell .table-scroll td.mono.cell-full {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  line-break: auto;
+}
+
+.app-shell .table-scroll td.cell-keep {
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: keep-all;
+}
+
+.app-shell .table-scroll td.nowrap,
+.app-shell .table-scroll td.text-right {
+  white-space: nowrap;
+}
+
+.app-shell .table-scroll td.text-right .btn {
+  white-space: nowrap;
+}
+
+/* 订单号整段、金额/毛利/状态/时间/处理一行；剩余给商品名。 */
+.app-shell .table-scroll--orders th:nth-child(1),
+.app-shell .table-scroll--orders td:nth-child(1) { width: 15%; }
+.app-shell .table-scroll--orders th:nth-child(2),
+.app-shell .table-scroll--orders td:nth-child(2) { width: 16%; }
+.app-shell .table-scroll--orders th:nth-child(3),
+.app-shell .table-scroll--orders td:nth-child(3) { width: 16%; }
+.app-shell .table-scroll--orders th:nth-child(4),
+.app-shell .table-scroll--orders td:nth-child(4) { width: 11%; }
+.app-shell .table-scroll--orders th:nth-child(5),
+.app-shell .table-scroll--orders td:nth-child(5) { width: 6%; }
+.app-shell .table-scroll--orders th:nth-child(6),
+.app-shell .table-scroll--orders td:nth-child(6) { width: 8%; }
+.app-shell .table-scroll--orders th:nth-child(7),
+.app-shell .table-scroll--orders td:nth-child(7) { width: 10%; }
+.app-shell .table-scroll--orders th:nth-child(8),
+.app-shell .table-scroll--orders td:nth-child(8) { width: 6%; }
+.app-shell .table-scroll--orders th:nth-child(9),
+.app-shell .table-scroll--orders td:nth-child(9) { width: 6%; }
+.app-shell .table-scroll--orders th:nth-child(10),
+.app-shell .table-scroll--orders td:nth-child(10) { width: 6%; }
+
 .text-right {
   text-align: right;
 }
@@ -2054,6 +2136,10 @@ tbody tr:hover {
 }
 
 @media (max-width: 1024px) {
+  .app-shell:has(.app-sidebar) .app-main .app-content {
+    width: min(1180px, 100%);
+  }
+
   .hero-grid,
   .panel-grid,
   .doc-layout {
@@ -2218,6 +2304,17 @@ tbody tr:hover {
 }
 
 /* ---------- Corrections layered over legacy rules ---------- */
+
+/* globals.css 把 .app-content 卡在 1180px。运营台宽表要看完整行，
+   这里压过那条。前台没有 .app-sidebar，不受影响。 */
+.app-shell:has(.app-sidebar) .app-main .app-content {
+  width: min(1680px, calc(100vw - 232px - 48px));
+  max-width: none;
+}
+
+.order-lead {
+  max-width: 72ch;
+}
 
 .hero {
   background: var(--paper) !important;

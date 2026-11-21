@@ -76,7 +76,32 @@ export function HeroOrbit() {
 
     const startTime = gsap.ticker.time;
     const tick = () => place(gsap.ticker.time - startTime);
-    gsap.ticker.add(tick);
+
+    let disposed = false;
+    let ticking = false;
+    const startTicker = () => {
+      if (disposed || ticking) return;
+      gsap.ticker.add(tick);
+      ticking = true;
+    };
+    const stopTicker = () => {
+      if (!ticking) return;
+      gsap.ticker.remove(tick);
+      ticking = false;
+    };
+
+    // Keep the same first-frame start as before so in-view motion is unchanged.
+    startTicker();
+
+    const visibility =
+      typeof IntersectionObserver === "undefined"
+        ? null
+        : new IntersectionObserver((entries) => {
+            if (disposed) return;
+            if (entries.some((entry) => entry.isIntersecting)) startTicker();
+            else stopTicker();
+          });
+    visibility?.observe(stage);
 
     const intro = gsap.to(state, {
       expand: 1,
@@ -150,7 +175,9 @@ export function HeroOrbit() {
     }
 
     return () => {
-      gsap.ticker.remove(tick);
+      disposed = true;
+      visibility?.disconnect();
+      stopTicker();
       intro.kill();
       trigger?.kill();
       observer.disconnect();

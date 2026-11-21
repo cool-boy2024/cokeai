@@ -29,6 +29,24 @@ export function shopBalanceAttempt(reference: string): number {
   return Number.isInteger(attempt) && attempt > 1 ? attempt : 1;
 }
 
+/**
+ * A shop-balance debit that is still in flight, already applied, or in an
+ * unresolved failure must not close the order. Only a clean insufficient
+ * refusal or a completed reversal may expire/cancel.
+ */
+export function shopBalanceOpBlocksClose(
+  op: Pick<CreditOp, "status" | "last_error"> | null,
+): boolean {
+  if (!op) return false;
+  if (op.status !== "failed") return true;
+  const error = op.last_error || "";
+  return !(
+    error === "INSUFFICIENT_BALANCE" ||
+    error === SHOP_BALANCE_REVERSED ||
+    error.startsWith(`${SHOP_BALANCE_REVERSED}：`)
+  );
+}
+
 export type CreditOp = {
   id: string;
   user_id: string;
@@ -166,27 +184,33 @@ async function getCreditOp(id: string): Promise<CreditOp | null> {
   return result.rows[0] || null;
 }
 
-export async function getCreditOpByReference(reference: string): Promise<CreditOp | null> {
-  const result = await query<CreditOp>(
-    `SELECT id, user_id, order_id, kind, amount_cny_micros, amount_credit,
+export async function getCreditOpByReference(
+  reference: string,
+  client?: PoolClient,
+): Promise<CreditOp | null> {
+  const sql = `SELECT id, user_id, order_id, kind, amount_cny_micros, amount_credit,
             reference, status, attempts, last_error, sub2api_user_id
-       FROM gateway_balance_ops WHERE reference = $1`,
-    [reference],
-  );
+       FROM gateway_balance_ops WHERE reference = $1`;
+  const result = client
+    ? await client.query<CreditOp>(sql, [reference])
+    : await query<CreditOp>(sql, [reference]);
   return result.rows[0] || null;
 }
 
-export async function getLatestShopBalanceOp(orderId: string): Promise<CreditOp | null> {
+export async function getLatestShopBalanceOp(
+  orderId: string,
+  client?: PoolClient,
+): Promise<CreditOp | null> {
   const base = shopBalanceReference(orderId);
-  const result = await query<CreditOp>(
-    `SELECT id, user_id, order_id, kind, amount_cny_micros, amount_credit,
+  const sql = `SELECT id, user_id, order_id, kind, amount_cny_micros, amount_credit,
             reference, status, attempts, last_error, sub2api_user_id
        FROM gateway_balance_ops
       WHERE reference = $1 OR reference LIKE $1 || ':%'
       ORDER BY created_at DESC
-      LIMIT 1`,
-    [base],
-  );
+      LIMIT 1`;
+  const result = client
+    ? await client.query<CreditOp>(sql, [base])
+    : await query<CreditOp>(sql, [base]);
   return result.rows[0] || null;
 }
 

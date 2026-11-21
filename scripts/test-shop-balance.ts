@@ -144,11 +144,15 @@ async function main() {
     price_micros: string;
     input_fields: unknown;
   }>(
-    `SELECT id, price_micros, input_fields
-       FROM shop_products
-      WHERE status = 'active' AND copy_ready = TRUE
-        AND availability IN ('in_stock', 'low_stock')
-      ORDER BY sort_order
+    `SELECT p.id, p.price_micros, p.input_fields
+       FROM shop_products p
+      WHERE p.status = 'active' AND p.copy_ready = TRUE
+        AND p.availability IN ('in_stock', 'low_stock')
+        AND NOT EXISTS (
+          SELECT 1 FROM shop_product_variants v
+           WHERE v.product_id = p.id AND v.active = TRUE
+        )
+      ORDER BY p.sort_order
       LIMIT 20`,
   );
   const product = products.rows.find((row) => {

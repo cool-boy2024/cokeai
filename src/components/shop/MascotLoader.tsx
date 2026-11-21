@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
+import { MASCOT_PREF_EVENT, readMascotEnabled } from "./mascotPref";
 
 const ShopMascots = dynamic(
   () => import("./ShopMascots").then((mod) => mod.ShopMascots),
@@ -20,8 +21,18 @@ export function MascotLoader() {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    // 手机会话里桌宠既不能跳也不该占 JS：直接不挂载（CSS 另有一层兜底）。
-    if (window.matchMedia("(max-width: 767px)").matches) return;
+    // 平板及以下桌宠会挡住标题：直接不挂载（CSS 另有一层兜底，断点与 ShopRing 对齐）。
+    if (window.matchMedia("(max-width: 1100px)").matches) return;
+    if (!readMascotEnabled()) return;
+    const onPref = () => {
+      if (!readMascotEnabled()) {
+        triggered = true;
+        cleanup();
+        setMounted(false);
+      }
+    };
+    window.addEventListener(MASCOT_PREF_EVENT, onPref);
+    window.addEventListener("storage", onPref);
     let idleHandle: number | null = null;
     let timer = 0;
     let triggered = false;
@@ -54,6 +65,8 @@ export function MascotLoader() {
     return () => {
       triggered = true;
       cleanup();
+      window.removeEventListener(MASCOT_PREF_EVENT, onPref);
+      window.removeEventListener("storage", onPref);
     };
   }, []);
 

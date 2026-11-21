@@ -349,10 +349,14 @@ export async function adminRefundShopAction(formData: FormData): Promise<void> {
   const amountYuan = Number(formData.get("amount") || 0);
   const customerAccount = text(formData, "customerAccount");
   try {
+    const amountMicros = Math.round(amountYuan * 1_000_000);
+    if (!Number.isFinite(amountMicros) || amountMicros <= 0) {
+      throw new Error("退款金额必须大于 0");
+    }
     await refundShopOrder({
       orderId,
       adminId: admin.id,
-      amountMicros: Math.round(amountYuan * 1_000_000),
+      amountMicros,
       reason: [text(formData, "reason") || "运营退款", customerAccount ? `收款账户：${customerAccount}` : ""]
         .filter(Boolean)
         .join("；"),

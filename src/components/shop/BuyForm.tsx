@@ -92,17 +92,15 @@ export function BuyForm({
   const [captchaVersion, setCaptchaVersion] = useState(0);
   const [captchaRefreshing, setCaptchaRefreshing] = useState(false);
   const captchaPending = useRef(false);
-  // 货源库存是唯一的售卖上限：上游没货，页面和下单入口都停。
-  const soldOut = product.sales.soldOut;
-  const available = isPurchasable(effectiveAvailability) && !soldOut;
-  const salesHint = salesLabel(product.sales, {
-    available:
-      productAvailabilityState({
-        availability: effectiveAvailability,
-        preorder: effectivePreorder,
-        soldOut,
-      }) === "available",
-  });
+  // 货源库存 0 对现货是售罄；预定单仍可买（预定不是没货）。
+  const soldOut = product.sales.soldOut && !effectivePreorder;
+  const available =
+    productAvailabilityState({
+      availability: effectiveAvailability,
+      preorder: effectivePreorder,
+      soldOut,
+    }) === "available";
+  const salesHint = salesLabel(product.sales, { available });
   const maxQty = Math.max(1, Math.trunc(qtyMax));
   const totalMicros = unitMicros * qty;
 

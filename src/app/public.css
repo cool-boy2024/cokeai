@@ -6121,6 +6121,13 @@ body {
   opacity: 1;
 }
 
+/* 结账 / 订单：缩小靠边，少挡表单。 */
+.shop-mascot.is-quiet {
+  width: 48px;
+  height: 48px;
+  opacity: 0.82;
+}
+
 .shop-mascot:focus-visible {
   border-radius: 50%;
   outline: 2px solid var(--green);
@@ -6624,9 +6631,9 @@ body {
   }
 }
 
-@media (max-width: 767px) {
-  /* 移动端不显示桌宠：它们在这里只静态站位、不会跳也不会互动，
-     MascotLoader 也直接跳过不挂载；这条规则兜住「桌面宽→缩到手机」的 resize。 */
+@media (max-width: 1100px) {
+  /* 平板及以下不显示桌宠（与 ShopRing 同一断点）：84px 三只会挡住标题。
+     MascotLoader 也直接跳过不挂载；这条规则兜住「桌面宽→缩到平板」的 resize。 */
   .shop-mascot {
     display: none;
   }

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { KeyRound, UserRound } from "lucide-react";
 import { PasswordForm } from "@/components/PasswordForm";
+import { MascotPrefToggle } from "@/components/shop/MascotPrefToggle";
 import { requireUser } from "@/lib/auth";
 import { formatDateTime } from "@/lib/format";
 
@@ -52,6 +53,10 @@ export default async function SettingsPage() {
             <div className="flex-between">
               <span className="small muted">注册时间</span>
               <span className="small">{formatDateTime(user.created_at)}</span>
+            </div>
+            <div className="mt-16">
+              <MascotPrefToggle />
+              <p className="small muted mt-8">关掉后，电脑上的公开页面不再显示三只桌宠。</p>
             </div>
           </div>
         </section>

@@ -70,10 +70,9 @@ export default async function AdminShopOrdersPage({
       <div className="page-head">
         <div>
           <h1>小店订单</h1>
-          <p>
+          <p className="order-lead">
             客户上报付款后先核对收款账单确认到账，再去供货商下单并上传交付。
-            「超时待核对」是人工支付宝里已过付款时限、客户又没提交付款信息的订单——
-            这类订单不会自动过期（钱可能已到账），需要人工确认或取消。
+            「超时待核对」是人工支付宝里已过付款时限、客户又没提交付款信息的订单——这类订单不会自动过期（钱可能已到账），需要人工确认或取消。
           </p>
         </div>
       </div>
@@ -137,7 +136,7 @@ export default async function AdminShopOrdersPage({
           </div>
         ) : (
           <>
-            <div className="table-scroll">
+            <div className="table-scroll table-scroll--orders">
               <table>
                 <thead>
                   <tr>
@@ -163,12 +162,12 @@ export default async function AdminShopOrdersPage({
                         : 0;
                     return (
                       <tr key={order.id}>
-                        <td className="mono nowrap">{order.order_no}</td>
-                        <td>
+                        <td className="mono cell-keep">{order.order_no}</td>
+                        <td className="cell-soft">
                           <div>{order.email}</div>
                           <span className="muted">{order.name}</span>
                         </td>
-                        <td>{order.product_name}</td>
+                        <td className="cell-full">{order.product_name}</td>
                         <td className="nowrap">
                           {formatCny(order.amount_micros)}
                           <span className="muted">
@@ -176,10 +175,10 @@ export default async function AdminShopOrdersPage({
                             / {formatCny(order.supplier_cost_micros)}
                           </span>
                         </td>
-                        <td className={margin < 15 ? "text-red" : ""}>
+                        <td className={margin < 15 ? "text-red nowrap" : "nowrap"}>
                           {margin.toFixed(1)}%
                         </td>
-                        <td className="nowrap">
+                        <td className="cell-full">
                           {order.payment_provider === "alipay_easypay"
                             ? "支付宝（易支付）"
                             : order.payment_provider === "alipay_manual"
@@ -190,7 +189,7 @@ export default async function AdminShopOrdersPage({
                                   ? "USDT"
                                   : "人工"}
                         </td>
-                        <td className="mono nowrap">
+                        <td className="mono cell-full">
                           {order.reported_reference ? (
                             <>
                               {order.reported_reference}
@@ -202,7 +201,7 @@ export default async function AdminShopOrdersPage({
                             <span className="muted">—</span>
                           )}
                         </td>
-                        <td>
+                        <td className="nowrap">
                           {order.status === "pending_payment" && order.reported_at ? (
                             <>
                               <span className="shop-status shop-status-payment_reported">
@@ -219,7 +218,7 @@ export default async function AdminShopOrdersPage({
                           )}
                         </td>
                         <td className="nowrap muted">{formatDateTime(order.created_at)}</td>
-                        <td className="text-right">
+                        <td className="text-right nowrap">
                           <Link
                             className="btn btn-ghost btn-sm"
                             href={`/admin/shop/orders/${order.id}`}
