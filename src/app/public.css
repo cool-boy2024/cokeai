@@ -7877,6 +7877,7 @@ body {
 /* /shop 英雄区：居中标题和胶囊按钮。卡片扇面不在这里写。 */
 .public-main .shop-deck {
   position: relative;
+  overflow: hidden;
   padding: 80px 24px 72px;
   text-align: center;
   background-color: var(--paper);
