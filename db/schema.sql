@@ -731,7 +731,7 @@ ALTER TABLE shop_suppliers ADD COLUMN IF NOT EXISTS last_feed_hash TEXT;
 -- 2026-11-16: ai-buy.vip runs the same storefront software.
 ALTER TABLE shop_suppliers DROP CONSTRAINT IF EXISTS shop_suppliers_kind_check;
 ALTER TABLE shop_suppliers ADD CONSTRAINT shop_suppliers_kind_check
-  CHECK (kind IN ('aibijia', 'manual', 'zyanai', 'aibuy'));
+  CHECK (kind IN ('aibijia', 'manual', 'zyanai', 'aibuy', 'ybkjs', 'baipiao'));
 
 INSERT INTO schema_migrations (version) VALUES ('003_shop') ON CONFLICT (version) DO NOTHING;
 

@@ -1,0 +1,98 @@
+{
+  "name": "CokeAI｜ybkjs 商品镜像同步（每小时）",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## ybkjs 商品镜像同步\n\n每小时拉一次 fk1.ybkjs.top 的公开目录（/static/catalog.json），更新小店商品的标题、介绍、售价和库存状态。\n\n- 只镜像商品，订单仍由人工采购，不向上游下单\n- 售价由 autoRetailPrice 按成本和目标毛利算出，不按拿货价直卖\n- 库存为 0 的商品保持上架，availability 记为 out_of_stock\n- 连续两次在目录里找不到才暂停，避免上游列表抖动误伤\n- 标题和文案经 sanitizeSupplierCopy 处理，公开页面不出现上游店铺名\n- 单款抓取失败保留旧内容，结果写入 shop_sync_runs\n\n手动：后台脚本 `docker compose exec app node ybkjs-sync.cjs`，或带 secret 调 `POST /api/internal/shop/ybkjs-sync`。",
+        "height": 320,
+        "width": 400,
+        "color": 6
+      },
+      "id": "b0278bf9-9424-4032-9660-362d1fc77a28",
+      "name": "使用说明",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -560,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "53 * * * *"
+            }
+          ]
+        }
+      },
+      "id": "f5460402-e9f9-4a2b-a9d4-88b4b3f5dde2",
+      "name": "每小时 :53",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -40,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://app:3000/api/internal/shop/ybkjs-sync",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-internal-secret",
+              "value": "={{ $env.INTERNAL_API_SECRET }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{}",
+        "options": {
+          "timeout": 300000,
+          "response": {
+            "response": {
+              "fullResponse": true
+            }
+          }
+        }
+      },
+      "id": "db23a4d7-ecfa-4596-9698-035a0a9dad10",
+      "name": "同步 ybkjs 商品",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        210,
+        80
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "每小时 :53": {
+      "main": [
+        [
+          {
+            "node": "同步 ybkjs 商品",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Shanghai"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": []
+}

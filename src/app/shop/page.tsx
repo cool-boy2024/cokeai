@@ -15,12 +15,17 @@ import { ProductCard } from "@/components/shop/ProductCard";
 import { ProductRow } from "@/components/shop/ProductRow";
 import { RecentStrip } from "@/components/shop/RecentStrip";
 import { ShopFeaturedCard } from "@/components/shop/ShopFeaturedCard";
+import {
+  ShopHeroDeck,
+  type ShopDeckCard,
+} from "@/components/shop/ShopHeroDeck";
 import { AvailabilityLegend } from "@/components/shop/ShopBadges";
 import { getCurrentUser } from "@/lib/auth";
 import { config } from "@/lib/config";
 import {
   listPublicProducts,
   listRecentPublicProducts,
+  SHOP_BRANDS,
   startingPriceMicros,
   type PublicShopProduct,
 } from "@/lib/shop/catalog";
@@ -81,6 +86,126 @@ function matchesSearch(product: PublicShopProduct, query: string): boolean {
     .join(" ")
     .toLowerCase();
   return tokens.every((token) => haystack.includes(token));
+}
+
+const DECK_TONES = ["ink", "green", "sand", "clay", "slate"] as const;
+const DECK_NAME_HINTS = [
+  "ChatGPT",
+  "Claude",
+  "Gemini",
+  "Grok",
+  "Perplexity",
+] as const;
+
+/**
+ * Short label for a deck card: known brand name, else the public category.
+ * Source hostnames and 「月饼」 never reach the storefront.
+ */
+function deckBrandLabel(product: PublicShopProduct): string {
+  const category = productDisplayCategory(product);
+  const raw = (product.brand || "").trim();
+  const haystack = `${raw} ${product.name} ${category}`;
+  if (/perplexity/i.test(haystack)) return "Perplexity";
+  if (!raw || /月饼/i.test(raw) || /[./:]/.test(raw)) return category;
+  const key = raw.toLowerCase();
+  const known = SHOP_BRANDS.find(
+    (item) => item.key !== "all" && (key === item.key || key.startsWith(`${item.key}-`)),
+  );
+  if (known) return known.label;
+  if (category !== "其他") return category;
+  if (key === "other" || key === "all") return category;
+  if (raw.length <= 24) return raw.charAt(0).toUpperCase() + raw.slice(1);
+  return category;
+}
+
+const DECK_TIER_LABELS: Record<string, string> = {
+  plus: "Plus",
+  pro: "Pro",
+  max: "Max",
+  team: "Team",
+  ultra: "Ultra",
+  enterprise: "Enterprise",
+  advanced: "Advanced",
+  "5x": "5x",
+  "20x": "20x",
+};
+
+const DECK_TIER_PATTERN =
+  /(?<![a-z])(plus|pro|max|team|ultra|enterprise|advanced|20x|5x)(?![a-z])/i;
+
+/**
+ * Deck card name: brand plus the subscription tier, else the brand alone or a
+ * trimmed product name. Supplier domains and 「月饼」 never reach the card.
+ */
+function deckCardName(product: PublicShopProduct, brand: string): string {
+  const clean = (text: string): string =>
+    text
+      .replace(/\b(?:https?:\/\/)?[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}\b/gi, " ")
+      .replace(/月饼|白嫖/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+
+  const generic = brand === "其他" || brand === "全部";
+  const tier = DECK_TIER_PATTERN.exec(product.name);
+  const tierLabel = tier ? DECK_TIER_LABELS[tier[1].toLowerCase()] : undefined;
+  if (tierLabel && !generic) return clean(`${brand} ${tierLabel}`);
+  if (!generic) return clean(brand);
+
+  const bare = clean(product.name.replace(/[（(][^（）()]*[）)]/g, " "));
+  return clean(Array.from(bare).slice(0, 14).join(""));
+}
+
+function matchesDeckHint(product: PublicShopProduct, hint: string): boolean {
+  const haystack = [
+    product.name,
+    product.brand,
+    product.display_category,
+    productDisplayCategory(product),
+  ]
+    .join(" ")
+    .toLowerCase();
+  const needle = hint.toLowerCase();
+  if (haystack.includes(needle)) return true;
+  return needle === "chatgpt" && /(^|[^a-z])gpt([^a-z]|$)/.test(haystack);
+}
+
+/**
+ * At most five real catalog products: featured first, then one name match
+ * each for ChatGPT / Claude / Gemini / Grok / Perplexity, then the list head.
+ * One card per deckBrandLabel so featured cannot fill the deck with one brand.
+ */
+function shopHeroDeckCards(products: PublicShopProduct[]): ShopDeckCard[] {
+  const picked: PublicShopProduct[] = [];
+  const seen = new Set<string>();
+  const seenBrands = new Set<string>();
+  const take = (product: PublicShopProduct | undefined) => {
+    if (!product || picked.length >= 5 || seen.has(product.id)) return;
+    const brand = deckBrandLabel(product);
+    if (seenBrands.has(brand)) return;
+    seen.add(product.id);
+    seenBrands.add(brand);
+    picked.push(product);
+  };
+
+  for (const product of products) {
+    if (product.featured && deckBrandLabel(product) !== "其他") take(product);
+  }
+  for (const hint of DECK_NAME_HINTS) {
+    take(products.find((product) => matchesDeckHint(product, hint)));
+  }
+  for (const product of products) {
+    if (deckBrandLabel(product) === "其他") continue;
+    take(product);
+  }
+  for (const product of products) take(product);
+
+  return picked.map((product, index) => ({
+    href: `/shop/${product.slug}`,
+    name: deckCardName(product, deckBrandLabel(product)),
+    brand: deckBrandLabel(product),
+    priceLabel: productPriceLabel(startingPriceMicros(product)),
+    tone: DECK_TONES[index % DECK_TONES.length],
+  }));
 }
 
 export default async function ShopPage({
@@ -164,60 +289,81 @@ export default async function ShopPage({
   const showRecommended = recommended.length > 0 && page === 1;
 
   const categoryLabel = SHOP_CATEGORY_LABELS[category];
+  const deckCards = shopHeroDeckCards(allProducts);
+  const buyableCount = allProducts.filter(
+    (product) =>
+      product.availability === "in_stock" || product.availability === "low_stock",
+  ).length;
+  const restockingCount = allProducts.filter(
+    (product) => product.availability === "out_of_stock",
+  ).length;
 
   return (
     <>
       <SiteHeader />
       <main id="main-content" className="public-main shop-page shop-market-page">
-        <section className="shop-hero shop-hero-compact">
-          <div className="container">
-            <div className="shop-hero-inner">
-              <div>
-                <div className="hero-eyebrow">
-                  <i />
-                  CokeAI 小店
-                </div>
-                <h1>
-                  常用 AI 订阅，
-                  <br />
-                  <em>在这里一次买齐。</em>
-                </h1>
-                <p>
-                  按分类浏览、直接搜索，商品页内切换档位。下单后人工处理，
-                  进度随时可查，完成后在订单页领取交付内容。
-                </p>
-              </div>
-              <form className="shop-search" action="/shop" method="get" role="search">
-                {category !== "all" ? (
-                  <input type="hidden" name="category" value={category} />
-                ) : null}
-                <div className="shop-search-field">
-                  <MagnifyingGlass size={18} />
-                  <input
-                    type="search"
-                    name="q"
-                    defaultValue={query}
-                    placeholder="搜索商品，如 GPT、Claude、邮箱…"
-                    aria-label="搜索商品"
-                    maxLength={60}
-                  />
-                  {query ? (
-                    <Link
-                      href={shopHref(category, "", 1)}
-                      className="shop-search-clear"
-                      aria-label="清除搜索"
-                    >
-                      <X size={14} />
-                    </Link>
-                  ) : null}
-                  <button type="submit">搜索</button>
-                </div>
-              </form>
-            </div>
+        <section className="shop-deck">
+          <p className="shop-deck-kicker">CokeAI · 小店</p>
+          <h1 className="shop-deck-title">
+            常用 AI 订阅，
+            <br />
+            <em>一次买齐。</em>
+          </h1>
+          <p className="shop-deck-lead">
+            按分类浏览，商品页里换档位，下单后人工处理，进度可查，交付在订单页领取。
+          </p>
+          <div className="shop-deck-actions">
+            <a className="shop-deck-primary" href="#catalog">
+              去选商品
+            </a>
+            <Link className="shop-deck-secondary" href="/shop/terms">
+              购买须知
+            </Link>
           </div>
+          {allProducts.length > 0 ? <ShopHeroDeck cards={deckCards} /> : null}
+          {allProducts.length > 0 ? (
+            buyableCount > 0 && restockingCount > 0 ? (
+              <p className="shop-deck-stats">
+                现在有 {buyableCount} 款可买，{restockingCount} 款补货中。
+              </p>
+            ) : buyableCount > 0 ? (
+              <p className="shop-deck-stats">现在有 {buyableCount} 款可买。</p>
+            ) : restockingCount > 0 ? (
+              <p className="shop-deck-stats">现在有 {restockingCount} 款补货中。</p>
+            ) : null
+          ) : null}
         </section>
 
-        <section className="container shop-market">
+        <div className="container">
+          <form className="shop-search" action="/shop" method="get" role="search">
+            {category !== "all" ? (
+              <input type="hidden" name="category" value={category} />
+            ) : null}
+            <div className="shop-search-field">
+              <MagnifyingGlass size={18} />
+              <input
+                type="search"
+                name="q"
+                defaultValue={query}
+                placeholder="搜索商品，如 GPT、Claude、邮箱…"
+                aria-label="搜索商品"
+                maxLength={60}
+              />
+              {query ? (
+                <Link
+                  href={shopHref(category, "", 1)}
+                  className="shop-search-clear"
+                  aria-label="清除搜索"
+                >
+                  <X size={14} />
+                </Link>
+              ) : null}
+              <button type="submit">搜索</button>
+            </div>
+          </form>
+        </div>
+
+        <section id="catalog" className="container shop-market">
           <aside className="shop-sidebar">
             <nav className="shop-side-nav" aria-label="商品分类">
               <p className="shop-side-title">商品分类</p>

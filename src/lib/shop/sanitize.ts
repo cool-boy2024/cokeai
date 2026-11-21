@@ -57,6 +57,7 @@ const SUPPLIER_BRAND_NAMES = [
   "子砚",
   "启航AI",
   "AI小店",
+  "月饼科技社",
   "RedeemGPT",
   "zyanai",
   "ai-buy",
@@ -70,6 +71,8 @@ const SUPPLIER_BRAND_NAMES = [
   "beibei",
   "aisou",
   "talkai",
+  "baipiao",
+  "ybkjs",
 ];
 
 /** Marketing phrases tied to a supplier shop front, not to the product. */
