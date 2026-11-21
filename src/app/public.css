@@ -6128,6 +6128,62 @@ body {
   opacity: 0.82;
 }
 
+/* 购买纸条：一条细字从右向左，不挡点击，不铺满屏幕。 */
+.shop-ticker {
+  position: fixed;
+  z-index: 40;
+  /* 落在标题和筛选条之间的空带，从右缘进入。 */
+  top: 40vh;
+  right: 0;
+  left: 0;
+  height: 72px;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.shop-ticker-slip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: inline-flex;
+  gap: 14px;
+  margin: 0;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(247, 246, 243, 0.92);
+  color: var(--ink, #1c1b19);
+  font-size: 13px;
+  line-height: 1.4;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  transform: translateX(100vw);
+  will-change: transform;
+}
+
+.shop-ticker-slip.is-lane-1 {
+  top: 36px;
+}
+
+.shop-ticker-wish {
+  color: #8a5a12;
+}
+
+@media (max-width: 720px) {
+  .shop-ticker {
+    top: 108px;
+    right: 12px;
+    height: 64px;
+  }
+  .shop-ticker-slip {
+    font-size: 12px;
+    gap: 10px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shop-ticker { display: none; }
+}
+
 .shop-mascot:focus-visible {
   border-radius: 50%;
   outline: 2px solid var(--green);
